@@ -1,5 +1,7 @@
 # OpenPosture - Sitting Posture Feedback System
 
+### [Run Guide](RUNNING.md)
+### [Model Download Link](ModelReadME.md)
 ### [Project Proposal Slide deck](Presentations/PostureCapstone.pptx)
 ### [Statement of Work](Misc/SoW_Posture.docx)
 

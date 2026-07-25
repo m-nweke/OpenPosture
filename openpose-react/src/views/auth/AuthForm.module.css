@@ -1,0 +1,65 @@
+/* Login.vue and Registration.vue each carried a near-identical copy of these
+   rules. Because CSS Modules are just imports, both views can share one file. */
+
+.container {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: var(--color-background);
+}
+
+.container h1 {
+  text-align: center;
+}
+
+.formGroup {
+  margin-bottom: 20px;
+}
+
+.container label {
+  display: block;
+  font-weight: bold;
+}
+
+.container input {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.container button {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.btnGoogle {
+  background-color: #db4437;
+  color: #fff;
+}
+
+.error {
+  color: #db4437;
+}
+
+.separator {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.signInHere {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.signInHere a {
+  color: orange;
+  text-decoration: underline;
+}

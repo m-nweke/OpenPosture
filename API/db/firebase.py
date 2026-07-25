@@ -1,12 +1,27 @@
+import os
+
 from firebase_admin import credentials, initialize_app, storage
 
-# Initialize Firebase Admin SDK
-cred = credentials.Certificate('/Users/michaelnweke/PhpstormProjects/CS5588-Capstone-Project/API/db/openpose-db-firebase-adminsdk-pl8gq-05904164a8.json')
-# initialize_app(cred, {
-#     'storageBucket': 'openpose-db.appspot.com'
-# })
-initialize_app(cred)
+# Path to the Firebase Admin service-account JSON key.
+# Set GOOGLE_APPLICATION_CREDENTIALS (or FIREBASE_CREDENTIALS) to point at your
+# local copy; the key is intentionally not committed to this repo.
+CRED_PATH = os.environ.get('FIREBASE_CREDENTIALS') or os.environ.get(
+    'GOOGLE_APPLICATION_CREDENTIALS'
+)
 
-# Get reference to the default Cloud Storage bucket
-bucket_name = 'openpose-db.appspot.com'
-bucket = storage.bucket(bucket_name)
+BUCKET_NAME = os.environ.get('FIREBASE_STORAGE_BUCKET', 'openpose-db.appspot.com')
+
+# When the credential is missing we leave the bucket as None instead of raising,
+# so the sanity routes still come up and only the storage routes are disabled.
+bucket = None
+
+if CRED_PATH and os.path.exists(CRED_PATH):
+    cred = credentials.Certificate(CRED_PATH)
+    initialize_app(cred)
+    bucket = storage.bucket(BUCKET_NAME)
+else:
+    print(
+        'WARNING: Firebase credentials not found. '
+        'Set FIREBASE_CREDENTIALS to your service-account JSON path. '
+        'Upload and image routes are disabled.'
+    )
