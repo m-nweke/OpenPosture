@@ -1,0 +1,20 @@
+[project]
+name = "openposture-api"
+version = "0.1.0"
+description = "OpenPosture FastAPI service."
+requires-python = ">=3.11"
+
+# The top of the dependency graph. Depends on both packages; nothing depends on this.
+# Web/DB/LLM dependencies arrive with the tickets that introduce them (Epics D, E, F) rather
+# than being declared speculatively here.
+dependencies = [
+    "posture-core",
+    "pose-backends",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/openposture_api"]

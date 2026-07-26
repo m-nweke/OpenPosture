@@ -1,0 +1,34 @@
+# Fast local checks that mirror the `lint` job in .github/workflows/pr.yml.
+#
+# Deliberately excludes mypy and pytest: they are slower than a commit should be, and CI runs
+# them on every push anyway. The goal here is to catch the trivial things before they cost a
+# CI round trip, not to reimplement the pipeline.
+#
+#   uv tool install pre-commit && pre-commit install
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix]
+      - id: ruff-format
+        name: ruff (format)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Legacy sources are preserved byte-for-byte as audit evidence (docs/FINDINGS.md cites
+        # their line numbers); fixtures are binary and must not be rewritten.
+        exclude: ^(docs/archive/|fixtures/)
+      - id: end-of-file-fixer
+        exclude: ^(docs/archive/|fixtures/)
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        # The 209 MB model.h5 is exactly the mistake this prevents repeating.
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: detect-private-key

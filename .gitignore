@@ -45,3 +45,24 @@ coverage
 
 test-results/
 playwright-report/
+
+# --- Python toolchain (OP-12: uv workspace) ---
+# uv creates .venv/ at the workspace root. The pre-existing `venv/` entry does not match it.
+.venv/
+.python-version
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Coverage artefacts (the bare `coverage` entry above does not match these)
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build artefacts
+*.egg-info/
+build/
+dist/

@@ -1,0 +1,110 @@
+# Required pull-request checks.
+#
+# This workflow goes live with the first Python package (OP-12) rather than being added later,
+# because a package that merges before its gates exist accumulates untested code that someone
+# then has to repair. It grows by ticket:
+#
+#   OP-12 (here)  Python: lint, typecheck, test-python
+#   OP-13         React:  web-lint, web-typecheck, web-test, web-build
+#   OP-14         hardening: concurrency cancellation, SHA-pinned actions, lockfile-keyed
+#                 caches, a composite setup-project action, and a <=5 minute target
+#   OP-50         API-specific coverage gate at 85%
+#
+# Job names are contracts: they become the required checks on the `main` ruleset in OP-15, and
+# renaming one silently drops its protection.
+#
+# Every job here runs with no model weights, no database, no container and no secret.
+
+name: PR
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege. Nothing here writes to the repository.
+permissions:
+  contents: read
+
+env:
+  # Pinned so a uv release cannot change CI behaviour without a visible diff.
+  UV_VERSION: "0.11.32"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        # --frozen fails if uv.lock is out of date with the pyproject files, so a dependency
+        # change that was never locked cannot merge.
+        run: uv sync --all-packages --frozen
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: mypy --strict
+        run: uv run mypy packages apps
+
+  test-python:
+    name: test-python (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Report both legs rather than cancelling the matrix on the first failure — a version
+      # -specific break is exactly what this matrix exists to surface.
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-packages --frozen --python ${{ matrix.python-version }}
+
+      - name: Test posture-core (95% coverage floor)
+        # The rules engine carries the strictest gate in the project. It has no I/O, no model
+        # and no database, so there is no excuse for untested branches here.
+        run: >
+          uv run --python ${{ matrix.python-version }}
+          pytest packages/posture-core
+          --cov=posture_core
+          --cov-report=term-missing
+          --cov-fail-under=95
+          -m "not model"
+
+      - name: Test workspace
+        # `-m "not model"` deselects real-model tests. They need weights this job deliberately
+        # never downloads, and run on demand in model-validation.yml (created in OP-21).
+        run: uv run --python ${{ matrix.python-version }} pytest -m "not model"
