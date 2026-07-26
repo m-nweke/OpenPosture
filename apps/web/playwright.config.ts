@@ -17,7 +17,10 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    trace: 'on-first-retry',
+    // `retain-on-failure`, not the more usual `on-first-retry`: with `retries: 0` there is never
+    // a first retry, so that setting would record nothing and the artifact the web-e2e job
+    // uploads on failure would arrive empty — exactly when it is needed.
+    trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {

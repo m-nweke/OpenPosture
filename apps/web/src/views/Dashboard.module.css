@@ -13,6 +13,9 @@
 }
 
 .instructions {
+  /* This is a <label> now, not a <p>. Labels are inline by default, and vertical margins do not
+     apply to inline boxes — without this the 20px gap below the text silently disappears. */
+  display: block;
   margin-bottom: 20px;
   color: black;
 }

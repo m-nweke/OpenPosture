@@ -70,12 +70,17 @@ export default function Dashboard() {
     <div className={styles.container}>
       <h1>Hello, {name}</h1>
       <div className={styles.card}>
-        <p className={styles.instructions}>
+        {/* Was a <p>. Promoting the instructions to the field's actual label — rather than
+            adding a second, redundant one — means a screen reader reads the requirements when
+            the input takes focus. Before this the control announced as a bare "file upload
+            button" with no hint that the photo has to be taken from the side. */}
+        <label className={styles.instructions} htmlFor="posture-image">
           Input an image of you sitting for posture evaluation. This image must be taken from a side
           angle.
-        </p>
+        </label>
         <input
           type="file"
+          id="posture-image"
           accept="image/*"
           onChange={handleFileUpload}
           className={styles.fileInput}

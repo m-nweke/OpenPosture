@@ -16,11 +16,14 @@ function pngFile() {
   return new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'posture.png', { type: 'image/png' })
 }
 
-/** The file input has no label in the markup, so there is no accessible name to query by. */
-function fileInputIn(container: HTMLElement): HTMLInputElement {
-  const input = container.querySelector<HTMLInputElement>('input[type="file"]')
-  if (input === null) throw new Error('Dashboard rendered without a file input')
-  return input
+/**
+ * Queried by its label, not by `container.querySelector('input[type=file]')`. Having to reach
+ * for a CSS selector was the signal that the control had no accessible name at all — a screen
+ * reader announced it as an unlabelled file button. Fixed in the markup; this now fails if the
+ * label is ever unwired.
+ */
+function fileInput(): HTMLInputElement {
+  return screen.getByLabelText(/Input an image of you sitting/i)
 }
 
 afterEach(() => {
@@ -47,17 +50,17 @@ describe('Dashboard', () => {
   it('accepts a file without showing anything until results arrive', async () => {
     const user = userEvent.setup()
     signedInAs('Ada')
-    const { container } = renderWithProviders(<Dashboard />)
+    renderWithProviders(<Dashboard />)
     await screen.findByRole('heading', { name: 'Hello, Ada' })
 
-    await user.upload(fileInputIn(container), pngFile())
+    await user.upload(fileInput(), pngFile())
 
     // Documenting existing behaviour, not endorsing it: the chosen image is only rendered
     // inside the results block, so between picking a file and waiting out the fake five-second
     // analysis the user gets no confirmation their upload registered. Worth revisiting when the
     // real inference flow lands in Epic D; changing it now would be scope this ticket does not
     // own.
-    expect(fileInputIn(container).files).toHaveLength(1)
+    expect(fileInput().files).toHaveLength(1)
     expect(screen.queryByAltText('Uploaded')).not.toBeInTheDocument()
   })
 
@@ -68,12 +71,12 @@ describe('Dashboard', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     signedInAs('Ada')
-    const { container } = renderWithProviders(<Dashboard />)
+    renderWithProviders(<Dashboard />)
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
 
-    await user.upload(fileInputIn(container), pngFile())
+    await user.upload(fileInput(), pngFile())
     // FileReader resolves on a macrotask; let it settle before submitting.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -101,12 +104,12 @@ describe('Dashboard', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     signedInAs('Ada')
-    const { container } = renderWithProviders(<Dashboard />)
+    renderWithProviders(<Dashboard />)
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
 
-    await user.upload(fileInputIn(container), pngFile())
+    await user.upload(fileInput(), pngFile())
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
