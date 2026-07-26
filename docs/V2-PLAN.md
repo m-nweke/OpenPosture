@@ -1,0 +1,308 @@
+# OpenPosture v2 — Rebuild as a Portfolio-Grade Full-Stack AI Application
+
+> **Status:** approved 2026-07-25 · **Tracking:** Jira project `OP` (import pending)
+> **Companion doc:** [`FINDINGS.md`](./FINDINGS.md) — the full audit of the inherited codebase this plan replaces.
+
+## Context
+
+OpenPosture is a CS5588 capstone the user inherited rather than authored. Three things keep it off a resume:
+
+**1. It doesn't work end-to-end.** Both dashboards are fake — `submitImage()` runs a 5-second `setTimeout` and renders hardcoded strings (`openpose-react/src/views/Dashboard.tsx:7-16,49-58`). `API/app.py` never imports the model. There is no inference endpoint. This one missing wire is the whole gap between demo and product.
+
+**2. The stack is rotting.** `tensorflow==2.12.0` is pinned in both directions — no Python 3.12+ wheel, no macOS arm64 wheel, and `API/model.py:4-5` imports `keras.layers.convolutional`, a path deleted after Keras 2.12. The 209 MB `model.h5` ships via a Dropbox link.
+
+**3. No engineering signal.** Zero tests, zero CI, no Docker, no logging (every result is a bare `print()`), ~250 lines copy-pasted between `posture_image.py` and `posture_realtime.py`, and `/upload` writes attacker-chosen blob names into Firebase with admin credentials behind `origins: '*'`.
+
+**And the posture logic is substantively wrong** — this matters, because a rewrite that only modernizes the stack has no story. Four defects found during exploration, all quotable in the README:
+
+| Bug | Where | Effect |
+|---|---|---|
+| **Ear indices inverted.** `API/config` `part_str` says index 16 = `Lear`, 17 = `Rear`; the code comments them backwards and keys the laterality flag `f` off that. | `posture_image.py:103-111`, `checkKneeling` | Hunchback/recline classification likely **inverted for one facing direction** |
+| **Neck metric is geometrically meaningless.** Compares neck *y* to shoulder-center *y*. In image coords (y grows downward) `neck_y < shoulder_y` is true for every upright human. Forward-head posture is a *sagittal* offset, not vertical. | `posture_image.py:240-245` | Always reports "Neck is Forward" |
+| **Feet check is a tautology.** "Ankle below knee → feet on floor" holds for nearly any seated pose. | `posture_image.py:274` | Metric carries no information |
+| **Uncaught `UnboundLocalError`.** If both ankles exist but the `if` is falsy, `leftdegrees` is never bound before `180 - leftdegrees`. `UnboundLocalError` is a `NameError`, **not** caught by `except IndexError`. | `posture_image.py:179-189` | Hard crash |
+
+Plus: `checkPosition` returns `None` on failure, which `__main__` maps to **"Straight back position"** — a silent false negative on every undetectable pose.
+
+**Intended outcome:** `git clone && cp .env.example .env && docker compose up` — with **no accounts to create and no API key required** — brings up an app where a real photo produces a real, model-derived analysis plus LLM coaching, backed by tests, CI, typed contracts, and a README a recruiter skims in 30 seconds.
+
+**Settled decisions:** modern pose backend + rules engine + LLM coach · Dockerized local, no public deploy · React+TS survives, Vue deleted · self-hosted JWT, Firebase removed entirely · browser-side live mode · plan in markdown now, Jira project OP later.
+
+---
+
+## Target architecture
+
+```
+openposture/
+├─ README.md  ARCHITECTURE.md  CHANGELOG.md  Makefile  .env.example
+├─ docker-compose.yml            # dev, hot reload
+├─ docker-compose.prod.yml       # prod overlay, used by CI smoke test
+├─ .github/workflows/{ci,nightly}.yml
+├─ apps/
+│  ├─ api/                       # FastAPI + Pydantic v2 + SQLAlchemy 2.0
+│  │  └─ src/openposture_api/{main,config,deps}.py  api/v1/  db/  schemas/  services/  security/
+│  └─ web/                       # React 19 + TS (from openpose-react/)
+├─ packages/
+│  ├─ posture-core/              # ⭐ PURE rules engine. numpy only. No I/O, no globals.
+│  ├─ pose-backends/             # inference adapters behind a Protocol (impure, heavy)
+│  ├─ posture-core-ts/           # TS mirror for browser live mode
+│  └─ posture-spec/              # SHARED rules.json + golden/*.json (cross-language contract)
+├─ docs/
+│  ├─ V2-PLAN.md                 # this plan, committed
+│  ├─ adr/0001..0006.md
+│  ├─ evaluation.md              # old-engine vs new-engine metrics
+│  ├─ images/                    # screenshots + demo.gif
+│  └─ archive/                   # coursework provenance + legacy-openpose/
+└─ fixtures/images/              # ~8 curated, downscaled sample images
+```
+
+Python packaging via **`uv` workspace** (`[tool.uv.workspace] members = ["apps/api", "packages/*"]`) — one lockfile, editable local packages, fast Docker builds. No `requirements.txt`.
+
+**Why `apps/` + `packages/` is load-bearing, not decoration:** `posture-core` has zero heavy dependencies, so its ~200 unit tests run in CI in under two seconds with no model, no Docker, no DB. `pose-backends` quarantines the one impure, platform-fragile dependency behind a Protocol. `apps/api` depends on both. **That dependency direction is the entire architectural argument, and it's visible from the directory tree.**
+
+### Why FastAPI, not modernized Flask
+
+Nothing in `app.py`'s 56 lines survives the new requirements, so this is a rewrite either way — the only question is which framework. FastAPI wins on all four actual needs: `UploadFile` is spooled to disk (a 15 MB photo doesn't sit in RAM); `run_in_threadpool` keeps blocking CPU-bound inference off the event loop; `StreamingResponse` over an async Anthropic stream is ~10 lines where Flask+WSGI streaming while holding a DB session is genuinely awkward; and `app.dependency_overrides` **is the answer** to "how do I test an endpoint that runs a model without running the model."
+
+The bonus that improves the frontend: FastAPI emits OpenAPI 3.1, so `openapi-typescript` generates `apps/web/src/api/schema.d.ts` from `/openapi.json`. A breaking backend change then fails `tsc` in CI. *"My frontend types are generated from my backend schema"* is a stronger interview line than anything else in the stack.
+
+### Why MediaPipe Pose Landmarker, not the CMU model
+
+| | Current (TF/Keras OpenPose) | MediaPipe Pose Landmarker |
+|---|---|---|
+| Model | 209 MB, Dropbox-hosted, 52.3 M params | 9 MB (`_full.task`), ~3 M params |
+| CPU latency | seconds | ~20–35 ms |
+| Python | 3.11 only, no arm64 wheel | 3.9–3.12 |
+| License | provenance unclear | Apache-2.0 |
+| Keypoints | 18 (COCO), x/y only | 33 incl. **heel + foot_index**, x/y/z |
+| Confidence | none | **`visibility` + `presence`, both [0,1]** |
+| 3D | none | **`pose_world_landmarks` — metres, hip-origin** |
+
+Three decisive wins, in order:
+
+1. **World landmarks give scale invariance for free.** They're in metres with the hip midpoint as origin — independent of image resolution and subject distance. The core defect of the existing code ("normalize thresholds by torso length") collapses into *"compute the angle in world space."* No competing backend offers this.
+2. **`visibility` + `presence` implement explicit missing-data handling.** You can distinguish *occluded* (low visibility, high presence) from *out of frame* (low presence) and surface that honestly in the API — instead of `checkPosition` silently reporting "Straight back position."
+3. **Feet.** `LEFT_HEEL(29)`/`RIGHT_HEEL(30)`/`LEFT_FOOT_INDEX(31)`/`RIGHT_FOOT_INDEX(32)` make `heel_contact` a real metric. The original `README.md` listed "identify if feet are on the ground or dangling" as a project goal and never delivered it.
+
+Rejected: **YOLOv8-pose** — AGPL-3.0, disqualifying for a public MIT portfolio repo. **MoveNet Thunder (ONNX)** — solid and reliably multi-arch, but 2D-only with a single confidence score; it's the *fallback*, not the choice.
+
+**The one real risk, gated first:** MediaPipe historically shipped `manylinux_x86_64` wheels only; `aarch64` arrived late. **OP-20 is a 1-point spike, run before any rules code**, with a mechanical criterion:
+
+```bash
+docker run --rm --platform linux/arm64 python:3.12-slim \
+  sh -c "pip install --only-binary=:all: mediapipe==<pin> && python -c 'import mediapipe'"
+```
+
+Pass → MediaPipe, multi-arch. Fail → **do not** fall back to QEMU-emulated amd64 (≈10× slower inference ruins the local demo); implement `ONNXMoveNetBackend` instead. Because everything sits behind the Protocol, that's ~150 lines plus an adapter change, and **nothing in `posture-core` or `apps/api` moves.**
+
+### Keypoint mapping (ADR-0002)
+
+`NECK` must be **derived** as midpoint(`LEFT_SHOULDER`, `RIGHT_SHOULDER`) — the single schema change touching the most rule code. Everything else is a rename inside the adapter, invisible to `metrics.py`. Legacy `Rsho/Lsho` 2/5 → 12/11 · `Relb/Lelb` 3/6 → 14/13 · `Rwri/Lwri` 4/7 → 16/15 · `Rhip/Lhip` 8/11 → 24/23 · `Rkne/Lkne` 9/12 → 26/25 · `Rank/Lank` 10/13 → 28/27 · `Lear/Rear` 16/17 → 7/8. The ear-inversion bug **disappears by construction**: MediaPipe gives unambiguous named landmarks, so there is no hand-rolled `f` laterality flag to get backwards.
+
+### Keeping one rules engine across two languages
+
+Live mode needs the rules in TypeScript; the API needs them in Python. Two implementations that drift are worse than no live mode, so duplication is contained by `packages/posture-spec/`:
+
+- **`rules.json`** — every threshold, landmark index, and normalization constant. Neither implementation hardcodes a number; both load this. Retuning is a one-line change in one place.
+- **`golden/*.json`** — the synthetic fixtures from Epic C plus expected verdicts. **Both** pytest and Vitest run this corpus, and **CI fails if the two engines disagree on any fixture.**
+
+The TS mirror implements only what live mode needs (trunk inclination, craniovertebral angle, shoulder asymmetry); Python stays canonical and complete.
+
+---
+
+## Epics
+
+Ticket-sized stories (½–2 days), ready to convert to Jira project OP. Sequence: **A → B → C → D → E → F → G**; A and B overlap. **OP-20 is the very first technical ticket.**
+
+### Epic A — Foundation
+*Leaves: clean repo, green CI on an empty app.*
+
+- **OP-1** ⬅️ **FIRST ACTION.** Write two markdown files into the repo before touching any code:
+  - `docs/V2-PLAN.md` — this plan verbatim, so it's versioned alongside the work and is the source for the Jira import.
+  - `docs/FINDINGS.md` — the full audit of the inherited codebase: the four posture-logic bugs in the Context table, the silent `None`→"Straight back" false negative, the single-scale/÷4 heatmap mismatch (`posture_image.py:25,44`), the non-importable `process()` functions (module-global `model` and `frame`), the exhausted `scale_search` map iterator in `config_reader.py`, the dead PAF limb-grouping stage, `padRightDownCorner`'s always-empty `pad_up`/`pad_left` tiles, `draw()`'s redundant second `cv2.imread`, `cv2.destroyAllWindows()` outside the `__main__` guard, the unauthenticated `/upload` with raw `file.filename` as blob key, and the ~250 lines duplicated between the two posture scripts. **This file becomes the "before" half of the README's before/after story and the evidence base for `docs/evaluation.md` (OP-115).**
+
+  Then create `apps/`, `packages/`, `docs/archive/`, `fixtures/`.
+- **OP-2** `git mv` archive material: `Demos/`, `Misc/`, `Presentations/`, root PDFs/docx/xlsx, `opresults.py`, `RUNDOWN.md`, `RUNNING.md`, `ModelReadME.md`, `openpose-react/COMPARISON.md`, `React-vs-Vue.pptx` → `docs/archive/`. Legacy Python (`posture_image.py`, `posture_realtime.py`, `model.py`, `config`, `config_reader.py`, `util.py`) → `docs/archive/legacy-openpose/`, excluded via `tool.ruff.exclude`. **Keeping the "before" readable next to the "after" is the point.**
+- **OP-3** Delete `openpose-vue/`, `API/env/` (1.4 GB), `API/model/keras/model.h5`, `API/app.py`, `API/db/`. Prune `API/sample_images/` (43 MB, 29 near-duplicate files) to 8 images downscaled to ≤1280 px → `fixtures/images/`. **Do not rewrite git history** — `filter-repo` would take `.git` from 138 MB to ~15 MB, but 138 MB clones fine and the full history is the evidence this is a real re-adoption of a real team project. Record in ADR-0006.
+- **OP-4** `uv` workspace + root `pyproject.toml`; ruff (lint+format), mypy `--strict`, pytest + cov + asyncio, pre-commit.
+- **OP-5** `git mv openpose-react apps/web`. Remove the `firebase` dependency and `src/firebase.ts`. Add Vitest + RTL + MSW; add Playwright and **delete the scaffold spec** (`openpose-vue/e2e/vue.spec.ts` asserted `'You did it!'` and would have failed).
+- **OP-6** `.github/workflows/ci.yml` — `lint` + `typecheck` jobs only.
+- **OP-7** ADRs 0001–0006 (FastAPI/Flask · MediaPipe/OpenPose · JWT/Firebase · Postgres+MinIO/Firebase · scale-invariant thresholds · git-history retention), `CONTRIBUTING.md`, `dependabot.yml`, PR template, MIT `LICENSE`.
+
+### Epic B — Pose backend
+*Leaves: a CLI printing real landmarks for a real image.*
+
+- **OP-20** ⚠️ **SPIKE, DO FIRST.** Verify the `mediapipe` wheel installs on `linux/arm64` + `linux/amd64` under `python:3.12-slim`. Decision → ADR-0002. **Blocks OP-22.**
+- **OP-21** `KeypointName` enum, `Landmark`, `PoseFrame` (in `posture-core`, so the core depends on no backend); `PoseBackend` Protocol (`detect`, `warmup`) in `pose-backends/base.py`.
+- **OP-22** `MediaPipeBackend`: model load in `__init__`, canonical-name mapping, derived `NECK`, world-landmark passthrough.
+- **OP-23** `FakePoseBackend` with named presets (`straight`, `hunchback`, `reclined`, `kneeling`, `partial_occlusion`).
+- **OP-24** `make fetch-model` with a pinned SHA256; `MODEL_PATH` config override.
+- **OP-25** `python -m pose_backends.cli <image>` prints a landmark table + `inference_ms`. **Demoable.**
+- **OP-26** *(only if OP-20 fails)* `ONNXMoveNetBackend` behind the same Protocol.
+
+### Epic C — Rules engine (`packages/posture-core`) ⭐
+*Leaves: `image → JSON report` from the CLI. This is the resume centerpiece — zero I/O, zero printing, zero globals, fully typed, exhaustively tested.*
+
+Layering: `PoseFrame → metrics.py → Metric → rules.py → Finding → report.py → PostureReport`.
+
+- **OP-30** `geometry.py`: `angle_between`, `signed_angle_to_vertical`, `distance`, `midpoint`, `to_world_vec` + unit tests.
+- **OP-31** `thresholds.py` — one frozen dataclass holding every tunable, **injected, never global**, env-loadable in the API layer. Makes tuning a config change and every rule test parameterizable.
+- **OP-32** Keypoint resolver with `KeypointStatus{OK, LOW_CONFIDENCE, NOT_DETECTED, OUT_OF_FRAME}` and `MetricStatus{OK, INSUFFICIENT_KEYPOINTS, LOW_CONFIDENCE}`. **No `except Exception` anywhere.** A metric with `status != OK` has `value = None` and produces a `Gap`, not a Finding — so the API can say *"couldn't assess your knees, try a wider shot"* instead of the current silent "Straight back position." **Cheapest, highest-value correctness fix in the project.**
+- **OP-33** `trunk_inclination_deg` — signed angle of hip-mid→shoulder-mid vs gravity, world space. *Replaces `checkPosition`; fixes the ear-index inversion and the `None`→"Straight back" false negative.*
+- **OP-34** `craniovertebral_angle_deg` — angle at C7 between the ear→C7 vector and horizontal; `<50°` = forward head. *Replaces the geometrically-wrong `evaluate_neck_posture`.*
+- **OP-35** `arms_crossed` / `elbow_flexion_deg`, normalized: `abs(forearm − upper_arm) / torso_px < 0.15`. *Replaces the ±100 px literal — whose own inline comment admits it "shall be replaced with a calculation which can adjust to different sizes of people." Quote that in the README, then show it fixed.*
+- **OP-36** `knee_flexion_deg` — hip–knee–ankle angle, world space. *Replaces `checkKneeling`; fixes the `UnboundLocalError`.*
+- **OP-37** `heel_contact` via heel + foot_index. **New capability the original never delivered.**
+- **OP-38** `view_confidence` (lateral vs frontal, from shoulder-width : torso ratio) + `quality.gaps`. The original app *told* users "this image must be taken from a side angle" and never enforced it.
+- **OP-39** `report.py`: `PostureReport`, `overall_score`, `schema_version`, `rules_version`.
+- **OP-40** `tests/builders.py` — `make_pose(trunk_deg=…, knee_deg=…)` constructs landmarks analytically from a parameterized stick figure. Tests read as `assert metric(make_pose(trunk_deg=35)).value == approx(35, abs=1.0)`.
+- **OP-41** **Hypothesis property tests:** for any pose, uniform scale `s ∈ [0.3, 3.0]`, and translation, every angular metric is invariant to 1e-6. **This test *is* the proof the redesign fixed the original defect** — it would fail catastrophically against `posture_image.py`. Put it in the README.
+- **OP-42** Boundary tests (±ε at every threshold), degradation tests (drop each keypoint, assert correct status, assert nothing raises), golden-report snapshots. Enable `--cov-fail-under=95` scoped to this package.
+- **OP-43** Extract thresholds + golden fixtures into `packages/posture-spec/`. Wire into the CLI: `python -m pose_backends.cli --report <image>` emits the full JSON report. **A genuinely impressive demoable milestone with zero web stack.**
+
+### Epic D — 🎯 WALKING SKELETON
+*Leaves: real image in → real result on screen. **The highest-value milestone in the plan** — the first moment the app stops lying. Everything before is scaffolding; everything after is enrichment. Tag `v0.1.0` here.*
+
+- **OP-50** FastAPI app factory, `config.py` (pydantic-settings), `structlog` + request-ID middleware, RFC 9457 `application/problem+json` error handler, `GET /health` + `/health/ready`.
+- **OP-51** `lifespan` loads the pose backend **once at startup** + `warmup()`, exposed via `get_pose_backend`. *This is exactly the problem `RUNDOWN.md`'s Open Items flagged — "a cold load is slow, per-request loading would be unusable" — solved properly.*
+- **OP-52** `StorageBackend` Protocol + `LocalDiskStorage` + `S3Storage` (MinIO).
+- **OP-53** `POST /api/v1/analyses` (multipart): 10 MB limit, content-type allowlist, EXIF-orientation correction, decode → `detect()` → `build_report()` → `201`. **No auth, no DB yet — in-memory.**
+- **OP-54** `docker-compose.yml` with `api` + `web` only; Vite `server.proxy` sends `/api` → `api:8000` — **kills every CORS and base-URL problem at once.**
+- **OP-55** Rewrite `apps/web/src/views/Dashboard.tsx`: **delete `POSTURE_DETECTION_RESULT`, `WORKOUT_RESULT`, and `setTimeout(…, 5000)`**; real upload with progress; render real metrics/findings; explicit error and "no person detected" states.
+- **OP-56** `openapi-typescript` codegen + typed `apiClient`; delete the hardcoded `axios.get('http://127.0.0.1:5000/')` in `HelloWorld.tsx:17`.
+- **OP-57** Skeleton overlay drawn **client-side on `<canvas>`** from returned landmarks — no server-side image writing, no extra round trip, and it looks great in the GIF.
+- **OP-58** First Playwright E2E: upload fixture → assert a real metric value appears.
+- **OP-59** README v1 with a screenshot of a real result. **Ship it. Tag `v0.1.0`.**
+
+### Epic E — Persistence + auth
+*Leaves: multi-user app with history.*
+
+Postgres 16 + SQLAlchemy 2.0 (typed `Mapped[]`, async/asyncpg) + Alembic + MinIO.
+
+Tables: `users` · `refresh_tokens` · `sessions` · `analyses` · `keypoints` · `metrics` · `findings`. Design notes worth defending in an interview: `keypoints` is a **table, not a JSONB blob**, so trend queries are plain indexed SQL; every analysis stamps `pose_backend` + `rules_version` + `schema_version` so results stay interpretable after retuning; the DB stores **object keys, not URLs** — the storage layer owns URL construction.
+
+- **OP-60** Postgres + MinIO in compose with healthchecks; `minio-init` one-shot bucket bootstrap.
+- **OP-61** SQLAlchemy 2.0 models; async engine + session dependency.
+- **OP-62** Alembic init + initial migration; entrypoint `upgrade head` behind an advisory lock.
+- **OP-63** Repositories + `testcontainers[postgres]` integration tests.
+- **OP-64** Persist analyses: original → MinIO; write `analyses`/`keypoints`/`metrics`/`findings`.
+- **OP-65** `GET /analyses/{id}`, `GET /analyses` (cursor-paginated), `DELETE /analyses/{id}`.
+- **OP-66** Auth: `argon2-cffi` (argon2id) — **not `passlib`, which is effectively unmaintained**. `PyJWT` HS256; 15-min access token held **in memory, never `localStorage`**; 30-day opaque refresh token stored **hashed**, delivered `HttpOnly; SameSite=Lax; Secure`, rotated on every use, with reuse-of-rotated-token revoking the whole family (replay detection). `config.py` refuses to boot if `JWT_SECRET` is the dev default while `ENV=production`.
+- **OP-67** `get_current_user`; **scope every query by `user_id` at the repository layer, not the route.** Another user's analysis returns **404, not 403** — don't leak existence. Tested.
+- **OP-68** Frontend `AuthContext` + axios 401-refresh interceptor with a **single-flight guard** so concurrent 401s don't fire N refreshes. Keep `ProtectedRoute`'s `checking` state — it was correct. Delete all Firebase code and the committed config.
+- **OP-69** History view: past analyses with thumbnails + a trend sparkline for `trunk_inclination_deg`.
+- **OP-70** Rate limiting (`slowapi`) on `/auth/login` (5/min/IP) and `/analyses`.
+
+### Epic F — LLM coaching
+*Leaves: personalized, streaming, metric-grounded feedback.*
+
+**The LLM sits strictly off the critical path.** `POST /analyses` returns the deterministic report immediately and never waits on Anthropic; coaching is a separate, cached call. **Only the structured report is sent — never the image.** Cheaper, faster, and no user photo leaves the machine: real privacy-by-design, worth stating in the README.
+
+- **OP-80** `LLMClient` Protocol + `FakeLLMClient` (tests) + **`TemplateLLMClient`** — deterministic Jinja rendering from findings, no network. **`LLM_ENABLED=false` is the default in `.env.example`**, so `docker compose up` yields a fully working app with real posture analysis and real (if less eloquent) coaching **with no API key**. A recruiter cloning the repo gets a working demo in one command; that is worth more than streaming.
+- **OP-81** `AnthropicLLMClient`: `claude-opus-5`, `client.messages.parse()` → validated `CoachingResponse{summary, encouragement, recommendations[≤4], caveats[]}` — which maps directly onto the existing Dashboard shape, so the frontend change is a data-source swap, not a redesign. **Handle `stop_reason == "refusal"` before reading `content`** (it returns HTTP 200, not an error — easy to skip, looks sloppy when missed).
+- **OP-82** System prompt (exercise library + rules explanation) + report→prompt serializer. Guardrails: never diagnose, never contradict the numeric metrics, one recommendation per finding, always cite the metric value. Mark the system prompt `cache_control: {"type": "ephemeral"}` — keep it above the 512-token minimum for `claude-opus-5` so it actually caches. Prompt snapshot test.
+- **OP-83** `POST /analyses/{id}/coaching` — idempotent, persists to `coaching_text`, one generation per analysis ever.
+- **OP-84** `GET /analyses/{id}/coaching/stream` (SSE) via `client.messages.stream()`, persisting on completion.
+- **OP-85** Frontend consumer using **`fetch` + `ReadableStream`, not `EventSource`** — `EventSource` can't set an `Authorization` header. Comment the reason. Graceful non-streaming fallback.
+- **OP-86** Cost controls: `max_tokens=1500`; per-user rate limit (10/hr); `LLM_MONTHLY_TOKEN_BUDGET` counter that silently falls back to `TemplateLLMClient` when exceeded; token usage recorded per analysis. At ~600 input + ~800 cached system + ~400 output tokens, that's **≈$0.017/call** — trivial at portfolio volume.
+- **OP-87** `GET /sessions/{id}/summary` — trend narrative over the last N analyses (one indexed query, thanks to the normalized schema), cached 1 h. This is what makes it read as a product rather than a one-shot classifier.
+- **OP-88** Tests: fake-client units, SSE frame-parsing, `LLM_ENABLED=false` path.
+
+### Epic G — Browser-side live mode
+*Leaves: real-time skeleton + posture verdict in the browser. Replaces `posture_realtime.py`, which is deleted (90% copy-paste, a broken `cap.set(100, …)` resolution call, and a `config_reader()` re-parse on every single frame).*
+
+- **OP-100** `@mediapipe/tasks-vision` WASM in a Web Worker; `getUserMedia`; skeleton overlay on `<canvas>`. **Frames never leave the browser** — a real privacy story and zero server load.
+- **OP-101** `packages/posture-core-ts` — trunk inclination, craniovertebral angle, shoulder asymmetry, evaluated per frame against `posture-spec/rules.json`.
+- **OP-102** Temporal smoothing (rolling median over ~15 frames) so the verdict doesn't flicker.
+- **OP-103** `POST /api/v1/sessions` at session end with **aggregates only**: duration, time-in-good-posture, verdict histogram. No video, no frames.
+- **OP-104** Vitest runs the shared golden corpus; **wire the Python-vs-TS parity diff into CI here** — do not defer it to Epic H.
+
+### Epic H — Polish and proof
+*Leaves: the thing you link on a resume.*
+
+- **OP-110** Full CI (see below), incl. the golden-parity job.
+- **OP-111** `nightly.yml`: real-model tests + golden-image metric regression; failure opens an issue rather than blocking anyone.
+- **OP-112** Prod compose overlay: nginx-served web, non-root containers, multi-stage prod images, **image-size budget assertion (<600 MB API)**.
+- **OP-113** README rewrite: hero GIF, architecture diagram, quickstart, a "what I changed and why" section built from the bug table above, ADR links.
+- **OP-114** Record `docs/images/demo.gif`: upload → skeleton overlay → metrics → streaming coaching.
+- **OP-115** **`docs/evaluation.md`** — rerun `opresults.py`-style confusion matrices against the new engine on the fixture set and publish old vs new. **The strongest single artifact you can produce: it demonstrates the improvement rather than asserting it.**
+- **OP-116** `CHANGELOG.md`, repo description/topics, tag `v1.0.0`.
+
+---
+
+## Testing strategy
+
+| Layer | Tools | What | Gate |
+|---|---|---|---|
+| `posture-core` | pytest + **hypothesis** | Every metric on synthetic fixtures; scale/translation invariance; boundaries; every degradation path; golden snapshots | **95%**, enforced |
+| `pose-backends` | pytest `@pytest.mark.model` | Real MediaPipe on 3 fixture images; asserts only "person detected, ≥25 landmarks above threshold, inclination in a plausible band". **Deselected in CI.** | — |
+| API unit | pytest + `httpx.ASGITransport` | Routers/services with fakes via `dependency_overrides`; auth flows, validation, 401/404, pagination | 85% |
+| API integration | pytest + `testcontainers[postgres]` | Real Postgres, real Alembic, real repositories, fake pose + fake LLM; full round trip | — |
+| Migrations | pytest | `upgrade head` → `downgrade base` on a fresh container; assert no autogenerate diff vs models (**catches drift**) | — |
+| Cross-language | pytest + vitest | `posture-spec/golden/` through both engines; **CI fails on any disagreement** | — |
+| Frontend unit | Vitest + RTL + **MSW** | Dashboard states, `ProtectedRoute`, auth interceptor, SSE consumer | 70% |
+| E2E | Playwright | register → login → upload → real metrics → stream coaching → history → logout | 1 happy + 2 error paths |
+
+**Testing the model endpoint without running the model**, concretely: `FakePoseBackend` returns a canned `PoseFrame` built by the *same* `make_pose()` builder the core tests use (sub-millisecond, no decode). It's injected via `app.dependency_overrides[get_pose_backend]`. And `POSE_BACKEND=fake` in `config.py` means **the entire app runs backend-free** — which is what CI's compose smoke test uses, so CI never downloads a model.
+
+## CI — `.github/workflows/ci.yml`
+
+`lint` (ruff + oxlint + prettier, ~30 s) · `typecheck` (mypy --strict + tsc --noEmit, ~60 s) · `test-python` (matrix 3.11/3.12; posture-core with `--cov-fail-under=95`, API unit + integration, `-m "not model"`, ~3 min) · `test-web` (vitest, ~90 s) · `golden-parity` · `docker` (buildx amd64+arm64, `compose up` with `POSE_BACKEND=fake` + `LLM_ENABLED=false`, wait for `/health/ready`, Playwright, ~6 min).
+
+**Everything runs on every PR with no model weights and no `ANTHROPIC_API_KEY`** — E2E asserts on the fake backend's deterministic output, so it's stable. Only the nightly job pulls the real model.
+
+## Docker
+
+`db` (postgres:16-alpine, `pg_isready` healthcheck) · `minio` + `minio-init` · `api` (uvicorn `--reload`, bind-mounts `apps/api/src` and `packages/*/src`, `depends_on: service_healthy`, `/health/ready` checks DB + storage + `pose_backend.is_loaded`) · `web` (vite `--host`, `/api` proxied to `api:8000`).
+
+**Model weights:** a build stage `ADD`s the 9 MB `.task` from its published URL with a **pinned SHA256** into the final layer. Self-contained, reproducible, verifiable. `MODEL_PATH` overrides for local dev. The legacy 209 MB `model.h5` never enters any image.
+
+**Container gotcha to pre-empt:** use `opencv-python-headless`, never `opencv-python`, and pin `libgl1` + `libglib2.0-0` in the base image — that pair is the #1 cause of "works locally, ImportError in Docker" with cv2.
+
+---
+
+## Cut lines, in order
+
+Cut bottom-up. The first four are nearly free; past #4 you start losing signal.
+
+1. `GET /sessions/{id}/summary` (OP-87) — *~1 day*
+2. MinIO → `LocalDiskStorage` on a named volume; the Protocol already exists — *~1 day*
+3. SSE streaming (OP-84/85) → non-streaming with a spinner — *~1 day*
+4. Multi-arch Docker; build amd64 only in CI — *~0.5 day*
+5. **Epic G live mode entirely** — the most self-contained epic; nothing depends on it, and `posture-spec` still pays for itself as the Python engine's config — *~3 days*
+6. Playwright → keep exactly one happy path (don't drop it; "has E2E tests" is a checkbox recruiters look for) — *~0.5 day*
+7. `heel_contact` + `shoulder_asymmetry` — four solid metrics beat six shaky ones — *~1 day*
+8. Alembic → `create_all()`. **This one hurts** — "no migrations" is a visible gap in a backend portfolio piece. Only under real pressure.
+
+### Never cut
+
+- **Epic D, the walking skeleton.** The mocked dashboard is the single thing making this repo unpresentable.
+- **`posture-core` at 95% coverage.** The load-bearing evidence of mid-level ability — and the cheapest thing in the plan.
+- **`docker compose up` working with no accounts and no API key.** `LLM_ENABLED=false` + `TemplateLLMClient` is what makes that true; guard it with the CI smoke test.
+- **The README with a real GIF.** Most people evaluating this will never run it.
+- **ADR-0002 and ADR-0005 + OP-115.** They convert "I picked MediaPipe" into "I evaluated three backends against six criteria," and "I changed some numbers" into "the original thresholds were raw pixels — here's the invariance property test and the old-vs-new evaluation."
+
+## Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| No MediaPipe `linux/arm64` wheel | Medium | **High** — no local Docker demo on your M-series Mac | **OP-20 spike first.** ONNX MoveNet fallback is ~150 lines behind the same Protocol; `posture-core` untouched |
+| MediaPipe pins (`protobuf`, `numpy<2`) conflict with the FastAPI/SQLAlchemy stack | Medium | Medium | Resolve with `uv` at OP-3/OP-22. Worst case, run the pose backend as its own compose service over HTTP — the Protocol makes that a swap, and it's a fine story |
+| Cross-language drift between the two rules engines | Medium | Medium | `rules.json` + golden corpus; **parity job lands in OP-104, not deferred to Epic H** |
+| Retuned thresholds classify *worse* than the originals | Medium | Medium | OP-115's evaluation is the detector; thresholds are one injected dataclass, so tuning is config, not code |
+| Scope creep into Epic F (the LLM is the fun part) | **High** | Medium | Hard rule: **Epic D ships and is tagged before any LLM code exists** |
+| Host Python 3.14 ≠ container 3.12 | High | Low | Docker is the supported path; document `uv python install 3.12` |
+
+## Verification
+
+1. `git clone && cp .env.example .env && docker compose up` on a clean machine, **no API key, no accounts** → `/health/ready` ok, `localhost:5173` loads.
+2. `pytest packages/posture-core -q --cov-fail-under=95` — passes with no network, no model, no DB.
+3. `pytest apps/api -q -m "not model"` — passes with fake pose + fake LLM.
+4. `pytest -m model` locally — real MediaPipe on `fixtures/images/`.
+5. Golden-parity: same corpus through Python and TS, zero verdict diffs.
+6. Upload `OP55.jpeg` (the image `RUNDOWN.md` verified against the old model) via the UI → canvas skeleton + real metrics; confirm a *frontal* photo is rejected by `view_confidence`.
+7. `curl -X POST localhost:8000/api/v1/analyses -F "image=@fixtures/images/OP55.jpeg"` returns typed JSON; `/docs` renders the schema.
+8. Request coaching with `LLM_ENABLED=false` (template) and `=true` (Anthropic); confirm the narrative cites **actual measured angles**, not generic advice.
+9. Live mode: webcam skeleton tracks with a stable, non-flickering verdict.
+10. Register user B, request user A's analysis id → **404**.
+11. `npx playwright test` green; push a branch → GitHub Actions green **with zero secrets configured**.
