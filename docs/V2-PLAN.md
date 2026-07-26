@@ -37,7 +37,20 @@ openposture/
 ├─ README.md  ARCHITECTURE.md  CHANGELOG.md  Makefile  .env.example
 ├─ docker-compose.yml            # dev, hot reload
 ├─ docker-compose.prod.yml       # prod overlay, used by CI smoke test
-├─ .github/workflows/{ci,nightly}.yml
+├─ .github/
+│  ├─ workflows/
+│  │  ├─ pr.yml                    # fast, required engineering checks
+│  │  ├─ integration.yml           # Postgres/MinIO/migrations
+│  │  ├─ scientific-validation.yml # properties, data quality, evaluation regression
+│  │  ├─ e2e.yml                   # deterministic full-stack tests
+│  │  ├─ containers.yml            # production-image and Compose validation
+│  │  ├─ security.yml              # CodeQL, dependency and container scanning
+│  │  ├─ model-validation.yml      # on-demand real-model and performance regression
+│  │  └─ release.yml               # reproducible local release bundles; no deployment
+│  ├─ actions/setup-project/action.yml
+│  ├─ dependabot.yml
+│  ├─ pull_request_template.md
+│  └─ CODEOWNERS
 ├─ apps/
 │  ├─ api/                       # FastAPI + Pydantic v2 + SQLAlchemy 2.0
 │  │  └─ src/openposture_api/{main,config,deps}.py  api/v1/  db/  schemas/  services/  security/
@@ -114,8 +127,23 @@ The TS mirror implements only what live mode needs (trunk inclination, craniover
 
 Ticket-sized stories (½–2 days), ready to convert to Jira project OP. Sequence: **A → B → C → D → E → F → G**; A and B overlap. **OP-20 is the very first technical ticket.**
 
+### Delivery rule: implementation, tests, and automation ship together
+
+Testing and CI are not later hardening phases. **Every capability adds its tests and corresponding GitHub Actions check in the same pull request that introduces the capability.** This applies to Python packages, React, FastAPI, Docker, OpenAPI generation, Postgres/MinIO, Alembic, authentication, cross-language rules, evaluation data, and release packaging.
+
+A ticket is done only when:
+
+1. the implementation and its smallest appropriate automated tests ship together;
+2. happy paths, boundaries, error/degradation behavior, and authorization rules are covered where applicable;
+3. lint, formatting, and strict type checks pass for the affected language;
+4. coverage does not decrease and the component's ratcheted floor passes;
+5. generated contracts, migrations, fixtures, and evaluation baselines show no unexplained drift; and
+6. its automation runs at the cheapest correct layer—pure unit first, then contract/integration, with E2E reserved for critical journeys.
+
+Coverage begins when each codebase becomes testable: **95% for `posture-core`, 85% for API application code, and 70% for React**. New packages start at their target rather than accumulating untested code to repair later. Generated code and type-only declarations may be excluded; difficult branches may not.
+
 ### Epic A — Foundation
-*Leaves: clean repo, green CI on an empty app.*
+*Leaves: clean repo with Python and React quality gates that went live alongside their codebases.*
 
 - **OP-1** ⬅️ **FIRST ACTION.** Write two markdown files into the repo before touching any code:
   - `docs/V2-PLAN.md` — this plan verbatim, so it's versioned alongside the work and is the source for the Jira import.
@@ -124,20 +152,20 @@ Ticket-sized stories (½–2 days), ready to convert to Jira project OP. Sequenc
   Then create `apps/`, `packages/`, `docs/archive/`, `fixtures/`.
 - **OP-2** `git mv` archive material: `Demos/`, `Misc/`, `Presentations/`, root PDFs/docx/xlsx, `opresults.py`, `RUNDOWN.md`, `RUNNING.md`, `ModelReadME.md`, `openpose-react/COMPARISON.md`, `React-vs-Vue.pptx` → `docs/archive/`. Legacy Python (`posture_image.py`, `posture_realtime.py`, `model.py`, `config`, `config_reader.py`, `util.py`) → `docs/archive/legacy-openpose/`, excluded via `tool.ruff.exclude`. **Keeping the "before" readable next to the "after" is the point.**
 - **OP-3** Delete `openpose-vue/`, `API/env/` (1.4 GB), `API/model/keras/model.h5`, `API/app.py`, `API/db/`. Prune `API/sample_images/` (43 MB, 29 near-duplicate files) to 8 images downscaled to ≤1280 px → `fixtures/images/`. **Do not rewrite git history** — `filter-repo` would take `.git` from 138 MB to ~15 MB, but 138 MB clones fine and the full history is the evidence this is a real re-adoption of a real team project. Record in ADR-0006.
-- **OP-4** `uv` workspace + root `pyproject.toml`; ruff (lint+format), mypy `--strict`, pytest + cov + asyncio, pre-commit.
-- **OP-5** `git mv openpose-react apps/web`. Remove the `firebase` dependency and `src/firebase.ts`. Add Vitest + RTL + MSW; add Playwright and **delete the scaffold spec** (`openpose-vue/e2e/vue.spec.ts` asserted `'You did it!'` and would have failed).
-- **OP-6** `.github/workflows/ci.yml` — `lint` + `typecheck` jobs only.
-- **OP-7** ADRs 0001–0006 (FastAPI/Flask · MediaPipe/OpenPose · JWT/Firebase · Postgres+MinIO/Firebase · scale-invariant thresholds · git-history retention), `CONTRIBUTING.md`, `dependabot.yml`, PR template, MIT `LICENSE`.
+- **OP-4** `uv` workspace + root `pyproject.toml`; ruff (lint+format), mypy `--strict`, pytest + cov + asyncio, pre-commit. **In this same ticket create `.github/workflows/pr.yml` with independent Python `lint`, `typecheck`, and `test-python` jobs.** The first Python package cannot merge without frozen-lockfile installation, style checks, strict types, tests, and its initial coverage floor.
+- **OP-5** `git mv openpose-react apps/web`. Remove the `firebase` dependency and `src/firebase.ts`. Add Vitest + RTL + MSW; add Playwright and **delete the scaffold spec** (`openpose-vue/e2e/vue.spec.ts` asserted `'You did it!'` and would have failed). **In this same ticket extend `pr.yml` with independent `web-lint`, `web-typecheck`, `web-test`, and `web-build` jobs.** They run in parallel with Python, so React is protected from the first commit in its new location.
+- **OP-6** Harden the already-live `pr.yml`: concurrency cancellation for superseded commits, least-privilege `permissions`, dependency caches keyed by lockfiles, immutable pins for third-party actions, stable required-check names, and a local composite `setup-project` action. Target useful parallel feedback in **≤5 minutes** with no model, DB, Docker, network service, or secret.
+- **OP-7** ADRs 0001–0006 (FastAPI/Flask · MediaPipe/OpenPose · JWT/Firebase · Postgres+MinIO/Firebase · scale-invariant thresholds · git-history retention), `CONTRIBUTING.md`, `dependabot.yml`, PR template, `CODEOWNERS`, MIT `LICENSE`, and a `main` ruleset that requires pull requests, resolved conversations, an up-to-date branch, linear history, and the stable CI checks. Dependabot covers GitHub Actions, npm, Python, and Docker; group low-risk development updates while keeping security updates separate.
 
 ### Epic B — Pose backend
 *Leaves: a CLI printing real landmarks for a real image.*
 
 - **OP-20** ⚠️ **SPIKE, DO FIRST.** Verify the `mediapipe` wheel installs on `linux/arm64` + `linux/amd64` under `python:3.12-slim`. Decision → ADR-0002. **Blocks OP-22.**
 - **OP-21** `KeypointName` enum, `Landmark`, `PoseFrame` (in `posture-core`, so the core depends on no backend); `PoseBackend` Protocol (`detect`, `warmup`) in `pose-backends/base.py`.
-- **OP-22** `MediaPipeBackend`: model load in `__init__`, canonical-name mapping, derived `NECK`, world-landmark passthrough.
-- **OP-23** `FakePoseBackend` with named presets (`straight`, `hunchback`, `reclined`, `kneeling`, `partial_occlusion`).
+- **OP-22** `MediaPipeBackend`: model load in `__init__`, canonical-name mapping, derived `NECK`, world-landmark passthrough. Ship adapter/mapping/error tests in the same PR using a stubbed MediaPipe task—no model download in required CI.
+- **OP-23** `FakePoseBackend` with named presets (`straight`, `hunchback`, `reclined`, `kneeling`, `partial_occlusion`) plus contract tests proving fake and real adapters return the same canonical `PoseFrame` shape.
 - **OP-24** `make fetch-model` with a pinned SHA256; `MODEL_PATH` config override.
-- **OP-25** `python -m pose_backends.cli <image>` prints a landmark table + `inference_ms`. **Demoable.**
+- **OP-25** `python -m pose_backends.cli <image>` prints a landmark table + `inference_ms`. **In this ticket add `model-validation.yml` with `workflow_dispatch` only**: verify the model hash, run real-model fixture tests, and publish latency/landmark diagnostics. It is available when the real backend becomes demoable but consumes no scheduled CI time.
 - **OP-26** *(only if OP-20 fails)* `ONNXMoveNetBackend` behind the same Protocol.
 
 ### Epic C — Rules engine (`packages/posture-core`) ⭐
@@ -158,20 +186,22 @@ Layering: `PoseFrame → metrics.py → Metric → rules.py → Finding → repo
 - **OP-40** `tests/builders.py` — `make_pose(trunk_deg=…, knee_deg=…)` constructs landmarks analytically from a parameterized stick figure. Tests read as `assert metric(make_pose(trunk_deg=35)).value == approx(35, abs=1.0)`.
 - **OP-41** **Hypothesis property tests:** for any pose, uniform scale `s ∈ [0.3, 3.0]`, and translation, every angular metric is invariant to 1e-6. **This test *is* the proof the redesign fixed the original defect** — it would fail catastrophically against `posture_image.py`. Put it in the README.
 - **OP-42** Boundary tests (±ε at every threshold), degradation tests (drop each keypoint, assert correct status, assert nothing raises), golden-report snapshots. Enable `--cov-fail-under=95` scoped to this package.
-- **OP-43** Extract thresholds + golden fixtures into `packages/posture-spec/`. Wire into the CLI: `python -m pose_backends.cli --report <image>` emits the full JSON report. **A genuinely impressive demoable milestone with zero web stack.**
+- **OP-43** Extract thresholds + golden fixtures into `packages/posture-spec/`. Wire into the CLI: `python -m pose_backends.cli --report <image>` emits the full JSON report. **In this ticket create `scientific-validation.yml`** with golden snapshots, threshold/config validation, and the initial Python scientific gates. **A genuinely impressive demoable milestone with zero web stack.**
+- **OP-44** Scientific property suite beyond scale/translation: mirror-consistency for symmetric metrics, valid physical domains for all angles, confidence monotonicity (reducing required-keypoint confidence can never increase finding confidence), deterministic reports for identical inputs, and explicit abstention when evidence is insufficient. These properties run in `scientific-validation.yml` and are part of the capstone's correctness argument, not optional test polish.
+- **OP-45** Versioned evaluation-data contract: `evaluation/manifest.csv`, `evaluation/quality-gates.yml`, `evaluation/baseline.json`, and `make validate-data`. Extend `scientific-validation.yml` in the same PR with checks for duplicate IDs/hashes, corrupt or orphaned images, invalid labels, missing provenance/license/consent fields, unexpected dimensions, EXIF/PII leakage, split leakage, and class-distribution changes.
 
 ### Epic D — 🎯 WALKING SKELETON
 *Leaves: real image in → real result on screen. **The highest-value milestone in the plan** — the first moment the app stops lying. Everything before is scaffolding; everything after is enrichment. Tag `v0.1.0` here.*
 
-- **OP-50** FastAPI app factory, `config.py` (pydantic-settings), `structlog` + request-ID middleware, RFC 9457 `application/problem+json` error handler, `GET /health` + `/health/ready`.
+- **OP-50** FastAPI app factory, `config.py` (pydantic-settings), `structlog` + request-ID middleware, RFC 9457 `application/problem+json` error handler, `GET /health` + `/health/ready`. Ship health/error/config tests in the same PR and extend `pr.yml` with the API's ruff, mypy `--strict`, pytest, and **85% coverage** gate immediately—the API never exists without its checks.
 - **OP-51** `lifespan` loads the pose backend **once at startup** + `warmup()`, exposed via `get_pose_backend`. *This is exactly the problem `RUNDOWN.md`'s Open Items flagged — "a cold load is slow, per-request loading would be unusable" — solved properly.*
 - **OP-52** `StorageBackend` Protocol + `LocalDiskStorage` + `S3Storage` (MinIO).
-- **OP-53** `POST /api/v1/analyses` (multipart): 10 MB limit, content-type allowlist, EXIF-orientation correction, decode → `detect()` → `build_report()` → `201`. **No auth, no DB yet — in-memory.**
-- **OP-54** `docker-compose.yml` with `api` + `web` only; Vite `server.proxy` sends `/api` → `api:8000` — **kills every CORS and base-URL problem at once.**
+- **OP-53** `POST /api/v1/analyses` (multipart): 10 MB limit, content-type allowlist, EXIF-orientation correction, decode → `detect()` → `build_report()` → `201`. **No auth, no DB yet—in-memory.** Add endpoint contract tests for valid upload, limits/types, decode failure, no-person, low-confidence, and backend failure in this ticket.
+- **OP-54** `docker-compose.yml` with `api` + `web` only; Vite `server.proxy` sends `/api` → `api:8000`—**kills every CORS and base-URL problem at once. In this same ticket create `containers.yml`** to build both images, validate Compose, start with fake backends, wait for readiness, smoke-test API/web, capture logs on failure, and shut down cleanly. Docker cannot merge without a working container check.
 - **OP-55** Rewrite `apps/web/src/views/Dashboard.tsx`: **delete `POSTURE_DETECTION_RESULT`, `WORKOUT_RESULT`, and `setTimeout(…, 5000)`**; real upload with progress; render real metrics/findings; explicit error and "no person detected" states.
-- **OP-56** `openapi-typescript` codegen + typed `apiClient`; delete the hardcoded `axios.get('http://127.0.0.1:5000/')` in `HelloWorld.tsx:17`.
+- **OP-56** `openapi-typescript` codegen + typed `apiClient`; delete the hardcoded `axios.get('http://127.0.0.1:5000/')` in `HelloWorld.tsx:17`. **Create the OpenAPI contract job in this ticket**: regenerate schema/types, fail on committed drift, run `tsc`, validate examples, and flag unreviewed breaking changes.
 - **OP-57** Skeleton overlay drawn **client-side on `<canvas>`** from returned landmarks — no server-side image writing, no extra round trip, and it looks great in the GIF.
-- **OP-58** First Playwright E2E: upload fixture → assert a real metric value appears.
+- **OP-58** First Playwright E2E: upload fixture → assert a real metric value appears. **Create `e2e.yml` in this ticket**, using fake pose/template coaching and uploading Playwright traces, screenshots, video, and Compose/API logs on failure.
 - **OP-59** README v1 with a screenshot of a real result. **Ship it. Tag `v0.1.0`.**
 
 ### Epic E — Persistence + auth
@@ -181,13 +211,13 @@ Postgres 16 + SQLAlchemy 2.0 (typed `Mapped[]`, async/asyncpg) + Alembic + MinIO
 
 Tables: `users` · `refresh_tokens` · `sessions` · `analyses` · `keypoints` · `metrics` · `findings`. Design notes worth defending in an interview: `keypoints` is a **table, not a JSONB blob**, so trend queries are plain indexed SQL; every analysis stamps `pose_backend` + `rules_version` + `schema_version` so results stay interpretable after retuning; the DB stores **object keys, not URLs** — the storage layer owns URL construction.
 
-- **OP-60** Postgres + MinIO in compose with healthchecks; `minio-init` one-shot bucket bootstrap.
+- **OP-60** Postgres + MinIO in compose with healthchecks; `minio-init` one-shot bucket bootstrap. **Create `integration.yml` in this ticket** with service health, connectivity, bucket-bootstrap, clean startup, and cleanup checks; extend `containers.yml` to exercise the expanded stack.
 - **OP-61** SQLAlchemy 2.0 models; async engine + session dependency.
-- **OP-62** Alembic init + initial migration; entrypoint `upgrade head` behind an advisory lock.
+- **OP-62** Alembic init + initial migration; entrypoint `upgrade head` behind an advisory lock. Extend `integration.yml` in this ticket with fresh upgrade → downgrade → re-upgrade, concurrent-startup/advisory-lock behavior, and SQLAlchemy-model/autogenerate drift detection.
 - **OP-63** Repositories + `testcontainers[postgres]` integration tests.
 - **OP-64** Persist analyses: original → MinIO; write `analyses`/`keypoints`/`metrics`/`findings`.
 - **OP-65** `GET /analyses/{id}`, `GET /analyses` (cursor-paginated), `DELETE /analyses/{id}`.
-- **OP-66** Auth: `argon2-cffi` (argon2id) — **not `passlib`, which is effectively unmaintained**. `PyJWT` HS256; 15-min access token held **in memory, never `localStorage`**; 30-day opaque refresh token stored **hashed**, delivered `HttpOnly; SameSite=Lax; Secure`, rotated on every use, with reuse-of-rotated-token revoking the whole family (replay detection). `config.py` refuses to boot if `JWT_SECRET` is the dev default while `ENV=production`.
+- **OP-66** Auth: `argon2-cffi` (argon2id) — **not `passlib`, which is effectively unmaintained**. `PyJWT` HS256; 15-min access token held **in memory, never `localStorage`**; 30-day opaque refresh token stored **hashed**, delivered `HttpOnly; SameSite=Lax; Secure`, rotated on every use, with reuse-of-rotated-token revoking the whole family (replay detection). `config.py` refuses to boot if `JWT_SECRET` is the dev default while `ENV=production`. Ship the full auth abuse-case suite and **create `security.yml` in this ticket** with dependency review, CodeQL, secret detection, and dependency/license policy; extend it with container scanning once production images exist.
 - **OP-67** `get_current_user`; **scope every query by `user_id` at the repository layer, not the route.** Another user's analysis returns **404, not 403** — don't leak existence. Tested.
 - **OP-68** Frontend `AuthContext` + axios 401-refresh interceptor with a **single-flight guard** so concurrent 401s don't fire N refreshes. Keep `ProtectedRoute`'s `checking` state — it was correct. Delete all Firebase code and the committed config.
 - **OP-69** History view: past analyses with thumbnails + a trend sparkline for `trunk_inclination_deg`.
@@ -220,13 +250,13 @@ Tables: `users` · `refresh_tokens` · `sessions` · `analyses` · `keypoints` �
 ### Epic H — Polish and proof
 *Leaves: the thing you link on a resume.*
 
-- **OP-110** Full CI (see below), incl. the golden-parity job.
-- **OP-111** `nightly.yml`: real-model tests + golden-image metric regression; failure opens an issue rather than blocking anyone.
-- **OP-112** Prod compose overlay: nginx-served web, non-root containers, multi-stage prod images, **image-size budget assertion (<600 MB API)**.
+- **OP-110** CI audit and optimization—not initial CI implementation. By this point `pr`, `integration`, `scientific-validation`, `e2e`, `security`, and `containers` already exist because each arrived with its capability. Audit stable check names, least privilege, action pins, cache correctness, parallel job dependencies, failure artifacts, branch rules, runtime/cost, and documentation. There is deliberately **no deployment workflow**.
+- **OP-111** Harden the existing on-demand `model-validation.yml`: verify SHA256, run real inference over the full evaluation set, generate metric/performance regressions, and record the environment manifest. Trigger it manually before evaluation/model/rules releases and automatically from `release.yml`; **do not schedule it nightly**.
+- **OP-112** Prod compose overlay: nginx-served web, non-root containers, multi-stage prod images, **image-size budget assertion (<600 MB API)**, Compose-config validation, healthcheck smoke test, vulnerability scan, secret/layer inspection, and amd64+arm64 build verification. **Extend the already-required `containers.yml` in the same PR.** Images are build artifacts for reproducibility; nothing is deployed.
 - **OP-113** README rewrite: hero GIF, architecture diagram, quickstart, a "what I changed and why" section built from the bug table above, ADR links.
 - **OP-114** Record `docs/images/demo.gif`: upload → skeleton overlay → metrics → streaming coaching.
-- **OP-115** **`docs/evaluation.md`** — rerun `opresults.py`-style confusion matrices against the new engine on the fixture set and publish old vs new. **The strongest single artifact you can produce: it demonstrates the improvement rather than asserting it.**
-- **OP-116** `CHANGELOG.md`, repo description/topics, tag `v1.0.0`.
+- **OP-115** **`docs/evaluation.md` + `make evaluate`** — verify data/model hashes, run `opresults.py`-style evaluation from the frozen environment, and publish old vs new: accuracy, balanced accuracy, per-class precision/recall/F1/support, macro-F1, confusion matrices, **assessment coverage/abstention rate**, and bootstrap confidence intervals. Emit git/model/rules/schema/data/environment versions and runtime. Report coverage beside classification quality so the engine cannot appear to improve merely by refusing difficult samples. Document sample size, provenance, exclusions, limitations, threshold-selection method, and threats to validity. **Extend `scientific-validation.yml` in this same ticket** to reproduce results within documented tolerances and fail on unexplained baseline drift. **The strongest single artifact you can produce: it demonstrates the improvement rather than asserting it.**
+- **OP-116** `CHANGELOG.md`, repo description/topics, tag `v1.0.0`. `release.yml` reruns the release gate and produces a **local-use release bundle**, not a deployment: Compose files, `.env.example`, evaluation summary, model/environment metadata, SBOMs, image digests, and `SHA256SUMS`.
 
 ---
 
@@ -234,22 +264,84 @@ Tables: `users` · `refresh_tokens` · `sessions` · `analyses` · `keypoints` �
 
 | Layer | Tools | What | Gate |
 |---|---|---|---|
-| `posture-core` | pytest + **hypothesis** | Every metric on synthetic fixtures; scale/translation invariance; boundaries; every degradation path; golden snapshots | **95%**, enforced |
-| `pose-backends` | pytest `@pytest.mark.model` | Real MediaPipe on 3 fixture images; asserts only "person detected, ≥25 landmarks above threshold, inclination in a plausible band". **Deselected in CI.** | — |
+| `posture-core` | pytest + **Hypothesis** | Every metric on synthetic fixtures; scale/translation invariance; mirror consistency; physical domains; confidence monotonicity; determinism; boundaries; every degradation/abstention path; golden snapshots | **95%**, enforced |
+| `pose-backends` | pytest `@pytest.mark.model` | Real MediaPipe on fixture images; asserts person detected, landmark coverage, plausible metrics, and performance budgets. **Deselected in required PR CI; exercised on demand and before releases.** | Manual/release |
 | API unit | pytest + `httpx.ASGITransport` | Routers/services with fakes via `dependency_overrides`; auth flows, validation, 401/404, pagination | 85% |
 | API integration | pytest + `testcontainers[postgres]` | Real Postgres, real Alembic, real repositories, fake pose + fake LLM; full round trip | — |
 | Migrations | pytest | `upgrade head` → `downgrade base` on a fresh container; assert no autogenerate diff vs models (**catches drift**) | — |
 | Cross-language | pytest + vitest | `posture-spec/golden/` through both engines; **CI fails on any disagreement** | — |
+| API contract | FastAPI OpenAPI + `openapi-typescript` | Regenerate OpenAPI/TS types; fail on uncommitted drift or an unreviewed breaking contract change | Required |
+| Evaluation data | custom Python validator | Manifest schema, image integrity, duplicate hashes/IDs, provenance, leakage, EXIF/PII, class balance | Required when data changes |
+| Scientific evaluation | scikit-learn + bootstrap resampling | Accuracy, balanced accuracy, per-class and macro metrics, confusion matrix, coverage/abstention, confidence intervals | Regression budget |
 | Frontend unit | Vitest + RTL + **MSW** | Dashboard states, `ProtectedRoute`, auth interceptor, SSE consumer | 70% |
 | E2E | Playwright | register → login → upload → real metrics → stream coaching → history → logout | 1 happy + 2 error paths |
+| Containers | Buildx + Compose + vulnerability scanner | From first Compose commit: build/config/readiness/smoke/cleanup; later add multi-stage/non-root, amd64+arm64, size budget, healthcheck, layer/secret scan | Required from first Docker commit |
 
 **Testing the model endpoint without running the model**, concretely: `FakePoseBackend` returns a canned `PoseFrame` built by the *same* `make_pose()` builder the core tests use (sub-millisecond, no decode). It's injected via `app.dependency_overrides[get_pose_backend]`. And `POSE_BACKEND=fake` in `config.py` means **the entire app runs backend-free** — which is what CI's compose smoke test uses, so CI never downloads a model.
 
-## CI — `.github/workflows/ci.yml`
+## CI and GitHub Actions
 
-`lint` (ruff + oxlint + prettier, ~30 s) · `typecheck` (mypy --strict + tsc --noEmit, ~60 s) · `test-python` (matrix 3.11/3.12; posture-core with `--cov-fail-under=95`, API unit + integration, `-m "not model"`, ~3 min) · `test-web` (vitest, ~90 s) · `golden-parity` · `docker` (buildx amd64+arm64, `compose up` with `POSE_BACKEND=fake` + `LLM_ENABLED=false`, wait for `/health/ready`, Playwright, ~6 min).
+The repository is **not publicly hosted**, so there is no deployment pipeline. The automation exists to prove five claims: the software is correct, the data is valid, the scientific results are reproducible, cross-layer contracts do not drift, and a clean checkout produces a secure production-like local system. Workflows use least-privilege permissions, immutable pins for third-party actions, lockfile-keyed caches, concurrency cancellation for superseded PR commits, and uploaded diagnostics only on failure.
 
-**Everything runs on every PR with no model weights and no `ANTHROPIC_API_KEY`** — E2E asserts on the fake backend's deterministic output, so it's stable. Only the nightly job pulls the real model.
+### Progressive activation map
+
+CI grows with the architecture; Epic H only audits and hardens it.
+
+| Capability first becomes real | Same-ticket automation |
+|---|---|
+| Python workspace/packages (OP-4) | Python format, lint, strict types, unit tests, coverage |
+| React app (OP-5) | Frontend format, lint, strict types, Vitest coverage, production build |
+| Real pose CLI (OP-25) | On-demand real-model validation; no schedule |
+| Shared posture spec (OP-43) | Scientific/golden validation |
+| Evaluation manifest (OP-45) | Data-quality and leakage validation |
+| FastAPI app (OP-50) | API lint/type/unit/coverage gates |
+| First Docker Compose stack (OP-54) | Image build, Compose validation, readiness, smoke, cleanup |
+| Generated OpenAPI client (OP-56) | Schema/type regeneration and drift/breaking-change check |
+| First critical full-stack journey (OP-58) | Playwright E2E with diagnostic artifacts |
+| Postgres + MinIO (OP-60) | Integration services and full-stack startup checks |
+| Alembic (OP-62) | Upgrade/downgrade/re-upgrade and model/schema drift |
+| Authentication (OP-66) | Abuse-case tests plus security workflow |
+| TypeScript rules mirror (OP-104) | Required Python↔TypeScript golden parity |
+| Production Compose overlay (OP-112) | Non-root/multi-arch/size/vulnerability/layer checks |
+| Scientific evaluation (OP-115) | Reproducibility and metric-regression gates |
+| Version tag (OP-116) | Local release bundle, SBOM, digests, checksums; no deployment |
+
+### Required pull-request workflows
+
+- **`pr.yml`** starts at OP-4 with Python jobs, expands at OP-5 with React jobs, and expands at OP-50 with API-specific coverage. Frozen installs; ruff + oxlint + Prettier; mypy `--strict` + `tsc --noEmit`; Python 3.11/3.12 matrix; `posture-core` 95%, API 85%, React 70%; production web build. Independent jobs run in parallel. Fast target: **≤5 minutes**.
+- **`scientific-validation.yml`** starts with the shared spec at OP-43, then gains property, data-quality, parity, and evaluation-regression jobs as those capabilities appear. This is the capstone's signature workflow.
+- **`integration.yml`** starts with Postgres/MinIO at OP-60 and immediately protects service startup; Alembic and repository/auth/storage round trips are added by their implementation tickets.
+- **`e2e.yml`** starts with the first walking-skeleton journey at OP-58 and grows only for critical cross-layer behavior. It uses `POSE_BACKEND=fake` and `LLM_ENABLED=false`; failures upload traces, screenshots/video, API logs, and Compose logs.
+- **`containers.yml`** is required from OP-54, the first Docker/Compose commit. It begins with build/config/readiness/smoke/cleanup and grows with Postgres, MinIO, production images, multi-architecture support, budgets, and scans.
+- **`security.yml`** starts when authentication is introduced. Dependency review is required on PRs; CodeQL, secret detection, license policy, and image/dependency vulnerability scans run on `main` and weekly. New high/critical findings fail unless a time-bounded exception is documented.
+
+Required check names stay stable and are enforced by the `main` ruleset. Avoid path-filtering an entire required workflow because a skipped workflow can leave a required check pending; trigger it and skip irrelevant internal jobs instead. If a merge queue is enabled later, add `merge_group` to every required workflow.
+
+### Scientific regression policy
+
+`evaluation/quality-gates.yml` owns policy rather than embedding unexplained numbers in workflow YAML. Initial gates are set only after the baseline dataset is audited, but the shape is fixed:
+
+```yaml
+metrics:
+  macro_f1:
+    minimum: <baseline-derived>
+    maximum_regression: 0.02
+  assessment_coverage:
+    minimum: <baseline-derived>
+    maximum_regression: 0.05
+  per_class_recall:
+    minimum: <baseline-derived>
+    maximum_regression: 0.05
+```
+
+Baseline updates are intentional review events: the PR must include the regenerated evaluation report, changed baseline, reason, fixture/model/rules versions, and a discussion of regressions. CI never silently accepts or overwrites a new baseline.
+
+### On-demand model validation and releases
+
+- **`model-validation.yml`** — invoked manually with `workflow_dispatch` and by `release.yml`, not on a nightly schedule. Verify SHA256; run the curated evaluation set; enforce tolerant metric and latency/memory budgets; upload metrics, confusion matrices, regression diff, and environment manifest. Numerical comparisons use documented tolerances, not byte equality.
+- **`release.yml`** — triggered by `v*.*.*`; reruns release gates and creates a reproducible local bundle with Compose configuration, metadata, evaluation summary, SBOMs, digests, and checksums. It does **not** deploy or require cloud credentials.
+
+**Every PR runs with no model weights, no `ANTHROPIC_API_KEY`, and no write-capable external credential.** Deterministic fake backends keep application CI stable; on-demand/release validation supplies separate evidence about real-model behavior without paying for redundant scheduled runs.
 
 ## Docker
 
@@ -298,11 +390,15 @@ Cut bottom-up. The first four are nearly free; past #4 you start losing signal.
 1. `git clone && cp .env.example .env && docker compose up` on a clean machine, **no API key, no accounts** → `/health/ready` ok, `localhost:5173` loads.
 2. `pytest packages/posture-core -q --cov-fail-under=95` — passes with no network, no model, no DB.
 3. `pytest apps/api -q -m "not model"` — passes with fake pose + fake LLM.
-4. `pytest -m model` locally — real MediaPipe on `fixtures/images/`.
+4. Run `pytest -m model` locally and dispatch `model-validation.yml` on demand — real MediaPipe passes on `fixtures/images/`; no nightly schedule exists.
 5. Golden-parity: same corpus through Python and TS, zero verdict diffs.
 6. Upload `OP55.jpeg` (the image `RUNDOWN.md` verified against the old model) via the UI → canvas skeleton + real metrics; confirm a *frontal* photo is rejected by `view_confidence`.
 7. `curl -X POST localhost:8000/api/v1/analyses -F "image=@fixtures/images/OP55.jpeg"` returns typed JSON; `/docs` renders the schema.
 8. Request coaching with `LLM_ENABLED=false` (template) and `=true` (Anthropic); confirm the narrative cites **actual measured angles**, not generic advice.
 9. Live mode: webcam skeleton tracks with a stable, non-flickering verdict.
 10. Register user B, request user A's analysis id → **404**.
-11. `npx playwright test` green; push a branch → GitHub Actions green **with zero secrets configured**.
+11. `npx playwright test` green; push a branch → independent Python, React, API, contract, container, integration, scientific, security, and E2E jobs run in parallel where dependencies allow and finish green **with zero secrets configured**.
+12. `make validate-data` passes; deliberately duplicate an evaluation image under a new id → duplicate-hash detection fails.
+13. `make evaluate` from a frozen clean environment reproduces the committed metrics within documented tolerances and emits the git/model/rules/schema/data/environment manifest.
+14. Deliberately regress one class beyond `evaluation/quality-gates.yml` → `scientific-validation.yml` fails and publishes the metric/confusion-matrix diff without rewriting the baseline.
+15. Tag a release candidate → the workflow produces the local-use bundle, SBOMs, digests, and checksums, and performs **no application deployment or cloud-infrastructure mutation**.
