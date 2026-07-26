@@ -245,7 +245,12 @@ def main() -> int:
     try:
         import importlib.metadata as md
 
-        doc["environment"]["tensorflow"] = md.version("tensorflow-macos")
+        for pkg in ("tensorflow", "tensorflow-macos"):
+            try:
+                doc["environment"]["tensorflow"] = md.version(pkg)
+                break
+            except md.PackageNotFoundError:
+                continue
     except Exception:  # noqa: BLE001
         pass
 
