@@ -1,4 +1,4 @@
-# Fast local checks that mirror the `lint` job in .github/workflows/pr.yml.
+# Fast local checks that mirror the `lint` and `web-lint` jobs in .github/workflows/pr.yml.
 #
 # Deliberately excludes mypy and pytest: they are slower than a commit should be, and CI runs
 # them on every push anyway. The goal here is to catch the trivial things before they cost a
@@ -15,6 +15,32 @@ repos:
         args: [--fix]
       - id: ruff-format
         name: ruff (format)
+
+  # React side (OP-13). `language: system` runs the oxlint and prettier already installed in
+  # apps/web/node_modules rather than a second copy pinned here, so local hooks and the
+  # web-lint job cannot drift to different versions. They no-op if you have never run
+  # `npm ci` in apps/web.
+  - repo: local
+    hooks:
+      # Note the `if/else` rather than a trailing `|| true`: swallowing the exit code would
+      # make the hook pass on real lint errors, which is worse than not having it.
+      - id: oxlint
+        name: oxlint (apps/web)
+        language: system
+        files: ^apps/web/.*\.(ts|tsx)$
+        pass_filenames: false
+        entry: >
+          bash -c 'cd apps/web && if [ -x node_modules/.bin/oxlint ]; then npm run --silent lint;
+          else echo "skipped: run npm ci in apps/web"; fi'
+
+      - id: prettier
+        name: prettier (apps/web)
+        language: system
+        files: ^apps/web/.*\.(ts|tsx|css|json|html|md)$
+        pass_filenames: false
+        entry: >
+          bash -c 'cd apps/web && if [ -x node_modules/.bin/prettier ]; then
+          npm run --silent format:check; else echo "skipped: run npm ci in apps/web"; fi'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

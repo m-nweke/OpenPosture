@@ -4,8 +4,8 @@
 # because a package that merges before its gates exist accumulates untested code that someone
 # then has to repair. It grows by ticket:
 #
-#   OP-12 (here)  Python: lint, typecheck, test-python
-#   OP-13         React:  web-lint, web-typecheck, web-test, web-build
+#   OP-12         Python: lint, typecheck, test-python
+#   OP-13 (here)  React:  web-lint, web-typecheck, web-test, web-build, web-e2e
 #   OP-14         hardening: concurrency cancellation, SHA-pinned actions, lockfile-keyed
 #                 caches, a composite setup-project action, and a <=5 minute target
 #   OP-50         API-specific coverage gate at 85%
@@ -29,6 +29,8 @@ permissions:
 env:
   # Pinned so a uv release cannot change CI behaviour without a visible diff.
   UV_VERSION: "0.11.32"
+  # Same reasoning for Node. Matches the version in apps/web/README.md.
+  NODE_VERSION: "22"
 
 jobs:
   lint:
@@ -108,3 +110,142 @@ jobs:
         # `-m "not model"` deselects real-model tests. They need weights this job deliberately
         # never downloads, and run on demand in model-validation.yml (created in OP-21).
         run: uv run --python ${{ matrix.python-version }} pytest -m "not model"
+
+  # ---------------------------------------------------------------------------
+  # React (OP-13). Independent of the Python jobs and of each other, so they run
+  # in parallel and a lint failure still reports the test result.
+  #
+  # Note there is deliberately no `paths:` filter on this workflow. A path filter
+  # that skips the whole run leaves required checks permanently "expected" and the
+  # pull request unmergeable. Cheap jobs on every PR beat a stuck merge queue.
+  # ---------------------------------------------------------------------------
+
+  web-lint:
+    name: web-lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      # `npm ci` rather than `npm install`: it installs exactly what the lockfile
+      # says and fails if package.json has drifted from it, so an unlocked
+      # dependency change cannot merge. The Python jobs use `uv sync --frozen`
+      # for the same reason.
+      - run: npm ci
+
+      - name: oxlint
+        run: npm run lint
+
+      - name: prettier --check
+        run: npm run format:check
+
+  web-typecheck:
+    name: web-typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+
+      # `strict` was turned on in OP-13. Without it this job would pass on
+      # implicit any and unchecked nulls, which is worse than no job at all.
+      - name: tsc --noEmit
+        run: npm run typecheck
+
+  web-test:
+    name: web-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+
+      # The 70% floor lives in vite.config.ts so `npm run test:coverage` enforces
+      # the same numbers locally that CI does. Thresholds cover statements,
+      # branches, functions and lines — a lines-only gate is easy to clear while
+      # leaving whole branches unexercised.
+      - name: vitest (70% coverage floor)
+        run: npm run test:coverage
+
+  web-build:
+    name: web-build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+
+      - name: vite build
+        run: npm run build
+
+  web-e2e:
+    name: web-e2e
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+
+      # Chromium only. The suite exists to prove the app works end to end against
+      # the production bundle, not to survey browser differences — a full matrix
+      # would triple the runtime of the slowest job here for very little signal.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # playwright.config.ts builds and serves the production bundle itself, so
+      # this covers the real asset pipeline rather than the dev server.
+      - name: playwright test
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        # Only on failure: the report is useless when everything passed and just
+        # costs storage on every green run.
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
