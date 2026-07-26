@@ -107,7 +107,7 @@ else:                print("Straight back position")   # ← None lands here
 
 `checkHandFold` (`:144`) decides arm folding with a literal ±100 pixels. The original author's own inline comment:
 
-> `# this value 100 is arbitary. this shall be replaced with a calculation which can adjust to different sizes of people.`
+> `# this value 100 is arbitary [sic]. this shall be replaced with a calculation which can adjust to different sizes of people.`
 
 The same class of problem affects the neck check's `10` px and, less visibly, every angular threshold that was tuned against one camera setup.
 
@@ -259,13 +259,25 @@ The `.git` bulk is coursework media committed to history — largest blobs are `
 
 *Practical consequence encountered 2026-07-25:* the working-tree size blocked a Claude Code cloud session ("repo is too large to teleport"). The repo does have a GitHub remote (`m-nweke/CS5588-Capstone-Project`); the fix is to connect that remote to claude.ai so the cloud session clones it, rather than teleporting a working tree that is 90% untracked. Epic A's cleanup resolves it locally either way.
 
-## 7.1 Branch state
+## 7.1 Branch state at the time of the audit
 
-`main` is **two commits behind** `react-add` (`daff744` "Add react mirror FE", `32fa0e7` "Running doc"). As a result `main` contains **no React frontend at all** — `openpose-react/` is untracked there — and also lacks `RUNNING.md` and the `db/firebase.py` credential refactor described in the archived `RUNDOWN.md`.
+*Historical — describes the tree as of 2026-07-25, before Epic A began. Kept because it explains
+why the restructure epics are sequenced the way they are; it is **not** a description of current
+`main`.*
 
-PR #7 (`react-add` → `main`, "React-Mirror + Restore Functionality") was **closed without merging** on 2026-07-25.
+At audit time, `main` sat **two commits behind** `react-add` (`daff744` "Add react mirror FE",
+`32fa0e7` "Running doc"). `main` therefore contained **no React frontend at all** —
+`openpose-react/` was untracked there — and also lacked `RUNNING.md` and the `db/firebase.py`
+credential refactor described in the archived `RUNDOWN.md`. PR #7 (`react-add` → `main`,
+"React-Mirror + Restore Functionality") was open and unmerged.
 
-This is load-bearing for the v2 restructure: the epic that moves the React app to `apps/web` and the one that archives `COMPARISON.md` both operate on files that exist only on `react-add`. Either that branch lands on `main` first, or the restructure branches from `react-add`.
+This was load-bearing for the v2 restructure: the epic that moves the React app to `apps/web` and
+the one that archives `COMPARISON.md` both operate on files that existed only on `react-add`.
+That branch had to land on `main` first, or the restructure had to branch from `react-add`.
+
+**Resolved:** PR #7 was merged into `main` as `e1bc9b3` before this audit landed, so the
+restructure epics branch from `main` as normal. Any later reference in this document to files
+"existing only on `react-add`" should be read against the snapshot above.
 
 ---
 
