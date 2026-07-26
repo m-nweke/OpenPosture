@@ -18,6 +18,20 @@
 # silently dropping protection.
 #
 # Every job here runs with no model weights, no database, no container and no secret.
+#
+# ACTION PINNING POLICY (OP-14). Third-party actions are pinned to a full commit SHA with the
+# release tag in a trailing comment; `actions/*` use a major tag. This is a deliberate split, not
+# an oversight — it has been raised in review twice, hence writing it down.
+#
+# The reasoning: a major tag on a first-party action keeps receiving security patches without
+# anyone here noticing, whereas a SHA freezes the vulnerability too and has to be chased by hand.
+# GitHub controls both the `actions/*` namespace and the runner, so pinning those buys little
+# against a threat model that already trusts the platform. Third-party actions are a different
+# matter: `dorny/paths-filter` is one compromised maintainer account away from running arbitrary
+# code with our token, and a moved tag would deliver it silently.
+#
+# If that trade is ever revisited, pin everything and add Dependabot to raise the patch PRs —
+# pinning without automated updates is how a workflow quietly rots on a vulnerable version.
 
 name: PR
 
@@ -276,7 +290,15 @@ jobs:
       # that no longer matches the client.
       - name: Resolve Playwright version
         id: pw
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        # Reading the version from the installed package rather than hardcoding it, so the cache
+        # key cannot drift from what npm actually resolved.
+        #
+        # Split across two lines only for legibility: the single-line form nested double quotes
+        # inside `$( )`, which is valid shell — command substitution opens a fresh quoting
+        # context — but reads like a quoting bug and was flagged as one in review.
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v4
         id: pw-cache
