@@ -1,0 +1,31 @@
+# Review ownership.
+#
+# A single maintainer owns everything today, so this file buys no routing. It is here for two
+# other reasons: the ruleset can require code-owner review without a second commit, and the
+# per-path entries below record which parts of the tree are load-bearing enough to deserve a named
+# owner once anyone else contributes.
+#
+# NOTE: CODEOWNERS does not enforce anything by itself. It only takes effect when a ruleset or
+# branch protection requires code-owner review. See .github/main-ruleset.json.
+
+# Default owner for anything not matched below.
+*                               @m-nweke
+
+# The architectural boundary. posture-core must stay pure — numpy and the standard library only —
+# and pose-backends quarantines the one heavy, platform-fragile dependency behind a Protocol. A
+# change here can dissolve the property that lets the rules suite run in seconds.
+/packages/posture-core/         @m-nweke
+/packages/pose-backends/        @m-nweke
+
+# Automation and supply chain. A workflow change can weaken every other gate in the repo, and
+# unlike application code its failure mode is silent: gates keep reporting green while checking
+# less. Action pins live here too.
+/.github/                       @m-nweke
+
+# Architecture decision records are the reasoning of record. Editing one rewrites history rather
+# than adding to it; superseding is done by adding a new ADR that says so.
+/docs/adr/                      @m-nweke
+
+# Preserved audit evidence. docs/FINDINGS.md cites these files by line number, so they are
+# deliberately immutable — excluded from ruff, mypy, Prettier and pre-commit's fixers.
+/docs/archive/                  @m-nweke

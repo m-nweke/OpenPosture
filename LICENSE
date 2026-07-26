@@ -1,0 +1,38 @@
+MIT License
+
+Copyright (c) 2024-2026 Michael Nweke, Ally Ryan, Parisha Rathod
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+THIRD-PARTY MATERIAL
+
+`docs/archive/legacy-openpose/` contains a Keras implementation of CMU OpenPose
+that the original capstone vendored. It is MIT licensed and carries its own
+copyright — Copyright (c) 2020 Vinay Varma — retained verbatim at
+`docs/archive/legacy-openpose/LICENSE`. That code is preserved as audit evidence
+only; it is excluded from linting, type checking and packaging, and nothing in
+this project imports it.
+
+The 209 MB Keras weights that code depended on were distributed as a bare
+Dropbox link with no licence, checksum or stated provenance
+(`docs/archive/legacy-openpose/model-weights-readme.md`). They are not
+redistributed here, and the inability to establish their provenance is one of
+the reasons v2 uses MediaPipe instead — see `docs/adr/0002-mediapipe-pose.md`.
