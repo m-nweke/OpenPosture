@@ -69,7 +69,7 @@ frontends had no purpose, and the React app is the one the v2 dashboard is built
 
 The Vue app is **not lost** — git history was deliberately retained rather than rewritten
 (see [`../adr/0006-retain-git-history.md`](../adr/)). It is present in full at commit
-[`e1bc9b3`](https://github.com/m-nweke/CS5588-Capstone-Project/tree/e1bc9b3/openpose-vue), the
+[`e1bc9b3`](https://github.com/m-nweke/OpenPosture/tree/e1bc9b3/openpose-vue), the
 merge of PR #7, which is reachable from `main`.
 
 To read it without changing your working tree:

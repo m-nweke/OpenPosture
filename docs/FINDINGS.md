@@ -278,7 +278,7 @@ The `.git` bulk is coursework media committed to history — largest blobs are `
 
 **Decision (ADR-0006): do not rewrite git history.** `git filter-repo` would take `.git` from 138 MB to ~15 MB, but 138 MB clones fine, and the full history is the evidence that this is a genuine re-adoption of a real two-year-old team project. Rewriting costs that and risks breaking the remote.
 
-*Practical consequence encountered 2026-07-25:* the working-tree size blocked a Claude Code cloud session ("repo is too large to teleport"). The repo does have a GitHub remote (`m-nweke/CS5588-Capstone-Project`); the fix is to connect that remote to claude.ai so the cloud session clones it, rather than teleporting a working tree that is 90% untracked. Epic A's cleanup resolves it locally either way.
+*Practical consequence encountered 2026-07-25:* the working-tree size blocked a Claude Code cloud session ("repo is too large to teleport"). The repo does have a GitHub remote (`m-nweke/OpenPosture`, renamed from `m-nweke/CS5588-Capstone-Project` on 2026-07-26); the fix is to connect that remote to claude.ai so the cloud session clones it, rather than teleporting a working tree that is 90% untracked. Epic A's cleanup resolves it locally either way.
 
 ## 7.1 Branch state at the time of the audit
 
