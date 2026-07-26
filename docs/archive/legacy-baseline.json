@@ -1,0 +1,1089 @@
+{
+  "_comment": "Verdicts produced by the ORIGINAL inherited OpenPose engine on the curated fixture set, captured in OP-11 before API/env and model.h5 were deleted. This is the 'before' half of the old-vs-new evaluation in docs/evaluation.md (OP-115). The defects visible here are catalogued in docs/FINDINGS.md and were NOT corrected before capture.",
+  "captured_at": "2026-07-26T18:41:05.622558+00:00",
+  "captured_at_commit": "f3acc084d0d3ebf2c0a115a6a82683b76e4fe06c",
+  "engine": {
+    "name": "CMU OpenPose (TF/Keras reimplementation), inherited",
+    "source": "docs/archive/legacy-openpose/posture_image.py",
+    "weights_sha256_prefix": "58df0774728f1a4f",
+    "weights_bytes": 209602136,
+    "parameters": 52311446,
+    "model_load_seconds": 0.3,
+    "weights_sha256": "58df0774728f1a4f078139c2b50a23d07ba762af334e9b15f1ba37e17996abd8",
+    "weights_url": "https://www.dropbox.com/s/llpxd14is7gyj0z/model.h5?dl=1",
+    "weights_url_verified": "2026-07-26: HTTP 200, content-length 209602136"
+  },
+  "environment": {
+    "python": "3.11.15",
+    "platform": "Darwin arm64",
+    "tensorflow": "2.12.0",
+    "numpy": "1.23.5",
+    "opencv": "4.5.5"
+  },
+  "known_defects_present": [
+    "FINDINGS 2.1 ear indices inverted (laterality)",
+    "FINDINGS 2.2 neck metric compares y-coordinates, not sagittal offset",
+    "FINDINGS 2.3 feet check is a tautology",
+    "FINDINGS 2.5 checkPosition None -> 'Straight back position'",
+    "FINDINGS 2.6 unnormalized +/-100 px hand-fold threshold",
+    "FINDINGS 3.1 single scale iterated but divided by len(multiplier)=4"
+  ],
+  "results": {
+    "bench_feet_dangling.jpg": {
+      "image_size": [
+        399,
+        713
+      ],
+      "inference_seconds": 0.34,
+      "keypoints_detected": 12,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 1,
+        "Rwri": 1,
+        "Lsho": 1,
+        "Lelb": 0,
+        "Lwri": 0,
+        "Rhip": 1,
+        "Rkne": 1,
+        "Rank": 1,
+        "Lhip": 1,
+        "Lkne": 0,
+        "Lank": 0,
+        "Leye": 1,
+        "Reye": 0,
+        "Lear": 1,
+        "Rear": 0
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          150,
+          101,
+          0.2288
+        ],
+        "neck": [
+          102,
+          170,
+          0.1942
+        ],
+        "Rsho": [
+          118,
+          173,
+          0.2271
+        ],
+        "Relb": [
+          191,
+          293,
+          0.2153
+        ],
+        "Rwri": [
+          247,
+          377,
+          0.2256
+        ],
+        "Lsho": [
+          83,
+          165,
+          0.1519
+        ],
+        "Lelb": null,
+        "Lwri": null,
+        "Rhip": [
+          150,
+          392,
+          0.1856
+        ],
+        "Rkne": [
+          298,
+          442,
+          0.2422
+        ],
+        "Rank": [
+          294,
+          628,
+          0.212
+        ],
+        "Lhip": [
+          112,
+          392,
+          0.1293
+        ],
+        "Lkne": null,
+        "Lank": null,
+        "Leye": [
+          140,
+          85,
+          0.2485
+        ],
+        "Reye": null,
+        "Lear": [
+          99,
+          90,
+          0.2314
+        ],
+        "Rear": null
+      },
+      "spine": {
+        "raw_return": 0,
+        "reported_verdict": "Straight back position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Not Kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Not Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "At least right foot is on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    },
+    "desk_hunch.jpeg": {
+      "image_size": [
+        960,
+        1280
+      ],
+      "inference_seconds": 0.79,
+      "keypoints_detected": 14,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 1,
+        "Rwri": 1,
+        "Lsho": 1,
+        "Lelb": 0,
+        "Lwri": 0,
+        "Rhip": 1,
+        "Rkne": 1,
+        "Rank": 1,
+        "Lhip": 1,
+        "Lkne": 1,
+        "Lank": 1,
+        "Leye": 1,
+        "Reye": 0,
+        "Lear": 1,
+        "Rear": 0
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          603,
+          453,
+          0.2081
+        ],
+        "neck": [
+          453,
+          430,
+          0.2108
+        ],
+        "Rsho": [
+          418,
+          422,
+          0.2347
+        ],
+        "Relb": [
+          530,
+          602,
+          0.2517
+        ],
+        "Rwri": [
+          673,
+          598,
+          0.2111
+        ],
+        "Lsho": [
+          485,
+          443,
+          0.1681
+        ],
+        "Lelb": null,
+        "Lwri": null,
+        "Rhip": [
+          292,
+          792,
+          0.2119
+        ],
+        "Rkne": [
+          590,
+          844,
+          0.2394
+        ],
+        "Rank": [
+          559,
+          1132,
+          0.2202
+        ],
+        "Lhip": [
+          370,
+          757,
+          0.1737
+        ],
+        "Lkne": [
+          592,
+          820,
+          0.1606
+        ],
+        "Lank": [
+          560,
+          1079,
+          0.1004
+        ],
+        "Leye": [
+          620,
+          420,
+          0.2313
+        ],
+        "Reye": null,
+        "Lear": [
+          573,
+          362,
+          0.2419
+        ],
+        "Rear": null
+      },
+      "spine": {
+        "raw_return": 1,
+        "reported_verdict": "Hunchback position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Right leg is kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Not Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "Both feet are on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    },
+    "desk_lean_exif.jpeg": {
+      "image_size": [
+        960,
+        1280
+      ],
+      "inference_seconds": 0.68,
+      "keypoints_detected": 14,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 0,
+        "Rwri": 0,
+        "Lsho": 1,
+        "Lelb": 1,
+        "Lwri": 1,
+        "Rhip": 1,
+        "Rkne": 1,
+        "Rank": 1,
+        "Lhip": 1,
+        "Lkne": 1,
+        "Lank": 1,
+        "Leye": 0,
+        "Reye": 1,
+        "Lear": 0,
+        "Rear": 1
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          680,
+          306,
+          0.2205
+        ],
+        "neck": [
+          771,
+          372,
+          0.1832
+        ],
+        "Rsho": [
+          779,
+          367,
+          0.1481
+        ],
+        "Relb": null,
+        "Rwri": null,
+        "Lsho": [
+          779,
+          375,
+          0.198
+        ],
+        "Lelb": [
+          561,
+          397,
+          0.2022
+        ],
+        "Lwri": [
+          379,
+          377,
+          0.2186
+        ],
+        "Rhip": [
+          548,
+          649,
+          0.1354
+        ],
+        "Rkne": [
+          260,
+          779,
+          0.1113
+        ],
+        "Rank": [
+          285,
+          944,
+          0.1649
+        ],
+        "Lhip": [
+          550,
+          661,
+          0.1819
+        ],
+        "Lkne": [
+          252,
+          786,
+          0.2258
+        ],
+        "Lank": [
+          179,
+          1077,
+          0.2146
+        ],
+        "Leye": null,
+        "Reye": [
+          692,
+          281,
+          0.2264
+        ],
+        "Lear": null,
+        "Rear": [
+          764,
+          262,
+          0.2456
+        ]
+      },
+      "spine": {
+        "raw_return": -1,
+        "reported_verdict": "Reclined back position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Not kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Not Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "Both feet are on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    },
+    "hunchback_left.jpg": {
+      "image_size": [
+        720,
+        1280
+      ],
+      "inference_seconds": 0.5,
+      "keypoints_detected": 12,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 1,
+        "Rwri": 1,
+        "Lsho": 1,
+        "Lelb": 0,
+        "Lwri": 0,
+        "Rhip": 1,
+        "Rkne": 1,
+        "Rank": 1,
+        "Lhip": 1,
+        "Lkne": 0,
+        "Lank": 0,
+        "Leye": 1,
+        "Reye": 0,
+        "Lear": 1,
+        "Rear": 0
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          436,
+          303,
+          0.2409
+        ],
+        "neck": [
+          284,
+          350,
+          0.2029
+        ],
+        "Rsho": [
+          304,
+          373,
+          0.2379
+        ],
+        "Relb": [
+          379,
+          572,
+          0.228
+        ],
+        "Rwri": [
+          535,
+          575,
+          0.2291
+        ],
+        "Lsho": [
+          265,
+          332,
+          0.1759
+        ],
+        "Lelb": null,
+        "Lwri": null,
+        "Rhip": [
+          146,
+          644,
+          0.2036
+        ],
+        "Rkne": [
+          457,
+          649,
+          0.228
+        ],
+        "Rank": [
+          471,
+          940,
+          0.2184
+        ],
+        "Lhip": [
+          110,
+          622,
+          0.1348
+        ],
+        "Lkne": null,
+        "Lank": null,
+        "Leye": [
+          427,
+          273,
+          0.2299
+        ],
+        "Reye": null,
+        "Lear": [
+          368,
+          257,
+          0.244
+        ],
+        "Rear": null
+      },
+      "spine": {
+        "raw_return": 1,
+        "reported_verdict": "Hunchback position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Not Kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Not Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "At least right foot is on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    },
+    "hunchback_right.jpg": {
+      "image_size": [
+        720,
+        1280
+      ],
+      "inference_seconds": 0.52,
+      "keypoints_detected": 13,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 0,
+        "Rwri": 0,
+        "Lsho": 1,
+        "Lelb": 1,
+        "Lwri": 1,
+        "Rhip": 1,
+        "Rkne": 0,
+        "Rank": 1,
+        "Lhip": 1,
+        "Lkne": 1,
+        "Lank": 1,
+        "Leye": 0,
+        "Reye": 1,
+        "Lear": 0,
+        "Rear": 1
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          277,
+          340,
+          0.2296
+        ],
+        "neck": [
+          406,
+          334,
+          0.1921
+        ],
+        "Rsho": [
+          426,
+          315,
+          0.1608
+        ],
+        "Relb": null,
+        "Rwri": null,
+        "Lsho": [
+          387,
+          352,
+          0.2313
+        ],
+        "Lelb": [
+          263,
+          520,
+          0.2232
+        ],
+        "Lwri": [
+          143,
+          630,
+          0.2499
+        ],
+        "Rhip": [
+          574,
+          575,
+          0.138
+        ],
+        "Rkne": null,
+        "Rank": [
+          375,
+          800,
+          0.1279
+        ],
+        "Lhip": [
+          557,
+          591,
+          0.2019
+        ],
+        "Lkne": [
+          270,
+          615,
+          0.2088
+        ],
+        "Lank": [
+          269,
+          883,
+          0.2329
+        ],
+        "Leye": null,
+        "Reye": [
+          269,
+          306,
+          0.2546
+        ],
+        "Lear": null,
+        "Rear": [
+          323,
+          269,
+          0.2375
+        ]
+      },
+      "spine": {
+        "raw_return": 1,
+        "reported_verdict": "Hunchback position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Not kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Not Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "At least left foot is on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    },
+    "kneeling_right.jpg": {
+      "image_size": [
+        720,
+        1280
+      ],
+      "inference_seconds": 0.59,
+      "keypoints_detected": 14,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 1,
+        "Rwri": 1,
+        "Lsho": 1,
+        "Lelb": 1,
+        "Lwri": 1,
+        "Rhip": 1,
+        "Rkne": 0,
+        "Rank": 0,
+        "Lhip": 1,
+        "Lkne": 1,
+        "Lank": 1,
+        "Leye": 0,
+        "Reye": 1,
+        "Lear": 0,
+        "Rear": 1
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          356,
+          225,
+          0.2562
+        ],
+        "neck": [
+          468,
+          336,
+          0.2008
+        ],
+        "Rsho": [
+          453,
+          330,
+          0.1827
+        ],
+        "Relb": [
+          347,
+          473,
+          0.141
+        ],
+        "Rwri": [
+          217,
+          481,
+          0.1389
+        ],
+        "Lsho": [
+          480,
+          350,
+          0.2318
+        ],
+        "Lelb": [
+          340,
+          497,
+          0.2131
+        ],
+        "Lwri": [
+          190,
+          491,
+          0.2228
+        ],
+        "Rhip": [
+          366,
+          666,
+          0.1421
+        ],
+        "Rkne": null,
+        "Rank": null,
+        "Lhip": [
+          366,
+          682,
+          0.1946
+        ],
+        "Lkne": [
+          147,
+          855,
+          0.2231
+        ],
+        "Lank": [
+          453,
+          918,
+          0.2024
+        ],
+        "Leye": null,
+        "Reye": [
+          369,
+          196,
+          0.2589
+        ],
+        "Lear": null,
+        "Rear": [
+          440,
+          197,
+          0.2293
+        ]
+      },
+      "spine": {
+        "raw_return": 0,
+        "reported_verdict": "Straight back position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Both Legs Kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Not Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "At least left foot is on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    },
+    "reclined_right.jpg": {
+      "image_size": [
+        720,
+        1280
+      ],
+      "inference_seconds": 0.54,
+      "keypoints_detected": 14,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 0,
+        "Rwri": 0,
+        "Lsho": 1,
+        "Lelb": 1,
+        "Lwri": 1,
+        "Rhip": 2,
+        "Rkne": 1,
+        "Rank": 1,
+        "Lhip": 1,
+        "Lkne": 1,
+        "Lank": 1,
+        "Leye": 0,
+        "Reye": 1,
+        "Lear": 0,
+        "Rear": 1
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          487,
+          309,
+          0.2452
+        ],
+        "neck": [
+          546,
+          424,
+          0.1984
+        ],
+        "Rsho": [
+          555,
+          418,
+          0.1685
+        ],
+        "Relb": null,
+        "Rwri": null,
+        "Lsho": [
+          540,
+          431,
+          0.21
+        ],
+        "Lelb": [
+          393,
+          532,
+          0.2186
+        ],
+        "Lwri": [
+          243,
+          575,
+          0.23
+        ],
+        "Rhip": [
+          394,
+          629,
+          0.1484
+        ],
+        "Rkne": [
+          167,
+          630,
+          0.122
+        ],
+        "Rank": [
+          227,
+          828,
+          0.1844
+        ],
+        "Lhip": [
+          400,
+          641,
+          0.1987
+        ],
+        "Lkne": [
+          137,
+          646,
+          0.2482
+        ],
+        "Lank": [
+          165,
+          915,
+          0.234
+        ],
+        "Leye": null,
+        "Reye": [
+          515,
+          297,
+          0.2426
+        ],
+        "Lear": null,
+        "Rear": [
+          574,
+          318,
+          0.2414
+        ]
+      },
+      "spine": {
+        "raw_return": -1,
+        "reported_verdict": "Reclined back position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Not kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Not Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "Both feet are on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    },
+    "straight_armsfolded.jpg": {
+      "image_size": [
+        720,
+        1280
+      ],
+      "inference_seconds": 0.58,
+      "keypoints_detected": 13,
+      "peaks_per_part": {
+        "nose": 1,
+        "neck": 1,
+        "Rsho": 1,
+        "Relb": 0,
+        "Rwri": 0,
+        "Lsho": 1,
+        "Lelb": 1,
+        "Lwri": 1,
+        "Rhip": 1,
+        "Rkne": 0,
+        "Rank": 1,
+        "Lhip": 1,
+        "Lkne": 1,
+        "Lank": 1,
+        "Leye": 0,
+        "Reye": 1,
+        "Lear": 0,
+        "Rear": 1
+      },
+      "first_peak_xy_score": {
+        "nose": [
+          366,
+          197,
+          0.2467
+        ],
+        "neck": [
+          480,
+          325,
+          0.1995
+        ],
+        "Rsho": [
+          488,
+          317,
+          0.1712
+        ],
+        "Relb": null,
+        "Rwri": null,
+        "Lsho": [
+          475,
+          339,
+          0.2405
+        ],
+        "Lelb": [
+          417,
+          511,
+          0.1954
+        ],
+        "Lwri": [
+          348,
+          533,
+          0.1741
+        ],
+        "Rhip": [
+          447,
+          588,
+          0.1667
+        ],
+        "Rkne": null,
+        "Rank": [
+          270,
+          889,
+          0.1103
+        ],
+        "Lhip": [
+          455,
+          599,
+          0.1769
+        ],
+        "Lkne": [
+          186,
+          626,
+          0.2493
+        ],
+        "Lank": [
+          222,
+          899,
+          0.2273
+        ],
+        "Leye": null,
+        "Reye": [
+          386,
+          177,
+          0.2377
+        ],
+        "Lear": null,
+        "Rear": [
+          454,
+          191,
+          0.2429
+        ]
+      },
+      "spine": {
+        "raw_return": 0,
+        "reported_verdict": "Straight back position",
+        "silent_false_negative": false,
+        "stdout": [],
+        "error": null
+      },
+      "kneeling": {
+        "printed": [
+          "Not kneeling"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "hand_fold": {
+        "printed": [
+          "Folding Hands"
+        ],
+        "returned": null,
+        "error": null
+      },
+      "neck": {
+        "verdict": "Neck is Straight",
+        "stdout": [],
+        "error": null
+      },
+      "feet": {
+        "verdict": "At least left foot is on the floor.",
+        "stdout": [],
+        "error": null
+      }
+    }
+  }
+}

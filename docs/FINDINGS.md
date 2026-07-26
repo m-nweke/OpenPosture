@@ -61,9 +61,26 @@ elif neck[1] < shoulder_center[1]:
     neck_posture = "Neck is Forward"
 ```
 
-In image coordinates y grows **downward**, so `neck_y < shoulder_center_y` means the neck is *above* the shoulders — true for every upright human ever photographed. Forward-head posture is a **sagittal (x-axis) offset** — ear ahead of shoulder — not a vertical one. The `10` threshold is also raw pixels, so it means different things at different image resolutions.
+In image coordinates y grows **downward**, so `neck_y < shoulder_center_y` means the neck is *above* the shoulders. Forward-head posture is a **sagittal (x-axis) offset** — ear ahead of shoulder — not a vertical one. The `10` threshold is also raw pixels, so it means different things at different image resolutions.
 
-**Effect:** the metric reports "Neck is Forward" essentially always. It carries no information.
+**Effect:** the metric carries no information — but the mechanism is worse than a wrong axis. In the COCO-18 schema this model emits, keypoint 1 (`neck`) **is the shoulder midpoint**: it is synthesized from the two shoulders rather than observed independently. So the comparison is between the shoulder midpoint's *y* and the shoulder midpoint's *y* — a point against itself. The branch can only ever fall through to the first arm.
+
+Measured on all eight curated fixtures (`docs/archive/legacy-baseline.json`, captured in OP-11 before the legacy environment was removed):
+
+| Fixture | `neck_y` | shoulder-mid *y* | `abs` diff | Verdict |
+|---|---|---|---|---|
+| `bench_feet_dangling.jpg` | 170 | 169.0 | 1.0 | Neck is Straight |
+| `desk_hunch.jpeg` | 430 | 432.5 | 2.5 | Neck is Straight |
+| `desk_lean_exif.jpeg` | 372 | 371.0 | 1.0 | Neck is Straight |
+| `hunchback_left.jpg` | 350 | 352.5 | 2.5 | Neck is Straight |
+| `hunchback_right.jpg` | 334 | 333.5 | 0.5 | Neck is Straight |
+| `kneeling_right.jpg` | 336 | 340.0 | 4.0 | Neck is Straight |
+| `reclined_right.jpg` | 424 | 424.5 | 0.5 | Neck is Straight |
+| `straight_armsfolded.jpg` | 325 | 328.0 | 3.0 | Neck is Straight |
+
+The difference never exceeds 4 px against a 10 px threshold, and the output is **"Neck is Straight" on 8 of 8** — a constant.
+
+*(An earlier draft of this document asserted the metric reports "Neck is Forward" essentially always. That was reasoned from the `y`-axis direction alone and is wrong; the measurements above supersede it. The conclusion — the metric is information-free — is unchanged. Note also that these fixtures are ≤1280 px; on the 5712 px originals the same pixel offsets scale past the fixed 10 px threshold, so the verdict would begin flipping on image resolution alone. That is §2.6's defect showing up here too.)*
 
 **Replaced by:** craniovertebral angle — the angle at C7 between the ear→C7 vector and horizontal, computed in world space. `< 50°` indicates forward head. (OP-34)
 
@@ -72,6 +89,8 @@ In image coordinates y grows **downward**, so `neck_y < shoulder_center_y` means
 `evaluate_feet_position` (`:274`) concludes "both feet are on the floor" when each ankle's y exceeds its knee's y. That holds for almost any seated or standing pose regardless of whether the feet are actually grounded or dangling.
 
 **Effect:** no information. Notably, the original `README.md` listed *"identify if feet are on the ground or dangling"* as a project goal — it was never achieved.
+
+**Confirmed by counterexample.** The fixture `bench_feet_dangling.jpg` shows a seated subject whose feet are visibly clear of the floor — the exact case the goal names. The legacy engine reports *"At least right foot is on the floor."* (`docs/archive/legacy-baseline.json`). Across all eight fixtures the check never once returns a not-on-floor verdict, because ankle-below-knee holds in every seated pose.
 
 **Replaced by:** real heel contact using MediaPipe's `HEEL` (29/30) and `FOOT_INDEX` (31/32) landmarks, which the 18-point COCO schema simply did not have. (OP-37)
 
@@ -100,6 +119,8 @@ else:                print("Straight back position")   # ← None lands here
 ```
 
 **Effect:** every pose the system *failed to assess* is reported as good posture. This is the single most damaging behaviour in the codebase — a diagnostic tool that defaults to "you're fine" when it can't see you.
+
+**Scope, stated honestly:** on the eight curated fixtures this path never triggered — `checkPosition` returned a real value every time, so the baseline records **0 silent false negatives** (`docs/archive/legacy-baseline.json`). That is expected: all eight are clean lateral shots where both an ear and a hip are detected, which is the case the code handles. The defect is latent, not disproven — it fires precisely on the inputs a real user is most likely to submit (frontal, cropped, occluded, or poorly lit), which is where a diagnostic tool most needs to say "I couldn't tell." The fix (OP-32) is what makes that sayable at all.
 
 **Fixed by:** typed `MetricStatus`. A metric that can't be computed yields `value=None` and a `Gap`, never a Finding — so the API can say *"couldn't assess your knees, try a wider shot."* (OP-32)
 
