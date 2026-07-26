@@ -325,7 +325,7 @@ jobs:
       - name: playwright test
         run: npm run test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         # Only on failure: the report is useless when everything passed and just costs storage
         # on every green run. `trace: 'retain-on-failure'` in playwright.config.ts is what makes
         # this artifact actually contain a trace.
