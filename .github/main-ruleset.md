@@ -6,16 +6,21 @@ does not read it from here — it has to be applied.
 
 ## Applying it
 
+Rulesets need the repository to be public, or on a paid plan. On a private free repository the
+API returns `403 Upgrade to GitHub Pro or make this repository public`, which reads like a
+permissions problem but is a billing one.
+
 ```bash
-# Create
-gh api -X POST repos/m-nweke/OpenPosture/rulesets \
+# Create. `{owner}/{repo}` is resolved by `gh` from the checkout you are standing in,
+# so these work in a fork or after a rename.
+gh api -X POST repos/{owner}/{repo}/rulesets \
   --input .github/main-ruleset.json
 
 # Confirm
-gh api repos/m-nweke/OpenPosture/rulesets --jq '.[] | {id, name, enforcement}'
+gh api repos/{owner}/{repo}/rulesets --jq '.[] | {id, name, enforcement}'
 
 # Update later: find the id above, then
-gh api -X PUT repos/m-nweke/OpenPosture/rulesets/<id> \
+gh api -X PUT repos/{owner}/{repo}/rulesets/<id> \
   --input .github/main-ruleset.json
 ```
 
@@ -51,7 +56,7 @@ bypass.
 the path filtering added in OP-14 — a Python-only change skips all five `web-*` jobs — and naming
 them individually would make merging depend on how GitHub treats skipped checks. Requiring the
 aggregator also means a job can be renamed or split without silently dropping protection. See the
-header comment in `workflows/pr.yml`.
+header comment in [`.github/workflows/pr.yml`](workflows/pr.yml).
 
 ## Two rules from the OP-15 ticket that are deliberately absent
 
