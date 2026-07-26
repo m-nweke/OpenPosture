@@ -79,7 +79,31 @@ uv run mypy packages apps        # strict type check
 uv run pytest -m "not model"     # tests, skipping those needing real model weights
 ```
 
-Optionally mirror the CI lint job on every commit:
+### Frontend
+
+The React app lives in `apps/web` and has its own npm toolchain — it is not part of the uv
+workspace.
+
+```bash
+cd apps/web
+npm ci                    # exact lockfile install, same as CI
+
+npm run dev               # dev server on :5173
+npm run lint              # oxlint
+npm run format:check      # prettier
+npm run typecheck         # tsc, strict
+npm run test              # vitest
+npm run test:coverage     # vitest with the 70% floor CI enforces
+npm run test:e2e          # playwright, against a production build
+npm run build             # production build
+```
+
+Authentication is a placeholder. `apps/web/src/auth` exports an in-memory implementation that
+really registers accounts and really rejects wrong passwords, but stores everything in the tab
+and nothing on a server. Epic E replaces it with an API-backed provider satisfying the same
+`AuthContextValue` interface; no component should need to change.
+
+Optionally mirror the CI lint jobs on every commit:
 
 ```bash
 uv tool install pre-commit && pre-commit install
@@ -91,7 +115,7 @@ uv tool install pre-commit && pre-commit install
 packages/posture-core    pure rules engine — numpy only, no I/O, no globals, no frameworks
 packages/pose-backends   inference adapters behind a Protocol (the heavy, fragile dependency)
 apps/api                 FastAPI service — depends on both
-apps/web                 React + TypeScript frontend
+apps/web                 React + TypeScript frontend (own npm toolchain, not in the uv workspace)
 docs/archive             the original capstone, preserved as audit evidence
 fixtures/images          8 curated test images
 ```
