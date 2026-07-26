@@ -42,6 +42,14 @@ repos:
           bash -c 'cd apps/web && if [ -x node_modules/.bin/prettier ]; then
           npm run --silent format:check; else echo "skipped: run npm ci in apps/web"; fi'
 
+  # CI config is code, and it is the one kind of code you cannot test by running it locally.
+  # actionlint catches bad expressions, unknown contexts and shell errors before a push burns a
+  # round trip discovering them. Added OP-14, when pr.yml grew job-level conditionals.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
