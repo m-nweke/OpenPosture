@@ -68,7 +68,7 @@ runs:
       # Major tag, not a SHA — see the ACTION PINNING POLICY comment in pr.yml. `actions/*` are
       # first-party and keep receiving security patches on the tag; the third-party action above
       # is SHA-pinned because a moved tag there would be a silent code-execution vector.
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node }}
         cache: npm
