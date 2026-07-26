@@ -57,6 +57,12 @@ Development Environment: Jupyter Notebook
 
 ## Development (v2)
 
+New here? [`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup, the architectural rule and the quality
+gates. [`docs/adr/`](docs/adr/) records why the stack is what it is — start with
+[ADR-0002](docs/adr/0002-mediapipe-pose.md) (the pose backend) and
+[ADR-0005](docs/adr/0005-scale-invariant-metrics.md) (how the original's central correctness defect
+is fixed).
+
 Python packaging is a [`uv`](https://docs.astral.sh/uv/) workspace — one lockfile, editable
 local packages, no `requirements.txt`.
 
@@ -154,3 +160,13 @@ The dependency direction is one-way — `posture-core` ← `pose-backends` ← `
 nothing depends on `apps/api`. That is what lets the rules-engine suite run in well under a
 second with no model, no Docker and no database. It is enforced by
 `packages/posture-core/tests/test_dependency_isolation.py`, not just by convention.
+
+## License
+
+[MIT](LICENSE), © 2024-2026 Michael Nweke, Ally Ryan, Parisha Rathod.
+
+`docs/archive/legacy-openpose/` vendors a third-party Keras implementation of CMU OpenPose under its
+own MIT licence (© 2020 Vinay Varma), preserved as audit evidence and imported by nothing. The Keras
+weights that code depended on are **not** redistributed here — they were a bare Dropbox link with no
+licence or checksum, which is part of why v2 uses MediaPipe instead
+([ADR-0002](docs/adr/0002-mediapipe-pose.md)).

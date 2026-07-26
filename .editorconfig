@@ -1,0 +1,39 @@
+# Editor defaults, so formatting does not depend on who opened the file.
+# The authorities are still ruff (Python) and Prettier (everything in apps/web); this exists so an
+# editor agrees with them before either one runs.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Matches ruff's line-length = 100 in pyproject.toml.
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.{ts,tsx,js,jsx,json,css,html,yml,yaml}]
+indent_size = 2
+max_line_length = 100
+
+[*.md]
+# Trailing double-space is a hard line break in Markdown, so stripping it changes rendering.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
+
+# Preserved byte-for-byte as audit evidence — docs/FINDINGS.md cites its line numbers, so an
+# editor must not reformat it. Fixtures are binary.
+[{docs/archive/**,fixtures/**}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset
