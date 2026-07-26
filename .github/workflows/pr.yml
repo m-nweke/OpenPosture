@@ -1,19 +1,37 @@
 # Required pull-request checks.
 #
-# This workflow goes live with the first Python package (OP-12) rather than being added later,
+# This workflow went live with the first Python package (OP-12) rather than being added later,
 # because a package that merges before its gates exist accumulates untested code that someone
 # then has to repair. It grows by ticket:
 #
 #   OP-12         Python: lint, typecheck, test-python
-#   OP-13 (here)  React:  web-lint, web-typecheck, web-test, web-build, web-e2e
-#   OP-14         hardening: concurrency cancellation, SHA-pinned actions, lockfile-keyed
-#                 caches, a composite setup-project action, and a <=5 minute target
+#   OP-13         React:  web-lint, web-typecheck, web-test, web-build, web-e2e
+#   OP-14 (here)  hardening: concurrency cancellation, SHA-pinned actions, lockfile-keyed
+#                 caches, a composite setup-project action, per-area path filtering, and a
+#                 <=5 minute target
 #   OP-50         API-specific coverage gate at 85%
 #
-# Job names are contracts: they become the required checks on the `main` ruleset in OP-15, and
-# renaming one silently drops its protection.
+# `ci-ok` at the bottom is the ONE check the `main` ruleset should require (OP-15). Every other
+# job feeds into it. That is deliberate: with per-area path filtering the individual jobs skip
+# routinely, and a ruleset naming them directly would depend on GitHub's treatment of skipped
+# checks. Requiring the aggregator instead also means jobs can be renamed or split without
+# silently dropping protection.
 #
 # Every job here runs with no model weights, no database, no container and no secret.
+#
+# ACTION PINNING POLICY (OP-14). Third-party actions are pinned to a full commit SHA with the
+# release tag in a trailing comment; `actions/*` use a major tag. This is a deliberate split, not
+# an oversight — it has been raised in review twice, hence writing it down.
+#
+# The reasoning: a major tag on a first-party action keeps receiving security patches without
+# anyone here noticing, whereas a SHA freezes the vulnerability too and has to be chased by hand.
+# GitHub controls both the `actions/*` namespace and the runner, so pinning those buys little
+# against a threat model that already trusts the platform. Third-party actions are a different
+# matter: `dorny/paths-filter` is one compromised maintainer account away from running arbitrary
+# code with our token, and a moved tag would deliver it silently.
+#
+# If that trade is ever revisited, pin everything and add Dependabot to raise the patch PRs —
+# pinning without automated updates is how a workflow quietly rots on a vulnerable version.
 
 name: PR
 
@@ -22,33 +40,88 @@ on:
   push:
     branches: [main]
 
-# Least privilege. Nothing here writes to the repository.
+# Least privilege. Nothing here writes to the repository; `changes` widens this by one read
+# scope for itself only.
 permissions:
   contents: read
 
+# A branch only needs its newest commit checked. Superseded runs are cancelled rather than left
+# to finish and compete for runners — `github.ref` is per-branch, so parallel PRs are unaffected.
+#
+# Excluding main from cancellation: post-merge runs are the last line of defence and each one
+# corresponds to a commit that is already permanent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
-  # Pinned so a uv release cannot change CI behaviour without a visible diff.
-  UV_VERSION: "0.11.32"
-  # Same reasoning for Node. Matches the version in apps/web/README.md.
   NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12"
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Which areas did this change touch?
+  #
+  # The naive version of this is `on: pull_request: paths:` at the workflow level, and it is a
+  # trap: a workflow that never runs never *reports*, so a required check sits at "Expected —
+  # waiting for status" forever and the pull request cannot merge. A docs-only change would hang
+  # indefinitely.
+  #
+  # So the workflow always triggers and individual jobs opt out. See the design note on OP-14.
+  # ---------------------------------------------------------------------------
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # For `pull_request`, paths-filter asks the API which files changed and needs no
+          # history. For `push` it diffs against the previous commit, which a shallow clone may
+          # not contain — and a `changes` job that errors would fail `ci-ok` for reasons having
+          # nothing to do with the code. Full history is cheap on a repository this size.
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          # `shared` is load-bearing. Without this workflow and the composite action in *both*
+          # filters, a change to CI itself would skip the very jobs being changed, and it would
+          # only be testable after merging.
+          filters: |
+            shared: &shared
+              - '.github/workflows/pr.yml'
+              - '.github/actions/**'
+            python:
+              - *shared
+              - 'packages/**'
+              - 'apps/api/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            web:
+              - *shared
+              - 'apps/web/**'
+
+  # ---------------------------------------------------------------------------
+  # Python
+  # ---------------------------------------------------------------------------
   lint:
     name: lint
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: ./.github/actions/setup-project
         with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-
-      - name: Install dependencies
-        # --frozen fails if uv.lock is out of date with the pyproject files, so a dependency
-        # change that was never locked cannot merge.
-        run: uv sync --all-packages --frozen
+          python: ${{ env.PYTHON_VERSION }}
 
       - name: ruff check
         run: uv run ruff check .
@@ -58,24 +131,26 @@ jobs:
 
   typecheck:
     name: typecheck
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: ./.github/actions/setup-project
         with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --all-packages --frozen
+          python: ${{ env.PYTHON_VERSION }}
 
       - name: mypy --strict
         run: uv run mypy packages apps
 
   test-python:
     name: test-python (${{ matrix.python-version }})
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     strategy:
       # Report both legs rather than cancelling the matrix on the first failure — a version
@@ -85,15 +160,9 @@ jobs:
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: ./.github/actions/setup-project
         with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --all-packages --frozen --python ${{ matrix.python-version }}
+          python: ${{ matrix.python-version }}
 
       - name: Test posture-core (95% coverage floor)
         # The rules engine carries the strictest gate in the project. It has no I/O, no model
@@ -112,34 +181,23 @@ jobs:
         run: uv run --python ${{ matrix.python-version }} pytest -m "not model"
 
   # ---------------------------------------------------------------------------
-  # React (OP-13). Independent of the Python jobs and of each other, so they run
-  # in parallel and a lint failure still reports the test result.
-  #
-  # Note there is deliberately no `paths:` filter on this workflow. A path filter
-  # that skips the whole run leaves required checks permanently "expected" and the
-  # pull request unmergeable. Cheap jobs on every PR beat a stuck merge queue.
+  # React
   # ---------------------------------------------------------------------------
-
   web-lint:
     name: web-lint
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/setup-project
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
-      # `npm ci` rather than `npm install`: it installs exactly what the lockfile
-      # says and fails if package.json has drifted from it, so an unlocked
-      # dependency change cannot merge. The Python jobs use `uv sync --frozen`
-      # for the same reason.
-      - run: npm ci
+          node: ${{ env.NODE_VERSION }}
 
       - name: oxlint
         run: npm run lint
@@ -149,103 +207,172 @@ jobs:
 
   web-typecheck:
     name: web-typecheck
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/setup-project
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          node: ${{ env.NODE_VERSION }}
 
-      - run: npm ci
-
-      # `strict` was turned on in OP-13. Without it this job would pass on
-      # implicit any and unchecked nulls, which is worse than no job at all.
+      # `strict` was turned on in OP-13. Without it this job would pass on implicit any and
+      # unchecked nulls, which is worse than no job at all.
       - name: tsc --noEmit
         run: npm run typecheck
 
   web-test:
     name: web-test
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/setup-project
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          node: ${{ env.NODE_VERSION }}
 
-      - run: npm ci
-
-      # The 70% floor lives in vite.config.ts so `npm run test:coverage` enforces
-      # the same numbers locally that CI does. Thresholds cover statements,
-      # branches, functions and lines — a lines-only gate is easy to clear while
-      # leaving whole branches unexercised.
+      # The 70% floor lives in vite.config.ts so `npm run test:coverage` enforces the same
+      # numbers locally that CI does. Thresholds cover statements, branches, functions and
+      # lines — a lines-only gate is easy to clear while leaving whole branches unexercised.
       - name: vitest (70% coverage floor)
         run: npm run test:coverage
 
   web-build:
     name: web-build
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/setup-project
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
-      - run: npm ci
+          node: ${{ env.NODE_VERSION }}
 
       - name: vite build
         run: npm run build
 
   web-e2e:
     name: web-e2e
+    needs: changes
+    # `push` bypasses the filter: a merge to main re-runs everything, because
+    # post-merge is the last line of defence and is not latency-sensitive.
+    if: github.event_name == 'push' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/setup-project
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          node: ${{ env.NODE_VERSION }}
 
-      - run: npm ci
+      # The slowest step in the workflow, and the main reason the path filter above is worth
+      # having: a Python-only pull request skips this entirely.
+      #
+      # Cached by version so a Playwright bump invalidates it, rather than serving a browser
+      # that no longer matches the client.
+      - name: Resolve Playwright version
+        id: pw
+        # Reading the version from the installed package rather than hardcoding it, so the cache
+        # key cannot drift from what npm actually resolved.
+        #
+        # Split across two lines only for legibility: the single-line form nested double quotes
+        # inside `$( )`, which is valid shell — command substitution opens a fresh quoting
+        # context — but reads like a quoting bug and was flagged as one in review.
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # Chromium only. The suite exists to prove the app works end to end against
-      # the production bundle, not to survey browser differences — a full matrix
-      # would triple the runtime of the slowest job here for very little signal.
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        # Chromium only. The suite exists to prove the app works end to end against the
+        # production bundle, not to survey browser differences — a full matrix would triple the
+        # runtime of the slowest job here for very little signal.
+        #
+        # On a cache hit the browser binary is already present, but the OS-level shared
+        # libraries it links against are not, so `install-deps` still has to run.
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
 
-      # playwright.config.ts builds and serves the production bundle itself, so
-      # this covers the real asset pipeline rather than the dev server.
+      # playwright.config.ts builds and serves the production bundle itself, so this covers the
+      # real asset pipeline rather than the dev server.
       - name: playwright test
         run: npm run test:e2e
 
       - uses: actions/upload-artifact@v4
-        # Only on failure: the report is useless when everything passed and just
-        # costs storage on every green run.
+        # Only on failure: the report is useless when everything passed and just costs storage
+        # on every green run. `trace: 'retain-on-failure'` in playwright.config.ts is what makes
+        # this artifact actually contain a trace.
         if: failure()
         with:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # The single required check.
+  # ---------------------------------------------------------------------------
+  ci-ok:
+    name: ci-ok
+    # `always()` is load-bearing. Without it this job inherits its dependencies' skips, reports
+    # nothing, and the required check is stuck pending — the exact failure the path filter above
+    # is designed to avoid.
+    if: always()
+    needs:
+      - changes
+      - lint
+      - typecheck
+      - test-python
+      - web-lint
+      - web-typecheck
+      - web-test
+      - web-build
+      - web-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "changes:       ${{ needs.changes.result }}"
+          echo "lint:          ${{ needs.lint.result }}"
+          echo "typecheck:     ${{ needs.typecheck.result }}"
+          echo "test-python:   ${{ needs.test-python.result }}"
+          echo "web-lint:      ${{ needs.web-lint.result }}"
+          echo "web-typecheck: ${{ needs.web-typecheck.result }}"
+          echo "web-test:      ${{ needs.web-test.result }}"
+          echo "web-build:     ${{ needs.web-build.result }}"
+          echo "web-e2e:       ${{ needs.web-e2e.result }}"
+
+      - name: Fail if any job failed or was cancelled
+        # `skipped` is a pass: it means the path filter decided the area was untouched.
+        # `failure` and `cancelled` are not. Checking explicitly rather than relying on default
+        # `needs` behaviour, which `always()` has just disabled.
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::At least one required job did not succeed."
+          exit 1

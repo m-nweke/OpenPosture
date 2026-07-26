@@ -1,5 +1,7 @@
 # OpenPosture - Sitting Posture Feedback System
 
+[![PR](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml)
+
 > **⚠️ This README describes the original v1 capstone and is being replaced.**
 > The project is mid-rewrite. Sections below still describe the Vue frontend and the
 > TensorFlow/Keras OpenPose model, both of which have been removed. See
@@ -108,6 +110,34 @@ Optionally mirror the CI lint jobs on every commit:
 ```bash
 uv tool install pre-commit && pre-commit install
 ```
+
+### Continuous integration
+
+`.github/workflows/pr.yml` runs on every pull request and on every push to `main`. Toolchain
+setup lives in one composite action, `.github/actions/setup-project`, so the workflows planned
+for this repo cannot drift apart on versions or cache keys.
+
+| Job                            | Gate                                              |
+| ------------------------------ | ------------------------------------------------- |
+| `changes`                      | Decides which areas a change touched              |
+| `lint`                         | `ruff check` + `ruff format --check`              |
+| `typecheck`                    | `mypy --strict`                                   |
+| `test-python (3.11 \| 3.12)`   | `pytest`, with a 95% floor on `posture-core`      |
+| `web-lint`                     | oxlint + Prettier                                 |
+| `web-typecheck`                | `tsc`, strict                                     |
+| `web-test`                     | Vitest, 70% floor                                 |
+| `web-build`                    | Production build must succeed                     |
+| `web-e2e`                      | Playwright against that production build          |
+| **`ci-ok`**                    | **Aggregates all of the above**                   |
+
+**`ci-ok` is the only check the `main` ruleset should require** (OP-15). The jobs above it skip
+routinely — a Python-only change skips all five `web-*` jobs, and vice versa — and a ruleset
+naming them individually would depend on how GitHub treats skipped checks. Requiring the
+aggregator also means a job can be renamed or split without silently dropping protection.
+
+Path filtering is per job, never at the workflow level: a workflow that never runs never reports,
+so a required check would sit pending forever and a docs-only pull request could not merge.
+Changes to `pr.yml` or the composite action run *everything*, and so does every push to `main`.
 
 ### Layout
 

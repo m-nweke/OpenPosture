@@ -1,0 +1,83 @@
+name: Set up project
+description: >
+  Installs whichever toolchain a job needs — the uv Python workspace, the apps/web npm package,
+  or both — with lockfile-keyed caches. One place to change a toolchain version, so the six
+  workflows planned for this repo cannot drift apart.
+
+# NOTE on checkout: OP-14 asked for checkout to live here too, and it cannot. A local action is
+# resolved from the workspace, so the repository has to be on disk *before* this file can be
+# read. `actions/checkout` therefore stays in every calling job. Nothing else does.
+
+inputs:
+  python:
+    description: >
+      Python version to install, followed by `uv sync --all-packages --frozen`. Leave empty to
+      skip Python setup entirely.
+    required: false
+    default: ""
+  node:
+    description: >
+      Node version to install, followed by `npm ci` in apps/web. Leave empty to skip Node setup
+      entirely.
+    required: false
+    default: ""
+  uv-version:
+    description: >
+      Pinned so a uv release cannot change CI behaviour without a visible diff. This is the single
+      source of truth for it — callers should not override.
+    required: false
+    default: "0.11.32"
+
+runs:
+  using: composite
+  steps:
+    # A job that asks for no toolchain at all is a mistake, and a silent one: it would install
+    # nothing, then fall through to whatever happens to be preinstalled on the runner. `npm` and
+    # `python` both exist on ubuntu-latest, so tests could pass against an unpinned, uncached
+    # toolchain and nobody would notice. Both inputs come from `env` in pr.yml, and a typo there
+    # resolves to an empty string rather than an error — so check.
+    - name: Require at least one toolchain
+      if: inputs.python == '' && inputs.node == ''
+      shell: bash
+      run: |
+        echo '::error::setup-project was called with neither a python nor a node version.'
+        exit 1
+
+    # ---- Python -------------------------------------------------------------
+    - name: Install uv
+      if: inputs.python != ''
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        version: ${{ inputs.uv-version }}
+        python-version: ${{ inputs.python }}
+        # Keyed on uv.lock by the action itself. A cache keyed on anything else — a date, a run
+        # number — either never hits or serves a stale environment.
+        enable-cache: true
+        cache-dependency-glob: "**/uv.lock"
+
+    - name: Sync Python workspace
+      if: inputs.python != ''
+      shell: bash
+      # --frozen fails if uv.lock is out of date with the pyproject files, so a dependency change
+      # that was never locked cannot merge.
+      run: uv sync --all-packages --frozen
+
+    # ---- Node ---------------------------------------------------------------
+    - name: Install Node
+      if: inputs.node != ''
+      # Major tag, not a SHA — see the ACTION PINNING POLICY comment in pr.yml. `actions/*` are
+      # first-party and keep receiving security patches on the tag; the third-party action above
+      # is SHA-pinned because a moved tag there would be a silent code-execution vector.
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node }}
+        cache: npm
+        cache-dependency-path: apps/web/package-lock.json
+
+    - name: Install web dependencies
+      if: inputs.node != ''
+      shell: bash
+      working-directory: apps/web
+      # `npm ci` rather than `npm install`: it installs exactly what the lockfile says and fails
+      # if package.json has drifted from it. The Node counterpart of `uv sync --frozen`.
+      run: npm ci
