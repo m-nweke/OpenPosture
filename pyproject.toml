@@ -1,0 +1,18 @@
+# Root tooling configuration.
+#
+# OP-10 (A2) establishes only one thing here: `docs/archive/` is reference material and must
+# never be linted, type-checked, or collected as tests. The legacy OpenPose code archived there
+# would fail all three, and it is preserved deliberately — see docs/archive/README.md.
+#
+# OP-12 (A4) extends this file into the full `uv` workspace definition (workspace members,
+# dependency groups, ruff rule selection, mypy --strict settings, coverage gates). The excludes
+# below are the stable part and should survive that change.
+
+[tool.ruff]
+extend-exclude = ["docs/archive"]
+
+[tool.mypy]
+exclude = ['^docs/archive/']
+
+[tool.pytest.ini_options]
+norecursedirs = ["docs/archive", "*.egg", ".*", "node_modules"]
