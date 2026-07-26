@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import re
+
+# See the note in posture-core's test_dependency_isolation: match the PEP 508 name positively
+# rather than splitting on a guessed set of specifier characters.
+_REQUIREMENT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
 
 def test_exposes_a_version() -> None:
     import openposture_api
@@ -14,5 +20,9 @@ def test_sits_at_the_top_of_the_dependency_graph() -> None:
     from importlib.metadata import requires
 
     declared = requires("openposture-api") or []
-    names = {r.split()[0].split(">")[0].split("=")[0].split("[")[0].lower() for r in declared}
+    names = {
+        re.sub(r"[-_.]+", "-", m.group()).lower()
+        for m in (_REQUIREMENT_NAME.match(r.strip()) for r in declared)
+        if m
+    }
     assert {"posture-core", "pose-backends"} <= names

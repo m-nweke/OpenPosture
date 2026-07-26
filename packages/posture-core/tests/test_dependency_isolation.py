@@ -14,11 +14,29 @@ reasons. A fresh interpreter is the only honest way to ask what importing this p
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import textwrap
 
 import pytest
+
+# A PEP 508 requirement opens with its name, which PEP 508 restricts to these characters. Anything
+# after it is a version specifier, an extras list or an environment marker. Matching the name
+# positively is the only reliable way to read it: splitting on a hand-listed set of separators
+# silently misses the ones nobody thought of ("fastapi<1", "torch!=2.0", "numpy~=1.26").
+_REQUIREMENT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _distribution_names(requirements: list[str]) -> set[str]:
+    """Requirement strings -> the PEP 503 normalised names they declare."""
+    names = set()
+    for requirement in requirements:
+        match = _REQUIREMENT_NAME.match(requirement.strip())
+        if match:
+            names.add(re.sub(r"[-_.]+", "-", match.group()).lower())
+    return names
+
 
 # Importing posture_core must not drag in any of these, directly or transitively.
 FORBIDDEN = [
@@ -66,8 +84,7 @@ def test_forbidden_module_is_not_a_declared_dependency(forbidden: str) -> None:
     """Guards the metadata as well as the import, so a stray declaration is caught too."""
     from importlib.metadata import requires
 
-    declared = requires("posture-core") or []
-    names = {req.split()[0].split(">")[0].split("=")[0].split("[")[0].lower() for req in declared}
+    names = _distribution_names(requires("posture-core") or [])
     assert forbidden not in names, (
         f"posture-core declares a dependency on {forbidden!r}. "
         "Heavy dependencies belong in pose-backends or apps/api."

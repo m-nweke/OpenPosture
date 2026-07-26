@@ -46,7 +46,9 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+# The *minimum* supported version, not the newest: ruff must reject 3.12-only syntax that the
+# 3.11 CI leg would fail on. See `requires-python` above.
+target-version = "py311"
 extend-exclude = [
     # Preserved reference material, not maintained code (see OP-10 and docs/archive/README.md).
     # It would fail every check here, deliberately.
@@ -94,7 +96,7 @@ docstring-code-format = true
 # ---------------------------------------------------------------------------
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"  # minimum supported — catches 3.12-only typing before the 3.11 CI leg does
 strict = true
 warn_unreachable = true
 warn_unused_configs = true
