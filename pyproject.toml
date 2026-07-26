@@ -1,18 +1,138 @@
-# Root tooling configuration.
+# Root of the OpenPosture `uv` workspace.
 #
-# OP-10 (A2) establishes only one thing here: `docs/archive/` is reference material and must
-# never be linted, type-checked, or collected as tests. The legacy OpenPose code archived there
-# would fail all three, and it is preserved deliberately — see docs/archive/README.md.
+# There is no top-level distributable package here — this file exists to define the workspace,
+# the shared dev toolchain, and the quality gates. The actual code lives in:
 #
-# OP-12 (A4) extends this file into the full `uv` workspace definition (workspace members,
-# dependency groups, ruff rule selection, mypy --strict settings, coverage gates). The excludes
-# below are the stable part and should survive that change.
+#   packages/posture-core   pure rules engine. numpy only. No I/O, no globals, no framework.
+#   packages/pose-backends  inference adapters behind a Protocol. Impure and platform-fragile.
+#   apps/api                FastAPI service. Depends on both.
+#
+# The dependency direction is one-way and load-bearing:
+#
+#   posture-core  <--  pose-backends  <--  apps/api
+#
+# Nothing depends on apps/api, and posture-core depends on nothing heavy. That is what lets the
+# rules-engine test suite run in seconds with no model, no Docker and no database — and it is
+# enforced by a test (packages/posture-core/tests/test_dependency_isolation.py), not just by
+# convention.
+
+[project]
+name = "openposture"
+version = "0.0.0"
+description = "OpenPosture v2 — workspace root (not a distributable package)"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["apps/api", "packages/*"]
+
+[tool.uv.sources]
+posture-core = { workspace = true }
+pose-backends = { workspace = true }
+
+# Installed into the workspace environment for local development and CI.
+[dependency-groups]
+dev = [
+    "mypy>=1.14",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint and format
+# ---------------------------------------------------------------------------
 
 [tool.ruff]
-extend-exclude = ["docs/archive"]
+line-length = 100
+# The *minimum* supported version, not the newest: ruff must reject 3.12-only syntax that the
+# 3.11 CI leg would fail on. See `requires-python` above.
+target-version = "py311"
+extend-exclude = [
+    # Preserved reference material, not maintained code (see OP-10 and docs/archive/README.md).
+    # It would fail every check here, deliberately.
+    "docs/archive",
+    # Ruff formats Python code blocks embedded in Markdown. We do not want that: docs/FINDINGS.md
+    # quotes the legacy engine VERBATIM as audit evidence, and reformatting those excerpts would
+    # silently misrepresent the code being cited. Markdown prose is Prettier's job (added OP-13).
+    "*.md",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "A",         # builtin shadowing
+    "C4",        # comprehensions
+    "SIM",       # simplify
+    "PTH",       # prefer pathlib
+    "RUF",       # ruff-specific
+    "BLE",       # blind except — the legacy engine's defining failure mode
+    "TRY",       # exception antipatterns
+    "ANN",       # missing annotations
+]
+ignore = [
+    "ANN401",  # allow typing.Any where genuinely needed
+    "TRY003",  # long messages outside exception class — fine for this codebase
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may use asserts, magic numbers and terser annotations.
+"**/tests/**" = ["ANN", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["posture_core", "pose_backends", "openposture_api"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# mypy — strict across all first-party source
+# ---------------------------------------------------------------------------
 
 [tool.mypy]
+python_version = "3.11"  # minimum supported — catches 3.12-only typing before the 3.11 CI leg does
+strict = true
+warn_unreachable = true
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
 exclude = ['^docs/archive/']
 
+# NOTE: `ignore_missing_imports` overrides for untyped third-party packages (cv2, mediapipe)
+# are added by OP-18, when the adapter first imports them. Declaring them now would trip
+# `warn_unused_configs` and train everyone to ignore mypy's output.
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+
 [tool.pytest.ini_options]
-norecursedirs = ["docs/archive", "*.egg", ".*", "node_modules"]
+minversion = "8.0"
+testpaths = ["packages", "apps"]
+norecursedirs = ["docs/archive", "*.egg", ".*", "node_modules", "build", "dist"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    # Real-model tests. Deselected in required CI with `-m "not model"`; run on demand by the
+    # model-validation workflow created in OP-21.
+    "model: requires real model weights and a heavy inference backend (deselected in PR CI)",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["packages/posture-core/src", "packages/pose-backends/src", "apps/api/src"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.",
+]

@@ -1,0 +1,30 @@
+[project]
+name = "pose-backends"
+version = "0.1.0"
+description = "Pose inference adapters behind a Protocol. Quarantines the heavy, platform-fragile dependency."
+requires-python = ">=3.11"
+
+# Depends on posture-core because the CANONICAL TYPES LIVE THERE. The rules engine defines the
+# contract; inference adapters conform to it. That inversion is what makes backends swappable.
+dependencies = ["posture-core"]
+
+[project.optional-dependencies]
+# The real backend is optional so that `pose-backends` can be installed — and FakePoseBackend
+# used — without pulling a 300 MB inference stack. CI installs the base package only.
+#
+# mediapipe is pinned to 0.10.18: it is the LAST release publishing a PyPI linux aarch64 wheel.
+# 0.10.19+ ship manylinux x86_64 only, which would kill the local Docker demo on Apple Silicon.
+# Verified on linux/arm64 and linux/amd64 under python:3.12-slim by the OP-16 spike. See ADR-0002.
+mediapipe = [
+    "mediapipe==0.10.18",
+    # headless: mediapipe pulls opencv-contrib-python (non-headless) by default, which needs
+    # libgl1 present in the image. Headless avoids that system dependency entirely.
+    "opencv-python-headless>=4.10,<5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pose_backends"]
