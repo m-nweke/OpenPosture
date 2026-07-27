@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Final
 
 from posture_core.geometry import angle_between, distance, midpoint
 from posture_core.keypoints import KeypointName
-from posture_core.metrics._support import abstain, measure, world_points
+from posture_core.metrics._support import abstain, measure, require_either_side, world_points
 from posture_core.resolver import Resolved
 from posture_core.status import Metric
 
@@ -67,14 +67,10 @@ CROSSED_REQUIRED: Final = (
     KeypointName.RIGHT_WRIST,
 )
 
-FLEXION_REQUIRED: Final = (
-    KeypointName.LEFT_SHOULDER,
-    KeypointName.LEFT_ELBOW,
-    KeypointName.LEFT_WRIST,
-    KeypointName.RIGHT_SHOULDER,
-    KeypointName.RIGHT_ELBOW,
-    KeypointName.RIGHT_WRIST,
-)
+_ARM_SIDES: Final = {
+    "left": (KeypointName.LEFT_SHOULDER, KeypointName.LEFT_ELBOW, KeypointName.LEFT_WRIST),
+    "right": (KeypointName.RIGHT_SHOULDER, KeypointName.RIGHT_ELBOW, KeypointName.RIGHT_WRIST),
+}
 
 
 def arms_crossed(resolver: KeypointResolver, thresholds: Thresholds) -> Metric:
@@ -122,49 +118,37 @@ def arms_crossed(resolver: KeypointResolver, thresholds: Thresholds) -> Metric:
 
 
 def elbow_flexion_deg(resolver: KeypointResolver, thresholds: Thresholds) -> Metric:
-    """The angle at the more bent of the two elbows.
+    """The shoulder-elbow-wrist angle on whichever arm the camera actually saw.
 
-    The *more* bent, rather than an average of the two. A bent elbow is the signal — an arm
-    propped on a desk or folded across the chest — and averaging it with a straight arm yields a
-    number that describes neither of them. The description names the side, so the report never
-    implies the measurement applies to both.
+    One arm, not both, and for the same reason the leg metrics take one leg: in a lateral view the
+    far arm is behind the torso and is reported below the visibility threshold. Requiring both made
+    every fixture abstain. See :func:`~posture_core.metrics._support.require_either_side`.
+
+    The description names the side, so a report can never imply the measurement covers both arms.
     """
-    resolution = resolver.require(*FLEXION_REQUIRED)
-    if not isinstance(resolution, Resolved):
-        return resolution.as_metric(ELBOW_FLEXION, "deg")
+    resolved = require_either_side(resolver, _ARM_SIDES)
+    if not isinstance(resolved, tuple):
+        return resolved.as_metric(ELBOW_FLEXION, "deg")
+    side, resolution = resolved
 
     points = world_points(ELBOW_FLEXION, "deg", resolution)
     if isinstance(points, Metric):
         return points
 
-    sides = {
-        "left": (KeypointName.LEFT_SHOULDER, KeypointName.LEFT_ELBOW, KeypointName.LEFT_WRIST),
-        "right": (
-            KeypointName.RIGHT_SHOULDER,
-            KeypointName.RIGHT_ELBOW,
-            KeypointName.RIGHT_WRIST,
-        ),
-    }
-    measured: dict[str, float] = {}
-
-    def compute() -> float:
-        for side, (shoulder, elbow, wrist) in sides.items():
-            measured[side] = angle_between(
-                points[shoulder] - points[elbow], points[wrist] - points[elbow]
-            )
-        return min(measured.values())
+    shoulder, elbow, wrist = _ARM_SIDES[side]
 
     return measure(
         ELBOW_FLEXION,
         "deg",
         resolution,
-        compute=compute,
-        describe=lambda value: _describe_flexion(value, measured, thresholds),
+        compute=lambda: angle_between(
+            points[shoulder] - points[elbow], points[wrist] - points[elbow]
+        ),
+        describe=lambda value: _describe_flexion(value, side, thresholds),
     )
 
 
-def _describe_flexion(value: float, measured: dict[str, float], thresholds: Thresholds) -> str:
-    side = min(measured, key=lambda key: measured[key])
+def _describe_flexion(value: float, side: str, thresholds: Thresholds) -> str:
     if value < thresholds.elbow_flexed_deg:
         return f"your {side} elbow is bent to {value:.0f}°"
-    return f"both elbows are fairly straight (the {side} is the more bent, at {value:.0f}°)"
+    return f"your {side} elbow is fairly straight, at {value:.0f}°"
