@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
+import { ANALYSES_ENDPOINT } from '../src/api/client'
 
 /**
  * Captures the README screenshot from a real result.
@@ -20,11 +21,15 @@ import { expect, test } from '@playwright/test'
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/images/desk_hunch.jpeg', import.meta.url))
 const OUTPUT = fileURLToPath(new URL('../../../docs/images/dashboard-result.png', import.meta.url))
 
-test('capture a real result for the README', async ({ page }) => {
-  // A wide-ish viewport at 2x: the image lands in a README at roughly half size, so a 1x capture
-  // looks soft on any modern display.
-  await page.setViewportSize({ width: 1000, height: 1400 })
+// A wide-ish viewport at a real 2x: the image lands in a README at roughly half size, so a 1x
+// capture looks soft on any modern display.
+//
+// `deviceScaleFactor` is a *context* option — `page.setViewportSize()` changes the CSS viewport and
+// leaves the device pixel ratio at 1, so an earlier version of this file claimed 2x and captured
+// 1x. It also means the overlay's `devicePixelRatio` handling is exercised for real here.
+test.use({ viewport: { width: 1000, height: 1400 }, deviceScaleFactor: 2 })
 
+test('capture a real result for the README', async ({ page }) => {
   await page.goto('/register')
   await page.getByLabel('Name:').fill('Ada')
   await page.getByLabel('Email:').fill('ada@example.com')
@@ -33,13 +38,31 @@ test('capture a real result for the README', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Hello, Ada' })).toBeVisible()
 
   await page.getByLabel(/Input an image of you sitting/).setInputFiles(FIXTURE)
-  await page.getByRole('button', { name: 'Submit' }).click()
+
+  // The response the *page* received, not a second request. Asserting on a separate API call
+  // would prove the stack can run mediapipe, not that the numbers about to be photographed came
+  // from it.
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes(ANALYSES_ENDPOINT) && r.request().method() === 'POST',
+    ),
+    page.getByRole('button', { name: 'Submit' }).click(),
+  ])
 
   await expect(page.getByRole('heading', { name: 'Your results' })).toBeVisible()
 
-  // Proof the numbers are real before they are photographed: `mediapipe`, not `fake`.
-  const measurements = page.getByRole('heading', { name: 'Measurements' })
-  await expect(measurements).toBeVisible()
+  // The assertion the earlier version only claimed in a comment: this really is the real backend.
+  // Without it the spec passes happily against `POSE_BACKEND=fake` and produces a README image of
+  // a fabricated skeleton — the same species of dishonesty as the hardcoded results this epic
+  // deleted, with a photograph attached.
+  const body = await response.json()
+  expect(body.report.backend).toBe('mediapipe')
+  expect(body.pose_detected).toBe(true)
+  // A measured angle, not a preset's constant. The fake backend's trunk is exactly 32.0.
+  expect(body.report.metrics.trunk_inclination_deg.status).toBe('ok')
+  expect(body.report.metrics.trunk_inclination_deg.value).not.toBe(32)
+
+  await expect(page.getByRole('heading', { name: 'Measurements' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'What we noticed' })).toBeVisible()
   await expect(page.getByTestId('skeleton')).toBeVisible()
 
