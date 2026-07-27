@@ -11,7 +11,7 @@ import { expect, test } from '@playwright/test'
  * Asserting that `32°` is on screen proves a specific number travelled the full chain and was
  * computed, not typed.
  *
- * That number is exact rather than approximate because the fake backend'"'"'s `hunchback` preset is
+ * That number is exact rather than approximate because the fake backend's `hunchback` preset is
  * an analytic stick figure: the trunk is built at 32° and the engine measures 32°. A real model
  * would force a tolerance, and a tolerance is where flake starts.
  *
