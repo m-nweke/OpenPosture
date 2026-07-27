@@ -191,6 +191,14 @@ class Thresholds:
             )
         if self.knee_seated_min_deg >= self.knee_seated_max_deg:
             raise ValueError("knee_seated_min_deg must be below knee_seated_max_deg")
+        if self.knee_kneeling_max_deg >= self.knee_seated_min_deg:
+            raise ValueError(
+                f"knee_kneeling_max_deg ({self.knee_kneeling_max_deg}) must be strictly below "
+                f"knee_seated_min_deg ({self.knee_seated_min_deg}). The knee bands are tested "
+                "in ascending order and kneeling is tested first, so an overlap does not produce "
+                "a wrong answer — it silently swallows the tucked-back band, and every kneeling "
+                "angle above the overlap reports as seated"
+            )
         if self.lateral_view_max_ratio >= self.frontal_view_min_ratio:
             raise ValueError(
                 "lateral_view_max_ratio must be below frontal_view_min_ratio; the gap between "
