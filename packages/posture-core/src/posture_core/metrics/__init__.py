@@ -12,6 +12,7 @@ rather than being reported to the user as "we could not measure this".
 
 from __future__ import annotations
 
+from posture_core.metrics.head import craniovertebral_angle_deg
 from posture_core.metrics.trunk import trunk_inclination_deg
 
-__all__ = ["trunk_inclination_deg"]
+__all__ = ["craniovertebral_angle_deg", "trunk_inclination_deg"]

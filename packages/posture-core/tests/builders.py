@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from posture_core.keypoints import KeypointName, Landmark
 
 __all__ = [
+    "flat_resolver",
     "frame",
     "landmarks_of",
     "metric_of",
@@ -108,3 +109,36 @@ def unclear(
 
 def landmarks_of(**pose_kwargs: Any) -> dict[KeypointName, Landmark]:
     return make_pose(**{**SEATED, **pose_kwargs})
+
+
+def flat_resolver(
+    *, thresholds: Thresholds = DEFAULT_THRESHOLDS, **pose_kwargs: Any
+) -> KeypointResolver:
+    """A resolver over a frame with **no world coordinates**.
+
+    Stands in for the 2D-only backend ADR-0002 keeps as an escape hatch. Every metric here is
+    defined in metric world space, so each one must abstain loudly rather than quietly computing
+    an angle in a pixel space stretched by the frame's aspect ratio.
+    """
+    from posture_core import Landmark as _Landmark
+
+    original = frame(**pose_kwargs)
+    flat = {
+        name: _Landmark(
+            x=landmark.x,
+            y=landmark.y,
+            visibility=landmark.visibility,
+            presence=landmark.presence,
+        )
+        for name, landmark in original.landmarks.items()
+    }
+    return KeypointResolver(
+        PoseFrame(
+            landmarks=flat,
+            image_width=original.image_width,
+            image_height=original.image_height,
+            backend="flat",
+            inference_ms=0.0,
+        ),
+        thresholds,
+    )
