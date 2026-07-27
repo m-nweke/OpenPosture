@@ -17,10 +17,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "AnalysisResponse",
+    "ContractModel",
     "DetectedLandmark",
     "Finding",
     "Gap",
@@ -30,17 +31,34 @@ __all__ = [
     "Quality",
 ]
 
+
+class ContractModel(BaseModel):
+    """Base for every model here, carrying the strictness the contract depends on.
+
+    ``extra="forbid"`` because the default is to *ignore* unknown fields. A key added to
+    ``PostureReport.to_dict()`` would then be silently dropped on its way out — a change to what
+    the API returns, invisible in the schema, and a second serialiser in practice. Forbidding it
+    turns that into an exception on the first request instead.
+
+    The complementary half is ``strict=True`` at the `model_validate` call site: without it
+    Pydantic coerces, so a field that became a string containing a number would validate happily
+    and the declared schema would quietly stop describing the response.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
 MetricStatus = Literal["ok", "insufficient_keypoints", "low_confidence"]
 KeypointStatus = Literal["ok", "low_confidence", "not_detected", "out_of_frame"]
 Severity = Literal["major", "minor", "info"]
 
 
-class ImageSize(BaseModel):
+class ImageSize(ContractModel):
     width: int
     height: int
 
 
-class Metric(BaseModel):
+class Metric(ContractModel):
     """One measurement, or an honest absence of one."""
 
     value: float | None = Field(
@@ -52,7 +70,7 @@ class Metric(BaseModel):
     confidence: float | None
 
 
-class Finding(BaseModel):
+class Finding(ContractModel):
     """Something the engine noticed, already worded for a person."""
 
     code: str = Field(description="Stable identifier. Branch on this, not on `message`.")
@@ -63,7 +81,7 @@ class Finding(BaseModel):
     confidence: float
 
 
-class Gap(BaseModel):
+class Gap(ContractModel):
     """A metric that could not be assessed, and what stopped it."""
 
     metric: str
@@ -72,7 +90,7 @@ class Gap(BaseModel):
     keypoints: dict[str, KeypointStatus]
 
 
-class Quality(BaseModel):
+class Quality(ContractModel):
     """How much of the body the engine could actually see."""
 
     assessed: int
@@ -82,7 +100,7 @@ class Quality(BaseModel):
     keypoints: dict[str, KeypointStatus]
 
 
-class PostureReportModel(BaseModel):
+class PostureReportModel(ContractModel):
     """One assessment of one photograph. Mirrors `PostureReport.to_dict()` exactly."""
 
     schema_version: str
@@ -101,7 +119,7 @@ class PostureReportModel(BaseModel):
     quality: Quality
 
 
-class DetectedLandmark(BaseModel):
+class DetectedLandmark(ContractModel):
     """One measured point, in the form a client needs to draw it.
 
     **Normalised to the image, not in pixels.** The frontend renders the photo at whatever size
@@ -127,7 +145,7 @@ class DetectedLandmark(BaseModel):
     presence: float = Field(description="[0, 1] — confidence the point is in frame at all.")
 
 
-class AnalysisResponse(BaseModel):
+class AnalysisResponse(ContractModel):
     """What `POST /api/v1/analyses` returns on success."""
 
     object_key: str = Field(

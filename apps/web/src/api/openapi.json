@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AnalysisResponse": {
+        "additionalProperties": false,
         "description": "What `POST /api/v1/analyses` returns on success.",
         "properties": {
           "image": {
@@ -62,6 +63,7 @@
         "type": "object"
       },
       "DetectedLandmark": {
+        "additionalProperties": false,
         "description": "One measured point, in the form a client needs to draw it.\n\n**Normalised to the image, not in pixels.** The frontend renders the photo at whatever size\nthe viewport allows, so a pixel coordinate would be wrong the moment the layout changed. `x`\nand `y` are fractions of width and height, which stay correct under any scale \u2014 the same\nreasoning as the world-space metrics, applied to presentation.\n\nWorld coordinates are deliberately absent: they are metres from the hip and mean nothing on\na 2D canvas.",
         "properties": {
           "name": {
@@ -112,6 +114,7 @@
         "type": "object"
       },
       "Finding": {
+        "additionalProperties": false,
         "description": "Something the engine noticed, already worded for a person.",
         "properties": {
           "code": {
@@ -157,6 +160,7 @@
         "type": "object"
       },
       "Gap": {
+        "additionalProperties": false,
         "description": "A metric that could not be assessed, and what stopped it.",
         "properties": {
           "detail": {
@@ -234,6 +238,7 @@
         "type": "object"
       },
       "ImageSize": {
+        "additionalProperties": false,
         "properties": {
           "height": {
             "title": "Height",
@@ -252,6 +257,7 @@
         "type": "object"
       },
       "Metric": {
+        "additionalProperties": false,
         "description": "One measurement, or an honest absence of one.",
         "properties": {
           "confidence": {
@@ -307,6 +313,7 @@
         "type": "object"
       },
       "PostureReportModel": {
+        "additionalProperties": false,
         "description": "One assessment of one photograph. Mirrors `PostureReport.to_dict()` exactly.",
         "properties": {
           "backend": {
@@ -373,6 +380,7 @@
         "type": "object"
       },
       "Quality": {
+        "additionalProperties": false,
         "description": "How much of the body the engine could actually see.",
         "properties": {
           "assessed": {

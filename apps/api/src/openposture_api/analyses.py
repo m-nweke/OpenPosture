@@ -136,9 +136,14 @@ def build_analyses_router() -> APIRouter:
             # Validated from `to_dict()` rather than rebuilt from the dataclass. `to_dict` stays
             # the engine's only serialiser — shared with the CLI and the golden corpus, and
             # depended on by the cross-language parity check in Epic G — while the model gives
-            # the OpenAPI document a real shape. If the two ever disagree this raises here,
-            # loudly, rather than shipping a schema that lies about the response.
-            report=PostureReportModel.model_validate(report.to_dict()),
+            # the OpenAPI document a real shape.
+            #
+            # `strict=True` is what makes "they cannot disagree" true rather than aspirational.
+            # Pydantic's default coerces, so a field that became a string containing a number
+            # would validate happily and the schema would quietly stop describing the response.
+            # Together with `extra="forbid"` on the models, a rename, an added key or a changed
+            # type all raise here — on the first request, in the branch that produced them.
+            report=PostureReportModel.model_validate(report.to_dict(), strict=True),
             image=ImageSize(width=decoded.width, height=decoded.height),
         )
 
