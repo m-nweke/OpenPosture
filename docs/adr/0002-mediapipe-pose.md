@@ -2,7 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-07-26
-**Ticket:** OP-15, recording the OP-16 (B1) spike results
+**Ticket:** OP-15, recording the OP-16 (B1) spike results — spike executed and this ADR corrected
+under OP-16 on 2026-07-26
 **Supersedes nothing. Descopes OP-22 (B7, ONNX MoveNet fallback) — see "The gated risk".**
 
 This is the platform bet the whole pipeline rests on, so it is recorded in more detail than the
@@ -124,28 +125,79 @@ as it turns out — left again. Because an Apple Silicon dev machine and arm64 c
 scope, this was the one risk capable of invalidating the decision, so OP-16 gated it *before* any
 rules code was written.
 
-**Findings, verified against PyPI on 2026-07-26:**
+Executed 2026-07-26 on Docker 29.5.2, Apple Silicon host — `linux/arm64` natively and
+`linux/amd64` under emulation — against `python:3.12-slim` (Python 3.12.13).
 
-- **Linux aarch64 wheels were dropped after `0.10.18`.** `0.10.18` publishes
-  `manylinux_2_17_aarch64` for cp39–cp312. There is no `0.10.19`; **`0.10.20` is the first release
-  with zero linux-aarch64 wheels**, and the current release `0.10.35` publishes only
-  `manylinux_2_28_x86_64`, `win_amd64`, `win_arm64` and `macosx_11_0_arm64`. macOS arm64 survives;
-  Linux arm64 does not.
-- Both acceptance commands pass under `python:3.12-slim` on `linux/arm64` and `linux/amd64`, with
-  `--only-binary=:all:`, importing `mediapipe.tasks.python.vision.PoseLandmarker`.
-- **Therefore no ONNX MoveNet fallback is needed, and OP-22 (B7) is descoped.**
-- Transitive ceilings `0.10.18` imposes on the entire workspace: **`numpy<2`** and
-  **`protobuf<5,>=4.25.3`**. Co-installation with FastAPI 0.140, SQLAlchemy 2.0.51 and Pydantic
-  2.13 verified clean; `pip check` reports no broken requirements.
-- **Image size.** A default install is **857 MB** — `jaxlib` alone is 299 MB, `scipy` 146 MB, plus
-  `matplotlib` and `sentencepiece`, none of which pose inference uses. Installing `--no-deps` with
-  a hand-picked runtime set plus `opencv-python-headless` yields **311 MB** with `PoseLandmarker`
-  working. This matters against the <600 MB API image budget in OP-112.
-- **Correction to the plan's stated "container gotcha".** `0.10.18` hard-depends on
-  `opencv-contrib-python` — the *non-headless* build — so a default install genuinely needs
-  `libgl1` and `libglib2.0-0` in the image. Swapping to `opencv-python-headless` requires the
-  `--no-deps` route above; it is not a matter of overriding one requirement. Both options are
-  recorded because the choice is a size/complexity tradeoff, not a correctness one.
+**Finding 1: the wheel situation, verified against the live PyPI index.**
+
+| version | linux aarch64 | linux x86_64 |
+| --- | --- | --- |
+| `0.10.15` | yes | yes |
+| **`0.10.18`** | **yes** | **yes** |
+| `0.10.20` | **no** | yes |
+| `0.10.35` (current) | **no** | yes |
+
+`0.10.18` publishes `manylinux_2_17_aarch64` for cp39–cp312 (33 MB) and `manylinux_2_17_x86_64`
+(36 MB). There is no `0.10.19`; **`0.10.20` is the first release with zero linux-aarch64 wheels**,
+and `0.10.35` publishes only `manylinux_2_28_x86_64`, `win_amd64`, `win_arm64` and
+`macosx_11_0_arm64`. macOS arm64 survives; Linux arm64 does not.
+
+The wheel *installs* cleanly on both platforms with `--only-binary=:all:`, which is the question
+the spike existed to answer. **Therefore no ONNX MoveNet fallback is needed, and OP-22 (B7) is
+descoped.**
+
+**Finding 2: installing the wheel is not the same as importing it.** The acceptance command as
+originally written — `pip install` followed by `python -c 'import mediapipe'` on a bare
+`python:3.12-slim` — **fails, on both architectures identically**:
+
+```
+  File ".../mediapipe/python/solutions/drawing_utils.py", line 20, in <module>
+    import cv2
+ImportError: libGL.so.1: cannot open shared object file: No such file or directory
+```
+
+This is not an architecture problem and does not affect the decision. `0.10.18` hard-depends on
+`opencv-contrib-python` — the *non-headless* OpenCV build — which needs system OpenGL that the
+slim image does not ship. It is recorded here because an earlier revision of this ADR claimed both
+commands passed as written; they do not, and anyone re-running the spike would hit this first.
+
+**Finding 3: two install routes work, and they are not interchangeable.**
+
+| route | arm64 | amd64 | site-packages |
+| --- | --- | --- | --- |
+| **A.** default install + `apt-get install libgl1 libglib2.0-0` | pass | pass | 857 MB / 959 MB |
+| **B.** `mediapipe` + `opencv-python-headless`, no system packages | **fail** | **fail** | — |
+| **C.** `--no-deps` pinned runtime set + headless | pass | pass | 324 MB / 414 MB |
+
+**Route B is the trap, and it had already been committed.** Adding `opencv-python-headless`
+alongside mediapipe does *not* replace `opencv-contrib-python`. They are separate distributions
+that install into the same `cv2` namespace, so both land and the non-headless one wins the import
+— identical `libGL.so.1` failure. `pose-backends` declared exactly this pairing, with a comment
+asserting it "avoids that system dependency entirely." It does not. Fixed in the same change as
+this correction.
+
+**Route C is the image strategy**, recorded in `packages/pose-backends/requirements-mediapipe.txt`
+and consumed by the API image build. `--no-deps` cannot be expressed in `pyproject.toml`, which is
+why it is a separate pinned file rather than an extra. The `mediapipe` extra remains for local
+development and CI, where route A's system packages cost nothing.
+
+Two corrections to the earlier slim-install estimate. It recorded **311 MB**; the reproducible
+figures are **324 MB on arm64 and 414 MB on amd64**. And **`matplotlib` is not droppable** —
+`drawing_utils` imports `matplotlib.pyplot` at module scope alongside `cv2`, so it and its whole
+chain (contourpy, cycler, fonttools, kiwisolver, pillow, pyparsing, packaging, python-dateutil,
+six) must be named explicitly; omitting it fails with `No module named 'PIL'`. The savings come
+from dropping **`jax`, `jaxlib` and `scipy`** alone, which pose inference genuinely never imports.
+
+Against OP-112's <600 MB API image budget, 414 MB is site-packages *before* the base image, the
+model `.task` file and application code. That is a real constraint, not a comfortable margin.
+
+**Finding 4: no dependency conflict with the web stack.** Transitive ceilings `0.10.18` imposes on
+the entire workspace are **`numpy<2`** and **`protobuf<5,>=4.25.3`**. Co-installing the pin with an
+unpinned FastAPI/SQLAlchemy/Pydantic and letting the resolver choose yields FastAPI 0.140.0,
+SQLAlchemy 2.0.51, Pydantic 2.13.4, Starlette 1.3.1, uvicorn 0.51.0, with `numpy 1.26.4` and
+`protobuf 4.25.9` intact. `pip check` reports no broken requirements and all of it imports together
+in one interpreter alongside `PoseLandmarker`. The contingency of running the pose backend as its
+own compose service over HTTP is therefore not needed.
 
 ## Alternatives considered
 
@@ -177,6 +229,12 @@ in `posture-core` or `apps/api` moves.
   pure package has, now with a ceiling set by a package it must never import. An irony worth
   noticing, but not a violation: the constraint is on the resolved environment, not on
   `posture-core`'s own declared dependencies.
+- **Two install routes, deliberately.** The `mediapipe` extra in `pose-backends` pulls the full
+  dependency closure and needs `libgl1` + `libglib2.0-0`; that is fine for local dev and CI. The
+  API image installs `requirements-mediapipe.txt` with `--no-deps` instead. Because `--no-deps`
+  disables all consistency checking, every version in that file is pinned exactly and a bad
+  transitive bump would surface as an ImportError at container start rather than at install time —
+  regenerating it means re-verifying on both architectures.
 - The adapter owns the `NECK` derivation and all landmark renaming. Rules code sees canonical named
   keypoints and never an integer index.
 - Choosing a 3 M-parameter model over 52.3 M is a deliberate accuracy-for-latency trade. It is the

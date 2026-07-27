@@ -49,9 +49,17 @@ Computer Vision: OpenCV
 Development Environment: Jupyter Notebook
 
 ## Contributors
+
+The original capstone was built by:
+
 1. [Michael Nweke](https://github.com/m-nweke)
 2. [Ally Ryan](https://github.com/aerc4d)
 3. [Parisha Rathod](https://github.com/parisha8994)
+
+**Ally and Parisha contributed to v1 only.** Their work is preserved in the git history and in
+`docs/archive/`, and their copyright stands, but they are not involved in the v2 rewrite — it is
+maintained solely by Michael Nweke. Please do not direct v2 issues, questions, or review requests
+to them.
 
 ---
 
@@ -163,7 +171,8 @@ second with no model, no Docker and no database. It is enforced by
 
 ## License
 
-[MIT](LICENSE), © 2024-2026 Michael Nweke, Ally Ryan, Parisha Rathod.
+[MIT](LICENSE), © 2024-2026 Michael Nweke, Ally Ryan, Parisha Rathod. Ally Ryan and Parisha Rathod
+hold copyright for their v1 contributions; v2 is authored by Michael Nweke ([Contributors](#contributors)).
 
 `docs/archive/legacy-openpose/` vendors a third-party Keras implementation of CMU OpenPose under its
 own MIT licence (© 2020 Vinay Varma), preserved as audit evidence and imported by nothing. The Keras
