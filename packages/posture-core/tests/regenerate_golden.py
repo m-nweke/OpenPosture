@@ -20,6 +20,21 @@ sys.path.insert(0, str(Path(__file__).parent))
 from test_golden import CASES, GOLDEN, report_for, serialise
 
 
+def _display(path: Path) -> str:
+    """A short path when the caller is somewhere above it, the full one otherwise.
+
+    `relative_to` raises rather than falling back, so running this from anywhere that is not an
+    ancestor of the repository — `/tmp`, a sibling checkout, an editor's scratch directory — killed
+    the script partway through with a `ValueError` about subpaths. It had already rewritten some of
+    the snapshots by then, which is the worst moment to stop. Cosmetics should not be able to fail
+    the operation they are describing.
+    """
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
 def main() -> int:
     GOLDEN.mkdir(parents=True, exist_ok=True)
     for name in sorted(CASES):
@@ -27,7 +42,7 @@ def main() -> int:
         content = serialise(report_for(name))
         changed = not path.exists() or path.read_text(encoding="utf-8") != content
         path.write_text(content, encoding="utf-8")
-        print(f"{'updated' if changed else 'unchanged'}  {path.relative_to(Path.cwd())}")
+        print(f"{'updated' if changed else 'unchanged'}  {_display(path)}")
     return 0
 
 

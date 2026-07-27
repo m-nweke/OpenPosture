@@ -18,10 +18,10 @@ a report, never a traceback and never a `None` the caller has to interpret.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 import pytest
-from hypothesis import given
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from posture_core import KeypointName as K
@@ -69,6 +69,18 @@ poses = st.fixed_dictionaries(
 scales = st.floats(0.3, 3.0)
 
 frame_sizes = st.tuples(st.integers(240, 4000), st.integers(240, 4000))
+
+# Derived, not written down. `KeypointName` is the source of truth for how many landmarks exist,
+# and a literal here would silently stop covering the new one the day a keypoint is added — the
+# visibility strategy below zips against every name with `strict=True`, so it would fail loudly,
+# but the drop strategy would just quietly stop being able to drop everything.
+KEYPOINT_COUNT: Final = len(K)
+
+SETTINGS = settings(
+    max_examples=200,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 
 
 def scaled_body(scale: float) -> Anthropometry:
@@ -119,6 +131,7 @@ def angular_values(landmarks: dict[K, Landmark], **frame_kwargs: int) -> dict[st
 # ---------------------------------------------------------------------------------------------
 
 
+@SETTINGS
 @given(pose=poses, scale=scales)
 def test_every_angular_metric_is_invariant_to_body_size(pose: dict[str, Any], scale: float) -> None:
     """The defect the whole rebuild exists to fix, stated over the entire input space.
@@ -140,6 +153,7 @@ def test_every_angular_metric_is_invariant_to_body_size(pose: dict[str, Any], sc
             assert other == pytest.approx(value, abs=1e-6), f"{name} moved under {scale}x scaling"
 
 
+@SETTINGS
 @given(pose=poses, size=frame_sizes)
 def test_every_angular_metric_is_invariant_to_frame_size_and_aspect_ratio(
     pose: dict[str, Any], size: tuple[int, int]
@@ -163,9 +177,23 @@ def test_every_angular_metric_is_invariant_to_frame_size_and_aspect_ratio(
             assert other == pytest.approx(value, abs=1e-6), f"{name} moved at {width}x{height}"
 
 
-@given(pose=poses, offset=st.tuples(st.floats(-2.0, 2.0), st.floats(-2.0, 2.0)))
+@SETTINGS
+@given(
+    pose=poses,
+    offset=st.tuples(
+        st.floats(-2.0, 2.0),
+        st.floats(-2.0, 2.0),
+        # Depth too, not just the image plane. Checked rather than assumed: perturbing `z_world`
+        # alone moves `craniovertebral_angle_deg` (50.0° to 66.3°) and `knee_flexion_deg` (100.0°
+        # to 96.4°), so an x/y-only offset was exercising two axes out of three on metrics that
+        # genuinely read the third. `trunk_inclination_deg` is the exception and correctly so —
+        # depth is its *lateral* axis once the facing direction is resolved, so a sideways shift
+        # should not change a forward lean.
+        st.floats(-2.0, 2.0),
+    ),
+)
 def test_every_angular_metric_is_invariant_to_where_the_subject_stands(
-    pose: dict[str, Any], offset: tuple[float, float]
+    pose: dict[str, Any], offset: tuple[float, float, float]
 ) -> None:
     """Translation invariance, applied in world space where the metrics actually work.
 
@@ -174,7 +202,7 @@ def test_every_angular_metric_is_invariant_to_where_the_subject_stands(
     world coordinate by a constant simulates a backend that did *not* re-origin, and the angles
     must not care.
     """
-    dx, dy = offset
+    dx, dy, dz = offset
     original = make_pose(**pose)
     shifted = {
         name: Landmark(
@@ -184,7 +212,7 @@ def test_every_angular_metric_is_invariant_to_where_the_subject_stands(
             presence=landmark.presence,
             x_world=None if landmark.x_world is None else landmark.x_world + dx,
             y_world=None if landmark.y_world is None else landmark.y_world + dy,
-            z_world=landmark.z_world,
+            z_world=None if landmark.z_world is None else landmark.z_world + dz,
         )
         for name, landmark in original.items()
     }
@@ -193,10 +221,16 @@ def test_every_angular_metric_is_invariant_to_where_the_subject_stands(
     moved = angular_values(shifted)
     for name, value in baseline.items():
         other = moved[name]
+        # Availability first, as the scale and frame-size properties already do. Comparing only
+        # when both sides produced a number would pass a translation that changed whether a metric
+        # can be computed at all — a bigger regression than one that changes its value, and the
+        # one this loop was silently exempting.
+        assert (value is None) == (other is None), f"{name} changed availability under translation"
         if value is not None and other is not None:
             assert other == pytest.approx(value, abs=1e-6), f"{name} moved under translation"
 
 
+@SETTINGS
 @given(pose=poses, scale=scales)
 def test_the_view_ratio_is_invariant_to_body_size(pose: dict[str, Any], scale: float) -> None:
     """A ratio of two image-space lengths, so the projection cancels.
@@ -206,6 +240,7 @@ def test_the_view_ratio_is_invariant_to_body_size(pose: dict[str, Any], scale: f
     """
     baseline = view_confidence(resolver_for(make_pose(**pose)), T).value
     scaled = view_confidence(resolver_for(make_pose(**pose, body=scaled_body(scale))), T).value
+    assert (baseline is None) == (scaled is None), "resizing the body changed availability"
     if baseline is not None and scaled is not None:
         assert scaled == pytest.approx(baseline, abs=1e-6)
 
@@ -215,7 +250,8 @@ def test_the_view_ratio_is_invariant_to_body_size(pose: dict[str, Any], scale: f
 # ---------------------------------------------------------------------------------------------
 
 
-@given(pose=poses, dropped=st.sets(st.sampled_from(list(K)), max_size=34))
+@SETTINGS
+@given(pose=poses, dropped=st.sets(st.sampled_from(list(K)), max_size=KEYPOINT_COUNT))
 def test_a_report_can_always_be_built_however_much_is_missing(
     pose: dict[str, Any], dropped: set[K]
 ) -> None:
@@ -243,9 +279,10 @@ def test_a_report_can_always_be_built_however_much_is_missing(
         assert metric.is_ok == (metric.value is not None)
 
 
+@SETTINGS
 @given(
     pose=poses,
-    visibilities=st.lists(st.floats(0.0, 1.0), min_size=34, max_size=34),
+    visibilities=st.lists(st.floats(0.0, 1.0), min_size=KEYPOINT_COUNT, max_size=KEYPOINT_COUNT),
 )
 def test_a_report_can_always_be_built_however_unconfident_the_landmarks(
     pose: dict[str, Any], visibilities: list[float]
@@ -270,6 +307,7 @@ def test_a_report_can_always_be_built_however_unconfident_the_landmarks(
     assert report.overall_score is None or 0.0 <= report.overall_score <= 100.0
 
 
+@SETTINGS
 @given(pose=poses)
 def test_the_same_pose_always_produces_the_same_report(pose: dict[str, Any]) -> None:
     """Determinism over the whole input space, not just the examples someone chose.
