@@ -29,7 +29,14 @@ from pose_backends.fake import BACKEND_NAME as FAKE_BACKEND
 from pose_backends.fake import PosePreset
 from pose_backends.mediapipe_backend import BACKEND_NAME as MEDIAPIPE_BACKEND
 
-__all__ = ["ENV_PREFIX", "Environment", "PoseBackendName", "Settings", "get_settings"]
+__all__ = [
+    "ENV_PREFIX",
+    "Environment",
+    "PoseBackendName",
+    "Settings",
+    "StorageBackendName",
+    "get_settings",
+]
 
 ENV_PREFIX: Final = "OPENPOSTURE_"
 """Namespaced so the container's environment cannot collide with ours.
@@ -40,6 +47,10 @@ ENV_PREFIX: Final = "OPENPOSTURE_"
 Environment = Literal["development", "test", "production"]
 
 LogLevel = Literal["debug", "info", "warning", "error", "critical"]
+
+StorageBackendName = Literal["local", "s3"]
+"""Where uploaded images go. Same reasoning as :data:`PoseBackendName`: a literal so a bad value
+is a named configuration error, not a surprise inside the factory."""
 
 PoseBackendName = Literal["mediapipe", "fake"]
 """Which inference adapter to build.
@@ -128,6 +139,50 @@ class Settings(BaseSettings):
             "Override the model location. `None` defers to the backend's own default, which is "
             "`MODEL_PATH` and then `models/pose_landmarker_full.task`."
         ),
+    )
+
+    storage_backend: StorageBackendName = Field(
+        default="local",
+        description=(
+            "Where uploaded images go. `local` needs nothing running; `s3` targets MinIO in "
+            "Compose and any S3-compatible service in production."
+        ),
+    )
+
+    storage_root: Path = Field(
+        default=Path("var/storage"),
+        description="Directory `local` storage writes under. Relative to the working directory.",
+    )
+
+    media_base_url: str = Field(
+        default="/media",
+        description=(
+            "URL prefix `local` storage builds object URLs from. Relative by default so it "
+            "works behind the Vite proxy without knowing the deployment's hostname."
+        ),
+    )
+
+    s3_bucket: str = Field(
+        default="openposture",
+        description="Bucket name for `s3` storage.",
+    )
+
+    s3_endpoint_url: str | None = Field(
+        default=None,
+        description="MinIO's address in development. `None` targets real AWS S3.",
+    )
+
+    s3_region: str = Field(default="us-east-1", description="Region for `s3` storage.")
+
+    s3_access_key: str | None = Field(
+        default=None,
+        description="Access key. `None` defers to boto3's own credential chain.",
+    )
+
+    s3_secret_key: str | None = Field(
+        default=None,
+        repr=False,
+        description="Secret key. `None` defers to boto3's own credential chain.",
     )
 
     @field_validator("request_id_header")

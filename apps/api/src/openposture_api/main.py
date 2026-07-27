@@ -34,6 +34,7 @@ from openposture_api.pose import (
     handle_pose_backend_unavailable,
     load_pose_backend,
 )
+from openposture_api.storage import create_storage
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -93,6 +94,10 @@ def create_app(
         """
         state = load_pose_backend(resolved) if load_backend else PoseBackendState()
         app.state.pose_backend_state = state
+        # Built here rather than at construction because `local` creates its root directory and
+        # `s3` builds a boto3 client — both side effects, and the factory promises none.
+        app.state.storage = create_storage(resolved)
+        _LOGGER.info("storage_ready", backend=app.state.storage.name)
         try:
             yield
         finally:
