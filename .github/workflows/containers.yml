@@ -8,9 +8,11 @@
 # Required from the first Docker commit, per the delivery rule: a capability and its check ship
 # together, and Docker is not exempt.
 #
-# **Fake backends, deliberately.** The purpose is to prove the containers build, start, wire
-# together and become ready. Pulling real model weights would add minutes and make the job fail
-# for reasons that have nothing to do with containerization. Real-model validation lives in the
+# **Fake backend at runtime, deliberately.** The purpose is to prove the containers build,
+# start, wire together and become ready. The image still contains the real inference stack —
+# it is the image that ships, and testing a differently-built one would prove nothing about
+# it — but the running container is told not to load the model. That keeps the job fast and
+# keeps its failures about containerization. Real-model validation lives in the
 # `workflow_dispatch` job created in OP-21.
 
 name: containers
@@ -68,7 +70,11 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     env:
-      # No model download, no 300 MB inference stack. See the header.
+      # Avoids *loading and running* the model, not the image's dependencies. The image is built
+      # with the `inference` extra either way, deliberately: a smoke test that exercised a
+      # differently-built image would not be evidence about the image that ships. What `fake`
+      # removes is the runtime cost — a model load and a real inference per request — and the
+      # class of failure that comes with them, which has nothing to do with containerization.
       OPENPOSTURE_POSE_BACKEND: fake
       OPENPOSTURE_POSE_BACKEND_PRESET: hunchback
       OPENPOSTURE_ENVIRONMENT: test

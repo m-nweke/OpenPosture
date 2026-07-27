@@ -26,8 +26,13 @@ services:
       OPENPOSTURE_ENVIRONMENT: ${OPENPOSTURE_ENVIRONMENT:-development}
       OPENPOSTURE_LOG_LEVEL: ${OPENPOSTURE_LOG_LEVEL:-info}
       # Local disk rather than MinIO: one fewer service until Epic E needs it, and the Protocol
-      # means switching is configuration rather than code.
-      OPENPOSTURE_STORAGE_BACKEND: local
+      # means switching is configuration rather than code. Expanded like everything else here,
+      # so `.env` can override it — a value documented as configurable in `.env.example` and
+      # then hardcoded here would be a setting that silently does nothing.
+      OPENPOSTURE_STORAGE_BACKEND: ${OPENPOSTURE_STORAGE_BACKEND:-local}
+      # Defaults to the named volume's mount point rather than to the image's own default,
+      # so uploads survive a restart. Overridable for the same reason as the rest.
+      OPENPOSTURE_STORAGE_ROOT: ${OPENPOSTURE_STORAGE_ROOT:-/app/var/storage}
     volumes:
       # Bind-mounted so a code edit is picked up by `--reload` without a rebuild. Source only —
       # the virtualenv and the model stay in the image, which is why this does not shadow them.
