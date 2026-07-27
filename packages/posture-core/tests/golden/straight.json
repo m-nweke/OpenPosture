@@ -1,0 +1,70 @@
+{
+  "backend": "synthetic",
+  "findings": [],
+  "image": {
+    "height": 480,
+    "width": 640
+  },
+  "inference_ms": 0.0,
+  "metrics": {
+    "arms_crossed": {
+      "confidence": 0.95,
+      "detail": "arms are not folded",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.9323
+    },
+    "craniovertebral_angle_deg": {
+      "confidence": 0.95,
+      "detail": "head is balanced over your shoulders (craniovertebral angle 82°)",
+      "status": "ok",
+      "unit": "deg",
+      "value": 82.0
+    },
+    "elbow_flexion_deg": {
+      "confidence": 0.95,
+      "detail": "your left elbow is bent to 115°",
+      "status": "ok",
+      "unit": "deg",
+      "value": 115.0
+    },
+    "heel_contact_m": {
+      "confidence": 0.95,
+      "detail": "your left foot is flat and supported",
+      "status": "ok",
+      "unit": "m",
+      "value": 0.0
+    },
+    "knee_flexion_deg": {
+      "confidence": 0.95,
+      "detail": "knees are at a comfortable seated angle (100°)",
+      "status": "ok",
+      "unit": "deg",
+      "value": 100.0
+    },
+    "trunk_inclination_deg": {
+      "confidence": 0.95,
+      "detail": "upright, within 3° of vertical",
+      "status": "ok",
+      "unit": "deg",
+      "value": 3.0
+    },
+    "view_confidence": {
+      "confidence": 0.95,
+      "detail": "photographed from the side, which is the best angle for this assessment",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.0
+    }
+  },
+  "overall_score": 100.0,
+  "quality": {
+    "assessed": 7,
+    "coverage": 1.0,
+    "gaps": [],
+    "keypoints": {},
+    "total": 7
+  },
+  "rules_version": "1.0.0",
+  "schema_version": "1.0"
+}

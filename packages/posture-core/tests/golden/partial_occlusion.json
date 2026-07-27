@@ -1,0 +1,102 @@
+{
+  "backend": "synthetic",
+  "findings": [],
+  "image": {
+    "height": 480,
+    "width": 640
+  },
+  "inference_ms": 0.0,
+  "metrics": {
+    "arms_crossed": {
+      "confidence": 0.95,
+      "detail": "arms are not folded",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.9323
+    },
+    "craniovertebral_angle_deg": {
+      "confidence": 0.95,
+      "detail": "head is balanced over your shoulders (craniovertebral angle 70°)",
+      "status": "ok",
+      "unit": "deg",
+      "value": 70.0
+    },
+    "elbow_flexion_deg": {
+      "confidence": 0.95,
+      "detail": "your left elbow is bent to 114°",
+      "status": "ok",
+      "unit": "deg",
+      "value": 114.0
+    },
+    "heel_contact_m": {
+      "confidence": null,
+      "detail": "could not see left foot index, left heel, right foot index and right heel in the photo",
+      "status": "insufficient_keypoints",
+      "unit": "m",
+      "value": null
+    },
+    "knee_flexion_deg": {
+      "confidence": null,
+      "detail": "could not see left ankle, left knee, right ankle and right knee in the photo",
+      "status": "insufficient_keypoints",
+      "unit": "deg",
+      "value": null
+    },
+    "trunk_inclination_deg": {
+      "confidence": 0.95,
+      "detail": "upright, within 8° of vertical",
+      "status": "ok",
+      "unit": "deg",
+      "value": 8.0
+    },
+    "view_confidence": {
+      "confidence": 0.95,
+      "detail": "photographed from the side, which is the best angle for this assessment",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.0
+    }
+  },
+  "overall_score": 100.0,
+  "quality": {
+    "assessed": 5,
+    "coverage": 0.714,
+    "gaps": [
+      {
+        "detail": "could not see left ankle, left knee, right ankle and right knee in the photo",
+        "keypoints": {
+          "left_ankle": "not_detected",
+          "left_knee": "not_detected",
+          "right_ankle": "not_detected",
+          "right_knee": "not_detected"
+        },
+        "metric": "knee_flexion_deg",
+        "status": "insufficient_keypoints"
+      },
+      {
+        "detail": "could not see left foot index, left heel, right foot index and right heel in the photo",
+        "keypoints": {
+          "left_foot_index": "not_detected",
+          "left_heel": "not_detected",
+          "right_foot_index": "not_detected",
+          "right_heel": "not_detected"
+        },
+        "metric": "heel_contact_m",
+        "status": "insufficient_keypoints"
+      }
+    ],
+    "keypoints": {
+      "left_ankle": "not_detected",
+      "left_foot_index": "not_detected",
+      "left_heel": "not_detected",
+      "left_knee": "not_detected",
+      "right_ankle": "not_detected",
+      "right_foot_index": "not_detected",
+      "right_heel": "not_detected",
+      "right_knee": "not_detected"
+    },
+    "total": 7
+  },
+  "rules_version": "1.0.0",
+  "schema_version": "1.0"
+}
