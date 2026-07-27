@@ -89,10 +89,16 @@ def test_an_unclear_elbow_abstains_as_low_confidence() -> None:
     assert metric_of(arms_crossed, **unclear(K.RIGHT_ELBOW)).status is MetricStatus.LOW_CONFIDENCE
 
 
-def test_a_zero_length_torso_abstains_rather_than_dividing_by_it() -> None:
-    """Normalising by a length of zero would produce infinity, which compares as "not folded"
-    against any threshold — a wrong answer that raises nothing."""
-    metric = metric_of(arms_crossed, body=Anthropometry(torso=0.0), **ARMS_FOLDED)
+@pytest.mark.parametrize("torso", [0.0, 1e-12, 1e-10])
+def test_a_degenerate_torso_abstains_rather_than_dividing_by_it(torso: float) -> None:
+    """Near-zero, not just zero.
+
+    `distance` is never negative, so a `<= 0.0` guard catches only the exact case — and exact zero
+    is the one a real backend is least likely to produce. A torso of 1e-12 m divides the ratio up
+    to ~1e11, which compares as "not folded" against any threshold: a confident wrong answer from
+    a measurement that does not exist, which is the failure mode this package is built to avoid.
+    """
+    metric = metric_of(arms_crossed, body=Anthropometry(torso=torso), **ARMS_FOLDED)
     assert metric.value is None
     assert metric.status is MetricStatus.UNDEFINED_GEOMETRY
     assert "no body length" in metric.detail
