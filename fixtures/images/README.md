@@ -6,8 +6,8 @@ in `API/sample_images/` (removed in OP-11). Every long edge is ≤ 1280 px.
 These are the images used by:
 
 - `pytest -m model` — real-backend tests (Epic B)
-- the CLI demo, `python -m pose_backends.cli --report <image>` (OP-43)
-- the old-vs-new evaluation in `docs/evaluation.md` (OP-115)
+- the CLI demo, `python -m pose_backends.cli --report <image>` (OP-21, OP-36)
+- the old-vs-new evaluation in `docs/evaluation.md` (Epic H, not yet ticketed)
 
 The legacy engine's verdicts on **these exact files** are recorded in
 [`../../docs/archive/legacy-baseline.json`](../../docs/archive/legacy-baseline.json). That capture
@@ -24,7 +24,7 @@ filename. That makes them usable as labelled evaluation data, not just smoke-tes
 |---|---|---|---|
 | `hunchback_right.jpg` | hunchback | lateral, facing right | |
 | `hunchback_left.jpg` | hunchback | lateral, facing **left** | Mirror of the above — the pair isolates laterality handling (FINDINGS §2.1) |
-| `straight_armsfolded.jpg` | straight | lateral | Arms folded — the positive case for the arm-fold metric (OP-35) |
+| `straight_armsfolded.jpg` | straight | lateral | Arms folded — the positive case for the arm-fold metric (OP-28) |
 | `reclined_right.jpg` | reclined | lateral, facing right | |
 | `kneeling_right.jpg` | kneeling | lateral, facing right | Lower legs partly occluded by the chair |
 | `desk_lean_exif.jpeg` | leaning forward at a desk | lateral | Real photo. **Retains EXIF `orientation=6`** — see below |
@@ -33,7 +33,7 @@ filename. That makes them usable as labelled evaluation data, not just smoke-tes
 
 Three subjects, three settings. `bench_feet_dangling.jpg` is the case the original project's
 README named as a goal — *"identify if feet are on the ground or dangling"* — and never delivered;
-it is the fixture that gives `heel_contact` (OP-37) something real to prove.
+it is the fixture that gives `heel_contact` (OP-30) something real to prove.
 
 ## The EXIF fixture
 
@@ -45,7 +45,7 @@ So the two real photos are prepared differently *on purpose*:
 
 - **`desk_lean_exif.jpeg`** — resized in stored-pixel space with the orientation tag **preserved**.
   Loading it without applying EXIF gives a sideways person. This is the regression fixture for the
-  EXIF-orientation correction required by OP-53.
+  EXIF-orientation correction required by OP-42.
 - **`desk_hunch.jpeg`** — rotation baked into the pixels, tag stripped. The already-normalized case.
 
 `cv2.imread` applies EXIF orientation by default; `PIL.Image.open` does **not** unless you call
@@ -54,8 +54,8 @@ pose pipeline, which is why one fixture keeps the tag.
 
 ## Known gap: no frontal image
 
-OP-11 asked for a frontal shot to drive the `view_confidence` rejection test (OP-38). **The
-inherited corpus contains none** — all 27 originals are lateral. The unit tests for OP-38 use
+OP-11 asked for a frontal shot to drive the `view_confidence` rejection test (OP-31). **The
+inherited corpus contains none** — all 27 originals are lateral. The unit tests for OP-31 use
 synthetic poses from `make_pose()` and do not need a photo, but end-to-end verification
 (V2-PLAN "Verification" step 6, *confirm a frontal photo is rejected*) does. A frontal image needs
 to be added before Epic D closes.

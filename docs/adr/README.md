@@ -17,6 +17,13 @@ fine — and should be marked as corrections, with the original claim left visib
 
 **Status** is one of `Accepted`, `Superseded by ADR-XXXX`, or `Proposed`.
 
+**Some ticket numbers in these files are draft numbers, not Jira keys.** ADRs 0001 and 0003–0006
+were written before the Jira import renumbered the plan's stories, so where they cite forward work
+— "implemented from OP-50", "OP-34 for the metrics" — the number is the one used in
+[`../V2-PLAN.md`](../V2-PLAN.md), which carries the full mapping. They are not corrected here
+because an ADR is a record of what was written at the time, and the mapping makes them
+unambiguous. ADR-0002 and anything written after it cite Jira keys.
+
 ## Index
 
 | ADR | Decision | Status |
