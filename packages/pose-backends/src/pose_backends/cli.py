@@ -42,12 +42,22 @@ if TYPE_CHECKING:
 
 __all__ = ["OUTPUT_SCHEMA_VERSION", "main"]
 
-OUTPUT_SCHEMA_VERSION: Final = "1.0"
+OUTPUT_SCHEMA_VERSION: Final = "2.0"
 """Bumped deliberately when the JSON shape changes.
 
 Consumers exist outside this repository's test suite — the evaluation writeup in Epic H compares
 this output against a legacy capture that can never be regenerated. An unversioned format would
 make "the numbers changed" and "the format changed" indistinguishable after the fact.
+
+**2.0** — ``landmarks`` carries every canonical keypoint rather than only the detected ones, with
+the rest null-filled and marked ``not_reported``, and ``canonical_count`` is new.
+
+A major bump rather than 1.1, because the null fill is the kind of change that breaks a reader
+quietly. Under 1.0 a keypoint the backend did not return was *absent*, so a consumer indexing it
+got a ``KeyError`` and knew immediately. Now the key is present and its coordinates are ``None``,
+which reads as a value and only fails further downstream, in arithmetic, wearing someone else's
+stack trace. Adding ``canonical_count`` on its own would have been a minor bump; changing what an
+existing key can contain is not.
 """
 
 EXIT_OK: Final = 0
