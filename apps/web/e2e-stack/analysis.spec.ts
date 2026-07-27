@@ -28,7 +28,7 @@ async function register(page: import('@playwright/test').Page, name: string) {
   await page.getByLabel('Name:').fill(name)
   await page.getByLabel('Email:').fill(`${name.toLowerCase().replace(/\s+/g, '.')}@example.com`)
   await page.getByLabel('Password:').fill('correct-horse-battery')
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: 'Create account' }).click()
   await expect(page.getByRole('heading', { name: `Hello, ${name}` })).toBeVisible()
 }
 
@@ -36,7 +36,7 @@ test('a photograph produces a real, measured result on screen', async ({ page })
   await register(page, 'Ada Lovelace')
 
   await page.getByLabel(/Input an image of you sitting/).setInputFiles(FIXTURE)
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: 'Analyse my posture' }).click()
 
   await expect(page.getByRole('heading', { name: 'Your results' })).toBeVisible()
 
@@ -58,7 +58,7 @@ test('the skeleton overlay is drawn over the uploaded photo', async ({ page }) =
   await register(page, 'Grace Hopper')
 
   await page.getByLabel(/Input an image of you sitting/).setInputFiles(FIXTURE)
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: 'Analyse my posture' }).click()
   await expect(page.getByRole('heading', { name: 'Your results' })).toBeVisible()
 
   const canvas = page.getByTestId('skeleton')
@@ -87,7 +87,7 @@ test('an unreadable file is refused with a message the user can act on', async (
     mimeType: 'text/plain',
     buffer: Buffer.from('this is not an image, it is a sentence'),
   })
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: 'Analyse my posture' }).click()
 
   const alert = page.getByRole('alert')
   await expect(alert).toBeVisible()

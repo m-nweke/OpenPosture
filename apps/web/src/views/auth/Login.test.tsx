@@ -27,7 +27,7 @@ async function registerAccount(user: ReturnType<typeof userEvent.setup>) {
   await user.type(await screen.findByLabelText('Name:'), 'Ada Lovelace')
   await user.type(screen.getByLabelText('Email:'), 'ada@example.com')
   await user.type(screen.getByLabelText('Password:'), 'correct-horse')
-  await user.click(screen.getByRole('button', { name: 'Submit' }))
+  await user.click(screen.getByRole('button', { name: 'Create account' }))
 }
 
 describe('Login', () => {

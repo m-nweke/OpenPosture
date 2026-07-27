@@ -1,87 +1,268 @@
-/* color palette from <https://github.com/vuejs/theme> */
+/* Design tokens and a small reset.
+ *
+ * This was the palette from `vuejs/theme`, inherited with the Vite scaffold. Every value below is
+ * now chosen for this application, and every component reads these variables rather than
+ * hardcoding a colour — so a change here is a change everywhere, and no component can quietly
+ * invent its own grey.
+ *
+ * Light and dark are both first-class. The palette is redefined under `prefers-color-scheme:
+ * dark` rather than approximated with opacity, because a dark theme built by fading a light one
+ * goes muddy exactly where contrast matters most.
+ */
+
 :root {
-  --vt-c-white: #ffffff;
-  --vt-c-white-soft: #f8f8f8;
-  --vt-c-white-mute: #f2f2f2;
+  /* --- Palette ------------------------------------------------------------
+   * Orange is the brand, carried over from the original and from the logo it sits beside.
+   *
+   * The skeleton overlay deliberately does *not* use it: the overlay draws in teal and amber,
+   * which are its own semantics (measured vs uncertain) and which stay legible on skin and
+   * clothing where orange would not. Chrome and data being different colours is the point —
+   * nothing on the photograph should look like part of the interface.
+   *
+   * Not the CSS keyword `orange` (#ffa500), which the old build used for text and which fails
+   * contrast against white at any normal size. These are darkened for legibility.
+   */
+  --orange-50: #fff7ed;
+  --orange-500: #f97316;
+  --orange-600: #ea580c;
+  --orange-700: #c2410c;
 
-  --vt-c-black: #181818;
-  --vt-c-black-soft: #222222;
-  --vt-c-black-mute: #282828;
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+  --slate-950: #020617;
 
-  --vt-c-indigo: #2c3e50;
+  /* Severity colours carry meaning, so they are picked for contrast on both surfaces rather
+   * than for vividness. */
+  --red-500: #dc2626;
+  --amber-600: #d97706;
+  --green-600: #16a34a;
 
-  --vt-c-divider-light-1: rgba(60, 60, 60, 0.29);
-  --vt-c-divider-light-2: rgba(60, 60, 60, 0.12);
-  --vt-c-divider-dark-1: rgba(84, 84, 84, 0.65);
-  --vt-c-divider-dark-2: rgba(84, 84, 84, 0.48);
+  /* --- Semantic surfaces -------------------------------------------------- */
+  --color-bg: var(--slate-50);
+  --color-surface: #ffffff;
+  --color-surface-sunken: var(--slate-100);
 
-  --vt-c-text-light-1: var(--vt-c-indigo);
-  --vt-c-text-light-2: rgba(60, 60, 60, 0.66);
-  --vt-c-text-dark-1: var(--vt-c-white);
-  --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
-}
+  --color-border: var(--slate-200);
+  --color-border-strong: var(--slate-300);
 
-/* semantic color variables for this project */
-:root {
-  --color-background: var(--vt-c-white);
-  --color-background-soft: var(--vt-c-white-soft);
-  --color-background-mute: var(--vt-c-white-mute);
+  --color-text: var(--slate-800);
+  --color-text-muted: var(--slate-500);
+  --color-heading: var(--slate-900);
 
-  --color-border: var(--vt-c-divider-light-2);
-  --color-border-hover: var(--vt-c-divider-light-1);
+  --color-accent: var(--orange-600);
+  --color-accent-hover: var(--orange-700);
+  --color-accent-soft: var(--orange-50);
+  --color-on-accent: #ffffff;
 
-  --color-heading: var(--vt-c-text-light-1);
-  --color-text: var(--vt-c-text-light-1);
+  --color-danger: var(--red-500);
+  --color-danger-soft: #fef2f2;
+  --color-warning: var(--amber-600);
+  --color-warning-soft: #fffbeb;
+  --color-success: var(--green-600);
+  --color-success-soft: #f0fdf4;
 
-  --section-gap: 160px;
+  /* --- Scale --------------------------------------------------------------
+   * One spacing scale. Choosing from a scale rather than typing a number is what keeps
+   * unrelated components visually aligned.
+   */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* Layered rather than one blur: a tight shadow reads as an edge, a wide one as height. */
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 6%);
+  --shadow-md: 0 1px 3px rgb(15 23 42 / 8%), 0 8px 24px -8px rgb(15 23 42 / 10%);
+  --shadow-lg: 0 2px 4px rgb(15 23 42 / 6%), 0 16px 40px -12px rgb(15 23 42 / 16%);
+
+  --font-sans:
+    Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  --container: 68rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-background: var(--vt-c-black);
-    --color-background-soft: var(--vt-c-black-soft);
-    --color-background-mute: var(--vt-c-black-mute);
+    --color-bg: var(--slate-950);
+    --color-surface: var(--slate-900);
+    --color-surface-sunken: #0b1220;
 
-    --color-border: var(--vt-c-divider-dark-2);
-    --color-border-hover: var(--vt-c-divider-dark-1);
+    --color-border: #1e293b;
+    --color-border-strong: #334155;
 
-    --color-heading: var(--vt-c-text-dark-1);
-    --color-text: var(--vt-c-text-dark-2);
+    --color-text: var(--slate-200);
+    --color-text-muted: var(--slate-400);
+    --color-heading: #f8fafc;
+
+    /* Lighter in dark mode: --orange-600 on a near-black surface is muddy, and an accent that
+     * has to be squinted at is not an accent. */
+    --color-accent: #fb923c;
+    --color-accent-hover: #fdba74;
+    --color-accent-soft: rgb(249 115 22 / 14%);
+    --color-on-accent: var(--slate-950);
+
+    /* The soft fills are near-white tints in light mode; in dark they have to be tints of the
+     * hue itself or they wash out to grey. */
+    --color-danger: #f87171;
+    --color-danger-soft: rgb(248 113 113 / 12%);
+    --color-warning: #fbbf24;
+    --color-warning-soft: rgb(251 191 36 / 12%);
+    --color-success: #4ade80;
+    --color-success-soft: rgb(74 222 128 / 12%);
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-md: 0 1px 3px rgb(0 0 0 / 40%), 0 8px 24px -8px rgb(0 0 0 / 50%);
+    --shadow-lg: 0 2px 4px rgb(0 0 0 / 40%), 0 16px 40px -12px rgb(0 0 0 / 60%);
   }
 }
+
+/* --- Reset --------------------------------------------------------------- */
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Deliberately not the scaffold's `* { margin: 0; font-weight: normal }`. That second rule
+ * flattened every heading to the body weight, so an `<h1>` and a `<p>` differed only in size —
+ * the document outline was correct in the markup and invisible on the screen. */
+body,
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
   margin: 0;
-  position: relative;
-  font-weight: normal;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   min-height: 100vh;
-  color: var(--color-text);
-  background: var(--color-background);
-  transition:
-    color 0.5s,
-    background-color 0.5s;
+  font-family: var(--font-sans);
+  font-size: 1rem;
   line-height: 1.6;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
-  font-size: 15px;
+  color: var(--color-text);
+  background: var(--color-bg);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--color-heading);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: 1.125rem;
+  font-weight: 620;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--color-accent);
+  text-underline-offset: 2px;
+  transition: color var(--transition);
+}
+
+a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* `:focus-visible`, not `:focus` — a mouse user clicking a button should not get a ring, a
+ * keyboard user tabbing to it must. Removing the outline without replacing it, the usual
+ * shortcut, makes an interface unusable without a mouse. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Honour the OS setting rather than animating regardless. Vestibular disorders are why this
+ * media query exists; treating it as optional treats those users as optional. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

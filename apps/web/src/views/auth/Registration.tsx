@@ -15,6 +15,7 @@ export default function Registration() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
@@ -73,26 +74,36 @@ export default function Registration() {
         </div>
         <div className={styles.formGroup}>
           <label htmlFor="password">Password:</label>
-          <input
-            type="password"
-            id="password"
-            autoComplete="new-password"
-            placeholder="At least 8 characters"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className={styles.passwordField}>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              id="password"
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            {/* A button, not a checkbox with an eye glyph: it performs an action rather than
+                recording a preference. `aria-pressed` is what tells a screen reader which state
+                it is currently in, and the label says what clicking will do. */}
+            <button
+              type="button"
+              className={styles.passwordToggle}
+              onClick={() => setShowPassword((shown) => !shown)}
+              aria-pressed={showPassword}
+              aria-controls="password"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
         {errMsg !== '' && (
           <p className={styles.error} role="alert">
             {errMsg}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{ backgroundColor: 'orange', color: '#ffffff' }}
-        >
-          {submitting ? 'Creating account…' : 'Submit'}
+        <button type="submit" className="button buttonPrimary" disabled={submitting}>
+          {submitting ? 'Creating account…' : 'Create account'}
         </button>
       </form>
       <p className={styles.signInHere}>

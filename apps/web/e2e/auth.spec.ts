@@ -22,7 +22,7 @@ test('a visitor must register before the dashboard will open', async ({ page }) 
   await page.getByLabel('Name:').fill('Ada Lovelace')
   await page.getByLabel('Email:').fill('ada@example.com')
   await page.getByLabel('Password:').fill('correct-horse')
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: 'Create account' }).click()
 
   await expect(page.getByRole('heading', { name: 'Hello, Ada Lovelace' })).toBeVisible()
 

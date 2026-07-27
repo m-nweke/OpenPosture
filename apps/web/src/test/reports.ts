@@ -111,7 +111,7 @@ export function frontalViewReport(): PostureReport {
       severity: 'info',
       message:
         'This photo looks like it was taken from the front. The measurements below still work, ' +
-        "but they rest on a depth estimate that is weakest along the camera's own axis — a " +
+        "but they rest on a depth estimate that is weakest along the camera's own axis. A " +
         'side-on photo would give a firmer answer.',
       metric: 'view_confidence',
       value: 0.8776,

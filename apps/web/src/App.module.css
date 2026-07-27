@@ -1,79 +1,145 @@
-/* Vue's <style scoped> equivalent in React: CSS Modules.
-   Vite treats any *.module.css file as one — class names get hashed, so these
-   rules cannot leak into other components. */
+/* The app shell: header, nav, footer. */
+
+.skipLink {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-weight: 600;
+  text-decoration: none;
+  /* Off-screen until focused, rather than `display: none` — a hidden element cannot receive
+     focus, which would defeat the entire purpose of a skip link. */
+  transform: translateY(-200%);
+  transition: transform var(--transition);
+}
+
+.skipLink:focus {
+  transform: translateY(0);
+}
 
 .header {
-  line-height: 1.5;
-  max-height: 100vh;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  /* Frosted rather than opaque so content scrolling under it stays perceptible. Falls back to
+     the translucent background alone where it is unsupported. */
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerInner {
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-heading);
+  text-decoration: none;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brand:hover {
+  color: var(--color-accent);
 }
 
 .logo {
-  display: block;
-  margin: 0 auto 2rem;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
 }
 
-.wrapper {
-  color: orange;
-}
-
-.navLink {
-  color: orange;
+.brandName {
+  font-size: 1.0625rem;
 }
 
 .nav {
-  width: 100%;
-  font-size: 12px;
-  text-align: center;
-  margin-top: 2rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
 }
 
-.btnSignout {
-  background-color: #db4437;
-  color: #fff;
-  padding: 8px 12px;
-  font-size: 14px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
+.navLink {
+  position: relative;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.9375rem;
+  font-weight: 550;
+  transition:
+    color var(--transition),
+    background-color var(--transition);
 }
 
-.btnSignout:hover {
-  background-color: #c4322e;
+.navLink:hover {
+  color: var(--color-heading);
+  background: var(--color-surface-sunken);
 }
 
-.nav a {
-  display: inline-block;
-  padding: 0 1rem;
-  border-left: 1px solid var(--color-border);
+/* The active route is marked by colour *and* an underline. Colour alone fails for anyone who
+   cannot distinguish these two hues, and `aria-current` already carries it for screen readers. */
+.navLinkActive {
+  color: var(--color-accent);
 }
 
-.nav a:first-of-type {
-  border: 0;
+.navLinkActive::after {
+  content: '';
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: 2px;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
 }
 
-@media (min-width: 1024px) {
-  .header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
+.navButton {
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
 
-  .logo {
-    margin: 0 2rem 0 0;
-  }
+.footer {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
 
-  .header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
+.footer p {
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: var(--space-5);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 34rem) {
+  .headerInner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
   }
 
   .nav {
-    text-align: left;
-    margin-left: -1rem;
-    font-size: 1rem;
+    justify-content: center;
+  }
 
-    padding: 1rem 0;
-    margin-top: 1rem;
+  .brand {
+    justify-content: center;
   }
 }

@@ -139,7 +139,7 @@ def _trunk(
             Finding(
                 code="trunk_forward_lean",
                 severity=Severity.MINOR,
-                message=f"Your torso is leaning {value:.0f}° forward — slightly more than neutral.",
+                message=f"Your torso is leaning {value:.0f}° forward, slightly more than neutral.",
                 metric=trunk.NAME,
                 value=value,
                 confidence=confidence,
@@ -214,7 +214,7 @@ def _knees(
             Finding(
                 code="kneeling",
                 severity=Severity.INFO,
-                message=f"You appear to be kneeling — your knee is folded to {value:.0f}°.",
+                message=f"You appear to be kneeling: your knee is folded to {value:.0f}°.",
                 metric=knees.KNEE_FLEXION,
                 value=value,
                 confidence=confidence,
@@ -295,7 +295,7 @@ def _view(
             message=(
                 "This photo looks like it was taken from the front. The measurements below still "
                 "work, but they rest on a depth estimate that is weakest along the camera's own "
-                "axis — a side-on photo would give a firmer answer."
+                "axis. A side-on photo would give a firmer answer."
             ),
             metric=view.NAME,
             value=value,

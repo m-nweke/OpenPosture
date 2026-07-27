@@ -61,20 +61,22 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
         </p>
       )}
 
-      {report.overall_score !== null ? (
-        <p className={styles.score}>
-          <span className={styles.scoreValue}>{Math.round(report.overall_score)}</span>
-          <span className={styles.scoreOutOf}>/ 100</span>
-        </p>
-      ) : (
-        // Not a zero and not a hundred. Both would be confident claims about a photograph the
-        // engine could not assess.
-        <p className={styles.score}>Not enough was visible to score this photo.</p>
-      )}
+      <div className={styles.summary}>
+        {report.overall_score !== null ? (
+          <p className={styles.score}>
+            <span className={styles.scoreValue}>{Math.round(report.overall_score)}</span>
+            <span className={styles.scoreOutOf}>/ 100</span>
+          </p>
+        ) : (
+          // Not a zero and not a hundred. Both would be confident claims about a photograph the
+          // engine could not assess.
+          <p className={styles.score}>Not enough was visible to score this photo.</p>
+        )}
 
-      <p className={styles.coverage}>
-        Assessed {report.quality.assessed} of {report.quality.total} measurements.
-      </p>
+        <p className={styles.coverage}>
+          Assessed {report.quality.assessed} of {report.quality.total} measurements.
+        </p>
+      </div>
 
       {imageUrl &&
         (landmarks.length > 0 ? (
@@ -113,7 +115,9 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
               <div key={name} className={styles.metricRow}>
                 <dt>{humanise(name)}</dt>
                 <dd>
-                  <strong>{formatValue(metric.value, metric.unit)}</strong>
+                  <span className={styles.metricValue}>
+                    {formatValue(metric.value, metric.unit)}
+                  </span>
                   <span className={styles.metricDetail}>{metric.detail}</span>
                 </dd>
               </div>
@@ -128,7 +132,7 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
           <ul className={styles.gaps}>
             {report.quality.gaps.map((gap) => (
               <li key={gap.metric}>
-                <strong>{humanise(gap.metric)}</strong> — {gap.detail}
+                <strong>{humanise(gap.metric)}:</strong> {gap.detail}
               </li>
             ))}
           </ul>
@@ -151,7 +155,7 @@ function humanise(metricName: string): string {
 }
 
 function formatValue(value: number | null, unit: string): string {
-  if (value === null) return '—'
+  if (value === null) return 'n/a'
   const rounded = Math.round(value * 100) / 100
   if (unit === 'deg') return `${rounded}°`
   if (unit === 'm') return `${rounded} m`

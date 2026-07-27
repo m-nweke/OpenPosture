@@ -61,7 +61,7 @@
     },
     "trunk_inclination_deg": {
       "confidence": 0.95,
-      "detail": "leaning 32° forward — a pronounced slouch",
+      "detail": "leaning 32° forward, a pronounced slouch",
       "status": "ok",
       "unit": "deg",
       "value": 32.0

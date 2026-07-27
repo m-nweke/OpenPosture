@@ -65,7 +65,7 @@ def _describe(value: float, side: str, thresholds: Thresholds) -> str:
     band unreachable.
     """
     if value <= thresholds.knee_kneeling_max_deg:
-        return f"your {side} knee is folded to {value:.0f}° — you appear to be kneeling"
+        return f"your {side} knee is folded to {value:.0f}°, which looks like kneeling"
     if value < thresholds.knee_seated_min_deg:
         return f"your {side} knee is tucked back sharply, at {value:.0f}°"
     if value <= thresholds.knee_seated_max_deg:

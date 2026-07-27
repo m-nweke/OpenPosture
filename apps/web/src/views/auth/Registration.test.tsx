@@ -22,7 +22,7 @@ async function fillForm(
   await user.type(await screen.findByLabelText('Name:'), name)
   await user.type(screen.getByLabelText('Email:'), email)
   await user.type(screen.getByLabelText('Password:'), password)
-  await user.click(screen.getByRole('button', { name: 'Submit' }))
+  await user.click(screen.getByRole('button', { name: 'Create account' }))
 }
 
 describe('Registration', () => {
@@ -66,7 +66,7 @@ describe('Registration', () => {
     await user.type(await screen.findByLabelText('Name:'), '   ')
     await user.type(screen.getByLabelText('Email:'), 'ada@example.com')
     await user.type(screen.getByLabelText('Password:'), 'correct-horse')
-    await user.click(screen.getByRole('button', { name: 'Submit' }))
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
 
     // Registration still succeeds — a blank name is not an error, it just becomes null so the
     // dashboard's fallback greeting fires instead of rendering "Hello, ".

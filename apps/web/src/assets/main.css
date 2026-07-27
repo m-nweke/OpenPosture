@@ -1,35 +1,108 @@
 @import './base.css';
 
+/* The app shell's layout.
+ *
+ * The scaffold turned `#root` into a two-column grid above 1024px and centred the body with
+ * flex, which put the header in one column and every page in the other — the reason the old
+ * dashboard rendered in a narrow strip beside a giant logo. Pages own their own width now.
+ */
+
 #root {
-  max-width: 1280px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.page {
+  width: 100%;
+  max-width: var(--container);
   margin: 0 auto;
-  padding: 2rem;
-
-  font-weight: normal;
+  padding: var(--space-6) var(--space-5) var(--space-8);
+  flex: 1;
 }
 
-a,
-.green {
+/* --- Shared primitives ----------------------------------------------------
+ * Global rather than per-module because a button should look the same wherever it is used, and
+ * three modules each defining `.button` is how that stops being true.
+ */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  /* These are used on both <button> and <Link>. Without this the link variants arrive
+     underlined from the global anchor styles and stop reading as buttons. */
   text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
+  transition:
+    background-color var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
 }
 
-@media (hover: hover) {
-  a:hover {
-    background-color: hsla(160, 100%, 37%, 0.2);
-  }
+.button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
-@media (min-width: 1024px) {
-  body {
-    display: flex;
-    place-items: center;
-  }
+/* Not `opacity: 0.5`, which also fades the text below contrast requirements. A disabled control
+ * still has to be readable — the user needs to know what it is in order to work out why it is
+ * unavailable. */
+.button:disabled {
+  cursor: not-allowed;
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  box-shadow: none;
+}
 
-  #root {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
-  }
+.buttonPrimary {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  box-shadow: var(--shadow-md);
+}
+
+/* Clear is destructive-ish: it throws away a result the user waited for. It reads as a real,
+   available action rather than as greyed-out chrome, without competing with the primary. */
+.buttonDanger {
+  background: var(--color-surface);
+  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent);
+  color: var(--color-danger);
+}
+
+.buttonDanger:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+}
+
+.buttonSecondary {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.buttonSecondary:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }

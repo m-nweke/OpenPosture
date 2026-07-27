@@ -1,0 +1,129 @@
+/* Text left, logo right, and the logo scales to whatever height the text ends up being.
+ *
+ * `align-items: stretch` (the grid default) makes the image cell exactly as tall as the text
+ * cell; `height: 100%` on the image then fills it, and `object-fit: contain` keeps the figure's
+ * proportions inside that box. So the two columns stay correlated at any viewport width and at
+ * any text length, with no magic numbers to keep in sync. */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-7);
+  padding: var(--space-7) 0 var(--space-6);
+}
+
+.heroText {
+  max-width: 40rem;
+  /* Without this a grid item refuses to shrink below its content's intrinsic width, and the
+     logo column gets squeezed to nothing before the text ever wraps. */
+  min-width: 0;
+}
+
+.heroLogo {
+  height: 100%;
+  width: auto;
+  /* An upper bound so the figure does not become absurd beside a short heading on a very wide
+     screen, and a lower one so it stays recognisable beside a long one. */
+  max-height: 20rem;
+  min-height: 8rem;
+  object-fit: contain;
+  align-self: stretch;
+}
+
+/* Below this the two columns would each be too narrow to read, so the logo goes above the text
+   at a fixed, modest size. */
+@media (max-width: 48rem) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+
+  .heroLogo {
+    order: -1;
+    height: 7rem;
+    min-height: 0;
+    justify-self: start;
+  }
+}
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: var(--space-4);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--color-accent);
+}
+
+.lede {
+  margin-top: var(--space-4);
+  font-size: 1.125rem;
+  color: var(--color-text-muted);
+  max-width: 38rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.features {
+  display: grid;
+  /* `auto-fit` with a minimum rather than fixed breakpoints: the grid reflows on content width,
+     so it behaves correctly inside any container without knowing the viewport. */
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.feature {
+  padding: var(--space-5);
+}
+
+.feature h3 {
+  margin-bottom: var(--space-2);
+}
+
+.feature p {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.privacy {
+  margin-top: var(--space-6);
+  padding: var(--space-5);
+}
+
+.privacy h2 {
+  font-size: 1.125rem;
+  margin-bottom: var(--space-2);
+}
+
+.privacy p {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  max-width: 46rem;
+}
