@@ -1,0 +1,334 @@
+"""The upload endpoint, and every way it can be handed something it should refuse.
+
+The ticket names seven cases: valid upload, oversize, disallowed type, undecodable file, no
+person, low confidence, and backend failure. Each is here, plus the one that matters most for
+this project's story — an all-gaps report is a 201, not an error.
+"""
+
+from __future__ import annotations
+
+import io
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any
+
+import pytest
+from fastapi.testclient import TestClient
+from PIL import Image
+
+from openposture_api.config import Settings
+from openposture_api.images import MAX_IMAGE_BYTES
+from openposture_api.main import create_app
+from openposture_api.pose import get_pose_backend
+from openposture_api.storage import LocalDiskStorage, get_storage
+from pose_backends.errors import ModelLoadError
+from pose_backends.fake import FakePoseBackend, PosePreset
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
+    from fastapi import FastAPI
+
+ENDPOINT = "/api/v1/analyses"
+
+
+def make_image(
+    *,
+    width: int = 640,
+    height: int = 480,
+    fmt: str = "JPEG",
+    orientation: int | None = None,
+) -> bytes:
+    """A small real image in the requested format.
+
+    Real bytes rather than a stub, because the point of this layer is that it decodes what it is
+    given — a fake would prove nothing about Pillow's behaviour, which is the behaviour under
+    test.
+    """
+    image = Image.new("RGB", (width, height), color=(120, 130, 140))
+    # A little structure, so the encoder cannot collapse it to something degenerate.
+    for x in range(0, width, 8):
+        for y in range(0, height, 8):
+            image.putpixel((x, y), (200, 40, 40))
+
+    buffer = io.BytesIO()
+    if orientation is not None:
+        exif = image.getexif()
+        exif[0x0112] = orientation
+        image.save(buffer, format=fmt, exif=exif)
+    else:
+        image.save(buffer, format=fmt)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def storage(tmp_path: Path) -> LocalDiskStorage:
+    return LocalDiskStorage(tmp_path / "objects")
+
+
+@contextmanager
+def build_client(
+    settings: Settings,
+    storage: LocalDiskStorage,
+    *,
+    preset: PosePreset = PosePreset.STRAIGHT,
+    backend: object | None = None,
+) -> Iterator[TestClient]:
+    """An app whose pose backend and storage are both substituted.
+
+    `load_backend=False` plus two dependency overrides means this test touches no model file and
+    writes nowhere but a temporary directory — which is the whole point of both seams.
+
+    A context manager rather than a bare generator. Called as `next(build_client(...))` the
+    generator is never closed, so the `with TestClient(...)` block below never exits: lifespan
+    shutdown does not run and the transport is left to the garbage collector.
+    """
+    app: FastAPI = create_app(settings, load_backend=False)
+    app.dependency_overrides[get_pose_backend] = lambda: backend or FakePoseBackend(preset)
+    app.dependency_overrides[get_storage] = lambda: storage
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client
+
+
+@pytest.fixture
+def client(settings: Settings, storage: LocalDiskStorage) -> Iterator[TestClient]:
+    with build_client(settings, storage) as test_client:
+        yield test_client
+
+
+def upload(client: TestClient, data: bytes, *, filename: str = "photo.jpg") -> Any:
+    return client.post(ENDPOINT, files={"image": (filename, data, "image/jpeg")})
+
+
+class TestValidUpload:
+    def test_a_photograph_produces_a_report(self, client: TestClient) -> None:
+        """The assertion the whole project exists to make true."""
+        response = upload(client, make_image())
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["pose_detected"] is True
+        assert body["report"]["schema_version"]
+        assert body["report"]["metrics"]
+
+    def test_the_report_carries_real_measured_values(self, client: TestClient) -> None:
+        """Not a placeholder, not a constant string — a number describing the pose."""
+        body = upload(client, make_image()).json()
+
+        trunk = body["report"]["metrics"]["trunk_inclination_deg"]
+
+        assert trunk["status"] == "ok"
+        assert isinstance(trunk["value"], (int, float))
+
+    def test_the_original_bytes_are_stored_and_the_key_returned(
+        self, client: TestClient, storage: LocalDiskStorage
+    ) -> None:
+        """A key, not a URL. See the storage layer's module docstring."""
+        data = make_image()
+
+        body = upload(client, data).json()
+
+        assert storage.get(body["object_key"]) == data
+        assert "://" not in body["object_key"]
+
+    def test_the_uploaded_filename_never_becomes_the_key(self, client: TestClient) -> None:
+        """The legacy `/upload` used `file.filename` directly (FINDINGS §5.1). Here the filename
+        is hostile and the key is unaffected, because the filename never reaches storage."""
+        body = upload(client, make_image(), filename="../../etc/passwd").json()
+
+        assert body["object_key"].startswith("analyses/")
+        assert "passwd" not in body["object_key"]
+        assert ".." not in body["object_key"]
+
+    def test_the_declared_content_type_does_not_decide_the_stored_type(
+        self, client: TestClient, storage: LocalDiskStorage
+    ) -> None:
+        """A PNG announced as `image/jpeg` is stored as a PNG. The header is a client claim; the
+        decoded content is the fact."""
+        png = make_image(fmt="PNG")
+
+        response = client.post(ENDPOINT, files={"image": ("lies.jpg", png, "image/jpeg")})
+
+        assert response.status_code == 201
+        assert response.json()["object_key"].endswith(".png")
+
+    @pytest.mark.parametrize("fmt", ["JPEG", "PNG", "WEBP"])
+    def test_every_allowed_format_is_accepted(self, client: TestClient, fmt: str) -> None:
+        assert upload(client, make_image(fmt=fmt)).status_code == 201
+
+
+class TestExifOrientation:
+    def test_a_rotated_photo_produces_the_same_report_as_its_upright_twin(
+        self, settings: Settings, tmp_path: Path
+    ) -> None:
+        """The acceptance criterion, and the single most likely source of confidently wrong
+        answers in real use: a phone photo carries a rotation flag rather than rotated pixels,
+        and a decoder that ignores it hands the model a person lying down.
+
+        Asserted on the reported image dimensions, because the fake backend ignores pixels — a
+        portrait image decoded without the transpose comes back landscape.
+        """
+        upright = make_image(width=480, height=640)
+        # Orientation 6 means "rotate 90° clockwise to display", so the stored pixels are
+        # landscape and the displayed image is portrait.
+        rotated = make_image(width=640, height=480, orientation=6)
+
+        with build_client(settings, LocalDiskStorage(tmp_path / "a")) as client:
+            upright_body = upload(client, upright).json()
+            rotated_body = upload(client, rotated).json()
+
+        assert rotated_body["image"] == upright_body["image"]
+        assert rotated_body["image"] == {"width": 480, "height": 640}
+
+
+class TestAbstention:
+    def test_no_person_is_a_201_not_an_error(self, settings: Settings, tmp_path: Path) -> None:
+        """The user photographed their desk. The request succeeded; the answer is "nobody here"."""
+        with build_client(
+            settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.NO_PERSON
+        ) as client:
+            response = upload(client, make_image())
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["pose_detected"] is False
+        assert body["report"] is None
+        # Still stored: the image is evidence even when nothing was found in it.
+        assert body["object_key"]
+
+    def test_a_partly_occluded_pose_returns_201_with_gaps(
+        self, settings: Settings, tmp_path: Path
+    ) -> None:
+        """Gaps are the output C3 exists to produce. A 4xx here would throw them away and put the
+        frontend into a generic error state — the original's silent-default defect in reverse."""
+        with build_client(
+            settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.PARTIAL_OCCLUSION
+        ) as client:
+            response = upload(client, make_image())
+
+            assert response.status_code == 201
+            quality = response.json()["report"]["quality"]
+            assert quality["gaps"]
+            assert quality["assessed"] < quality["total"]
+
+    def test_gaps_name_the_metric_and_why(self, settings: Settings, tmp_path: Path) -> None:
+        """ "Couldn't assess your knees, try a wider shot" needs both halves."""
+        with build_client(
+            settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.PARTIAL_OCCLUSION
+        ) as client:
+            gaps = upload(client, make_image()).json()["report"]["quality"]["gaps"]
+
+            assert all(gap["metric"] for gap in gaps)
+            assert all(gap["status"] for gap in gaps)
+
+
+class TestRejections:
+    def test_an_oversize_upload_is_refused(self, client: TestClient) -> None:
+        oversize = b"\xff\xd8\xff\xe0" + b"\x00" * (MAX_IMAGE_BYTES + 1)
+
+        response = upload(client, oversize)
+
+        assert response.status_code == 413
+        body = response.json()
+        assert body["type"].endswith("/image-too-large")
+        assert body["limit"] == MAX_IMAGE_BYTES
+
+    def test_the_size_check_happens_before_decoding(self, client: TestClient) -> None:
+        """The payload is not a valid image at all. A 413 rather than a 400 proves the limit was
+        applied first — which is the difference between rejecting a 2 GB upload and decoding it."""
+        response = upload(client, b"\x00" * (MAX_IMAGE_BYTES + 1))
+
+        assert response.status_code == 413
+
+    def test_a_disallowed_format_is_refused(self, client: TestClient) -> None:
+        """A real image, in a format outside the allowlist. GIF decodes fine and is not accepted."""
+        buffer = io.BytesIO()
+        Image.new("RGB", (32, 32), color=(1, 2, 3)).save(buffer, format="GIF")
+
+        response = upload(client, buffer.getvalue())
+
+        assert response.status_code == 415
+        body = response.json()
+        assert body["type"].endswith("/unsupported-image-type")
+        assert body["detected_format"] == "GIF"
+
+    def test_an_undecodable_file_is_refused(self, client: TestClient) -> None:
+        response = upload(client, b"this is not an image, it is a sentence")
+
+        assert response.status_code == 400
+        assert response.json()["type"].endswith("/invalid-image")
+
+    def test_an_empty_file_is_refused(self, client: TestClient) -> None:
+        response = upload(client, b"")
+
+        assert response.status_code == 400
+
+    def test_a_truncated_image_is_refused(self, client: TestClient) -> None:
+        """A real upload failure mode, not a malicious one: the connection dropped mid-transfer."""
+        response = upload(client, make_image()[:200])
+
+        assert response.status_code == 400
+
+    def test_a_missing_file_field_is_a_validation_error(self, client: TestClient) -> None:
+        response = client.post(ENDPOINT)
+
+        assert response.status_code == 422
+        assert response.json()["type"].endswith("/validation-error")
+
+    def test_every_rejection_uses_the_problem_envelope(self, client: TestClient) -> None:
+        """One error parser for the frontend, whatever went wrong."""
+        for payload in (b"", b"nonsense", b"\x00" * (MAX_IMAGE_BYTES + 1)):
+            response = upload(client, payload)
+
+            assert response.headers["content-type"].startswith("application/problem+json")
+            assert set(response.json()) >= {"type", "title", "status", "detail", "instance"}
+
+
+class TestBackendFailure:
+    def test_a_broken_backend_is_a_502_not_a_500(self, settings: Settings, tmp_path: Path) -> None:
+        """502 says the fault is downstream of this service, which is what tells an operator to
+        look at the model rather than at the API."""
+
+        class _Broken:
+            name = "broken"
+
+            def detect(self, image_bgr: object) -> None:
+                raise ModelLoadError("the graph could not be built")
+
+            def warmup(self) -> None:
+                return
+
+        with build_client(settings, LocalDiskStorage(tmp_path / "a"), backend=_Broken()) as client:
+            response = upload(client, make_image())
+
+        assert response.status_code == 502
+        assert response.json()["type"].endswith("/pose-backend-failed")
+
+    def test_the_backend_error_text_does_not_reach_the_client(
+        self, settings: Settings, tmp_path: Path
+    ) -> None:
+        class _Broken:
+            name = "broken"
+
+            def detect(self, image_bgr: object) -> None:
+                raise ModelLoadError("/srv/secrets/model.task is corrupt")
+
+            def warmup(self) -> None:
+                return
+
+        with build_client(settings, LocalDiskStorage(tmp_path / "a"), backend=_Broken()) as client:
+            response = upload(client, make_image())
+
+        assert "/srv/secrets" not in response.text
+
+    def test_an_unavailable_backend_is_a_503(self, settings: Settings, tmp_path: Path) -> None:
+        """No override at all: the app started without loading a backend, which is what a missing
+        model file looks like in production."""
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_storage] = lambda: LocalDiskStorage(tmp_path / "a")
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = upload(client, make_image())
+
+        assert response.status_code == 503
+        assert response.json()["type"].endswith("/pose-backend-unavailable")
