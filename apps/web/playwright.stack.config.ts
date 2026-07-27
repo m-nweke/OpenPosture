@@ -20,6 +20,11 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e-stack',
+  // The screenshot spec is a tool for producing the README image, not a check. Excluded here
+  // so `npm run test:e2e:stack` and the e2e workflow never depend on it — and never rewrite a
+  // committed image as a side effect of running the suite. `npm run screenshot` names it
+  // explicitly, which overrides this.
+  testIgnore: process.env.E2E_INCLUDE_SCREENSHOT ? [] : ['**/screenshot.spec.ts'],
   fullyParallel: true,
   // A test that only passes on retry is flaky, and the ticket asks for ten consecutive green
   // runs before merge. Retries would hide exactly what that check is looking for.

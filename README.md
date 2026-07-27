@@ -1,53 +1,145 @@
-# OpenPosture - Sitting Posture Feedback System
+# OpenPosture
 
 [![PR](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml)
+[![containers](https://github.com/m-nweke/OpenPosture/actions/workflows/containers.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/containers.yml)
+[![scientific-validation](https://github.com/m-nweke/OpenPosture/actions/workflows/scientific-validation.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/scientific-validation.yml)
 
-> **⚠️ The narrative sections below describe the original v1 capstone and are being replaced.**
-> The project is mid-rewrite. Overview, Model Architecture and Technologies Used still describe
-> the Vue frontend and the TensorFlow/Keras OpenPose model, both of which have been removed. See
-> [`docs/V2-PLAN.md`](docs/V2-PLAN.md) for what is being built and
-> [`docs/FINDINGS.md`](docs/FINDINGS.md) for the audit of what was here before.
-> [Development (v2)](#development-v2) is current. A rewritten README ships with the walking
-> skeleton (OP-48).
+**Upload a photograph of yourself sitting. Get back angles measured from your own body, and an
+honest account of what could not be measured.**
 
-### [Run Guide (archived)](docs/archive/RUNNING.md)
-### [Model Download Link (archived)](docs/archive/ModelReadME.md)
-### [Project Proposal Slide deck](docs/archive/Presentations/PostureCapstone.pptx)
-### [Statement of Work](docs/archive/Misc/SoW_Posture.docx)
+![The dashboard showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it, a score of 70, two findings about trunk lean and forward head, six measurements, and one metric the engine could not assess](docs/images/dashboard-result.png)
 
-## Overview
-This MIT-licensed software, hosted on GitHub, is a posture assessment tool that determines the sitting position of a person when given a lateral view as input. The output includes details such as the position of the back (straight, hunchback, reclined), position of the hands (folded vs not folded), and kneeling (i.e., feet curled behind the knees). The project employs a trained Keras model based on OpenPose to detect keypoints on the human body, providing valuable insights into sitting posture.
+Everything in that screenshot is computed. The skeleton comes from MediaPipe Pose Landmarker, the
+angles from a pure rules engine, and the sentence about the arms — *"left elbow and left wrist were
+unclear"* — is the engine declining to answer rather than guessing.
 
-## Importance
-Poor sitting posture can lead to lower back and neck pain, as well as various adverse health effects, including musculoskeletal imbalances, balance issues, impaired digestion, and reduced flexibility. Good posture, such as keeping feet flat on the floor, avoiding crossing knees or ankles, and sitting up straight, is crucial for overall well-being.
+That last part is the point of the project. This is a rewrite of a 2024 university capstone whose
+posture logic reported **"Straight back position" whenever assessment failed** — a diagnostic tool
+that defaulted to *you're fine* when it could not see you.
 
-## Project Goals
-### New Features:
-Determine the position of the neck.
-Identify if feet are on the ground or dangling.
-Detect if legs are crossed.
-Provide recommendations for posture improvement to reduce the risk of back and neck pain.
-### User Interface:
-Develop an easy-to-use UI for users to view their posture status and receive corresponding recommendations.
+---
 
-## Expected Outcomes
-Design a seated posture assessment interface that evaluates the alignment of the back, feet, knees, and neck. Provide personalized recommendations to minimize the risk of neck and back discomfort.
+## Quickstart
 
-## Model Architecture
-The project uses a VGG-like architecture with a multi-stage approach (stages 1 to 6) to progressively refine predictions. The model focuses on detecting keypoints on the human body, including joints like the head, shoulders, elbows, wrists, hips, knees, and ankles. It incorporates branches for both Part Affinity Fields (PAF) and confidence maps. Predictions from prior stages are concatenated with the input for iterative refinement. The model is designed for training with additional inputs such as vector weights and heat weights, utilizing ReLU activation, concatenation, and multiplication operations.
+No accounts, no API key, nothing to download.
 
-## Technologies Used
-Frontend: Vue.js
+```bash
+git clone https://github.com/m-nweke/OpenPosture.git
+cd OpenPosture
+docker compose up
+```
 
-Database: Firebase
+Then open <http://localhost:5173>, register any email and password, and upload a photo of yourself
+sitting — **taken from the side**.
 
-Backend: Python API via OpenPose
+The API image carries the pose model, fetched at build time with its SHA256 pinned, so the first
+`docker compose up` produces real analysis with no extra steps. Working on the frontend and don't
+want to wait for inference? `OPENPOSTURE_POSE_BACKEND=fake docker compose up` runs the entire stack
+with a synthetic skeleton and no model at all.
 
-Model: Keras/TensorFlow
+## What it measures
 
-Computer Vision: OpenCV
+Seven metrics, in world space rather than pixels:
 
-Development Environment: Jupyter Notebook
+| Metric | What it says |
+| --- | --- |
+| `trunk_inclination_deg` | Signed lean of hip-mid → shoulder-mid against gravity |
+| `craniovertebral_angle_deg` | Forward-head posture; below 50° is forward |
+| `arms_crossed` | Forearm-to-upper-arm ratio, normalised by torso |
+| `elbow_flexion_deg` | Elbow angle |
+| `knee_flexion_deg` | Hip–knee–ankle angle |
+| `heel_contact_m` | Whether your feet are actually on the floor |
+| `view_confidence` | Whether the photo is lateral enough to trust the rest |
+
+Any of them can return a **gap** instead of a number, naming the keypoints that were unclear. A
+report made entirely of gaps is a successful request with an honest answer, not an error.
+
+## What changed, and why it matters
+
+The original is preserved under [`docs/archive/`](docs/archive/) and audited line-by-line in
+[`docs/FINDINGS.md`](docs/FINDINGS.md). Three of its defects are worth showing next to their
+replacements, because each one is a category rather than a typo.
+
+### 1. Thresholds were raw pixels
+
+```python
+# posture_image.py:144-145
+if (distance < (armdist + 100) and distance > (armdist - 100)):
+    # this value 100 is arbitary. this shall be replaced with a calculation
+    # which can adjust to different sizes of people.
+```
+
+The comment is the original author's. A person standing twice as far from the camera produced half
+the pixel separation and the opposite verdict.
+
+**Replacement:** every angle is computed from MediaPipe's world landmarks — metres, hip-origin —
+and every ratio is normalised by a body dimension. The tunable values live in
+[`packages/posture-spec/src/posture_spec/rules.json`](packages/posture-spec/src/posture_spec/rules.json),
+loaded by the engine rather than typed into it.
+
+**The proof is a property test, not an assertion:**
+
+```python
+# packages/posture-core/tests/test_properties.py
+def test_every_angular_metric_is_invariant_to_body_size(pose, scale):
+    """The defect the whole rebuild exists to fix, stated over the entire input space."""
+```
+
+Hypothesis generates poses and scales them between 0.3× and 3×; every angular metric must agree to
+within 1e-6. That property fails catastrophically against the original engine. It runs on every
+pull request in
+[`scientific-validation.yml`](.github/workflows/scientific-validation.yml).
+
+### 2. Failure was reported as good posture
+
+```python
+# posture_image.py — checkPosition() wraps its body in `except Exception` and returns None
+if position == 1:    print("Hunchback position")
+elif position == -1: print("Reclined back position")
+else:                print("Straight back position")   # ← None lands here
+```
+
+**Replacement:** a metric that cannot be computed has `value = None`, a status saying which
+keypoints failed, and produces a `Gap`. The API returns it as a `201` with `quality.gaps`
+populated, and the UI renders it as *"we could not assess this, try a wider shot"*. There is no
+code path that turns absence of evidence into evidence of absence — that is enforced by
+[boundary and degradation tests](packages/posture-core/tests/test_boundaries.py) that drop each
+keypoint in turn and assert nothing raises and nothing is invented.
+
+### 3. The dashboard did not call anything
+
+```tsx
+// openpose-react/src/views/Dashboard.tsx — the entire "analysis"
+const POSTURE_DETECTION_RESULT = 'Our posture detection model detected you sitting with a ...'
+setTimeout(() => { setShowResults(true) }, 5000)
+```
+
+Both frontends faked it. Nothing was uploaded and the model was never invoked — `API/app.py` never
+imported it, because the legacy `process()` functions referenced module globals assigned under a
+`__main__` guard and raised `NameError` on import.
+
+**Replacement:** a real multipart upload with byte-accurate progress, and a
+[Playwright journey](apps/web/e2e-stack/analysis.spec.ts) that asserts an **exact measured value**
+appears on screen. Asserting "a results panel rendered" would have passed against the code above,
+which is why it does not.
+
+## Current limitations
+
+Stated plainly, because a project about honest measurement should be honest about itself.
+
+- **Authentication is a placeholder.** `apps/web/src/auth` really registers accounts and really
+  rejects wrong passwords, entirely inside the browser tab. Nothing is stored on a server. Epic E
+  replaces it with self-hosted JWT.
+- **Nothing is persisted.** Uploads land in a volume; analyses are not saved and there is no
+  history view. Also Epic E.
+- **No LLM coaching yet.** The findings are the engine's own wording. Epic F adds a coach that is
+  told the numbers and forbidden from contradicting them.
+- **No live webcam mode.** Epic G.
+- **One person per photo**, and the photo must be roughly lateral. `view_confidence` says so when
+  it is not, rather than silently answering anyway.
+- **Not a medical device.** It measures angles and says what it measured.
+
+---
 
 ## Contributors
 
@@ -84,9 +176,12 @@ Epics are tracked in Jira project `OP`; the plan they came from is
   property/boundary/golden suites are merged. Outstanding: the extended scientific property suite
   (mirror consistency, physical domains, confidence monotonicity) and the evaluation-data
   contract.
-- **D — Walking skeleton** · not started. `apps/api` is a stub with no routes, and the React
-  dashboard still renders placeholder results behind a `setTimeout`.
-- **E–H** · not started.
+- **D — Walking skeleton** · done, and tagged `v0.1.0`. FastAPI app factory, lifespan-loaded pose
+  backend, storage behind a Protocol, `POST /api/v1/analyses`, Compose with a Vite proxy, the
+  rewritten dashboard, generated API types, the canvas overlay and a full-stack Playwright journey.
+- **E — Persistence and auth** · not started. This is the next epic: Postgres, MinIO, Alembic and
+  self-hosted JWT.
+- **F–H** · not started.
 
 The MediaPipe portability spike passed on both `linux/amd64` and `linux/arm64`, so the ONNX
 MoveNet fallback the plan held in reserve was cancelled rather than built
@@ -196,7 +291,8 @@ for this repo cannot drift apart on versions or cache keys.
 | `changes`                      | Decides which areas a change touched              |
 | `lint`                         | `ruff check` + `ruff format --check`              |
 | `typecheck`                    | `mypy --strict`                                   |
-| `test-python (3.11 \| 3.12)`   | `pytest`, with a 95% floor on `posture-core`      |
+| `test-python (3.11 \| 3.12)`   | `pytest`, 95% floor on `posture-core`, 85% on `apps/api` |
+| `contract`                     | Regenerates the OpenAPI schema and TS types; fails on committed drift |
 | `web-lint`                     | oxlint + Prettier                                 |
 | `web-typecheck`                | `tsc`, strict                                     |
 | `web-test`                     | Vitest, 70% floor                                 |
@@ -213,7 +309,7 @@ Path filtering is per job, never at the workflow level: a workflow that never ru
 so a required check would sit pending forever and a docs-only pull request could not merge.
 Changes to `pr.yml` or the composite action run *everything*, and so does every push to `main`.
 
-Two further workflows exist.
+Three further workflows exist.
 
 **`scientific-validation.yml`** runs on pull requests, pushes to `main` and on demand, in three
 jobs aggregated by `scientific-ok`: the invariance and degradation properties, boundary behaviour
@@ -221,8 +317,19 @@ at every threshold, the golden report corpus (regenerated and diffed, so stale s
 ride along), and a drift check that `rules.json` and the engine's `Thresholds` still describe the
 same numbers. `pr.yml` asks *did this change break the software*; this asks *is the engine still
 measuring the same thing*. They fail for different reasons, which is why they are separate
-workflows with separate aggregators. `scientific-ok` is **not** currently in the `main` ruleset's
-required checks — only `ci-ok` is.
+workflows with separate aggregators.
+
+`scientific-ok`, `containers-ok` and `e2e-ok` are **not** currently in the `main` ruleset's
+required checks — only `ci-ok` is. See [`.github/main-ruleset.md`](.github/main-ruleset.md) for
+why, and for the command that adds them.
+
+**`containers.yml`** and **`e2e.yml`** both run on every pull request, aggregated by
+`containers-ok` and `e2e-ok`. The first builds both images, validates Compose, starts the stack,
+waits for readiness and smoke-tests it; the second drives a real browser through the whole
+application and asserts an exact measured value on screen. Both use the fake pose backend at
+runtime — the image still contains the real inference stack, since testing a differently-built
+image would prove nothing about the one that ships — so their failures are about wiring rather
+than about inference.
 
 **`model-validation.yml`** runs on `workflow_dispatch` only. It verifies the pinned SHA256, then
 runs the real MediaPipe weights over the fixture images and uploads landmark and latency
