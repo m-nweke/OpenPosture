@@ -1,0 +1,129 @@
+# Real-model validation. MANUAL DISPATCH ONLY.
+#
+# Everything in pr.yml runs with no model weights, no container, no database and no secret, and
+# finishes in minutes. That is deliberate, and it is why the landmark mapping is tested against a
+# stub. But a stub agreeing with itself is not evidence that the mapping is right about a *real*
+# model, so those tests exist too — marked `pytest.mark.model`, deselected everywhere else, and
+# run here.
+#
+# WHY THERE IS NO `schedule:` TRIGGER
+# ----------------------------------
+# The plan is explicit that this must not run nightly, and the reasoning is worth keeping. A
+# scheduled job downloads 9 MB of weights and ~400 MB of wheels to re-answer a question whose
+# inputs are all pinned — the model by SHA256, mediapipe at 0.10.18, the fixtures in git. Nothing
+# can change between midnight and midnight. What a nightly run would actually produce is a
+# recurring notification that everyone learns to ignore, which is worse than no signal.
+#
+# It is invoked by hand when the adapter or the model pin changes, and later by the release
+# workflow. OP-111 hardens it further.
+
+name: model-validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_variant:
+        description: "Which model variant to validate"
+        required: false
+        default: full
+        type: choice
+        options: [lite, full, heavy]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  validate:
+    name: validate (${{ inputs.model_variant }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+        with:
+          python: ${{ env.PYTHON_VERSION }}
+
+      # The heavy dependency, installed only here. `--only-binary=:all:` because a source build of
+      # mediapipe would mean the wheel this project's entire platform bet rests on was not
+      # available — and that must fail loudly rather than be silently worked around. See ADR-0002.
+      #
+      # libgl1 and libglib2.0-0 are required because mediapipe 0.10.18 hard-depends on the
+      # non-headless opencv-contrib-python. Route A from the ADR: fine on a runner, wrong for the
+      # API image, which uses requirements-mediapipe.txt with --no-deps instead.
+      - name: Install system libraries for non-headless OpenCV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+
+      - name: Install mediapipe
+        # Single-quoted because `--only-binary=:all:` puts a `: ` inside the scalar, which YAML
+        # would otherwise read as a nested mapping and refuse to parse.
+        run: 'uv pip install --only-binary=:all: "mediapipe==0.10.18"'
+
+      # FIRST, before anything else runs. A corrupted or swapped model would otherwise produce a
+      # set of plausible-looking landmark diagnostics that describe a different model than the one
+      # this workflow claims to have validated.
+      - name: Fetch and verify the model
+        run: make fetch-model MODEL_VARIANT=${{ inputs.model_variant }}
+
+      - name: Verify the checksum independently
+        run: make verify-model MODEL_VARIANT=${{ inputs.model_variant }}
+
+      - name: Real-model tests
+        env:
+          MODEL_PATH: models/pose_landmarker_${{ inputs.model_variant }}.task
+        run: uv run pytest -m model -v
+
+      # Diagnostics, not assertions. The tests above decide pass or fail; this exists so a human
+      # comparing two model variants — or this engine against the legacy baseline — has the raw
+      # numbers rather than a green tick.
+      - name: Capture landmark and latency diagnostics
+        env:
+          MODEL_PATH: models/pose_landmarker_${{ inputs.model_variant }}.task
+        run: |
+          mkdir -p diagnostics
+          # `find` rather than a glob: fixtures/images also holds a README, and feeding that to the
+          # CLI would report "no pose detected" for a markdown file — a confusing line in a log
+          # whose whole purpose is to be read by a human comparing model variants.
+          find fixtures/images -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' \) \
+            | sort | while read -r image; do
+              name=$(basename "${image%.*}")
+              echo "== $name"
+              uv run python -m pose_backends.cli "$image" --json \
+                > "diagnostics/${name}.json" || echo "  (no pose detected)"
+            done
+          uv run python - <<'PY' | tee diagnostics/summary.md
+          import json, pathlib
+          rows = []
+          for path in sorted(pathlib.Path("diagnostics").glob("*.json")):
+              data = json.loads(path.read_text())
+              confident = sum(
+                  1 for lm in data["landmarks"].values() if lm["visibility"] >= 0.5
+              )
+              rows.append(
+                  (path.stem, data["landmark_count"], confident, data["inference_ms"])
+              )
+          print("| fixture | landmarks | visibility >= 0.5 | inference ms |")
+          print("| --- | ---: | ---: | ---: |")
+          for row in rows:
+              print("| {} | {} | {} | {:.1f} |".format(*row))
+          PY
+
+      - name: Summary
+        run: cat diagnostics/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        # Unconditional, unlike pr.yml's failure-only report. The point of this workflow is the
+        # numbers; a green run whose diagnostics were discarded answered nothing.
+        if: always()
+        with:
+          name: model-diagnostics-${{ inputs.model_variant }}
+          path: diagnostics/
+          retention-days: 30

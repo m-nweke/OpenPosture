@@ -4,11 +4,11 @@
 #
 #   * `make fetch-model`     — verifies a download before moving it into place
 #   * `make verify-model`    — verifies whatever is already on disk
+#   * `model-validation.yml` — verifies the hash before running anything
 #   * the API image build    — `ADD --checksum=sha256:<the full hash below>` (planned, OP-43)
-#   * `model-validation.yml` — verifies the hash before running anything (planned, OP-21)
 #
-# The last two do not exist yet; they are named so that when they arrive they reference this file
-# rather than pasting a hash of their own.
+# The image build does not exist yet; it is named so that when it arrives it references this file
+# rather than pasting a hash of its own.
 #
 # Format is exactly what `shasum -a 256` emits: `<hash>  <filename>`, one per line, `#` comments
 # ignored. Familiar and trivially greppable.

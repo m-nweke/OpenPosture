@@ -69,9 +69,8 @@ fetch-model:
 	mv "$$tmp" "$(MODEL_TARGET)"; \
 	echo "OK  $(MODEL_TARGET)  $$actual"
 
-## Verify whatever is on disk. The model-validation workflow arriving in OP-21 will run this
-## before anything else, so a corrupted or swapped model fails the run instead of quietly
-## changing its results.
+## Verify whatever is on disk. model-validation.yml runs this before anything else, so a corrupted
+## or swapped model fails the workflow instead of quietly changing its results.
 verify-model:
 	@expected="$(expected_sha)"; \
 	if [ ! -f "$(MODEL_TARGET)" ]; then \
