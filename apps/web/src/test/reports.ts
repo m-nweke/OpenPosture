@@ -92,10 +92,30 @@ export function allGapsReport(): PostureReport {
   })
 }
 
-/** A frontal photo: measured, but the view precondition is not met. */
+/**
+ * A frontal photo: measured, but the view precondition is not met.
+ *
+ * Carries the engine's own `frontal_view` finding, message included verbatim from
+ * `pose_backends.cli --preset frontal_view`. The UI branches on that code rather than on the
+ * ratio, so a fixture that only moved the ratio would exercise nothing.
+ */
 export function frontalViewReport(): PostureReport {
   const report = hunchbackReport()
-  report.metrics.view_confidence = ok(0.72, 'ratio', 'photographed from the front')
+  report.metrics.view_confidence = ok(0.8776, 'ratio', 'photographed from the front')
+  report.findings = [
+    ...report.findings,
+    {
+      code: 'frontal_view',
+      severity: 'info',
+      message:
+        'This photo looks like it was taken from the front. The measurements below still work, ' +
+        "but they rest on a depth estimate that is weakest along the camera's own axis — a " +
+        'side-on photo would give a firmer answer.',
+      metric: 'view_confidence',
+      value: 0.8776,
+      confidence: 0.95,
+    },
+  ]
   return report
 }
 

@@ -218,7 +218,7 @@ describe('Dashboard', () => {
   })
 
   describe('low view confidence', () => {
-    it('caveats a result from a photo that is probably not lateral', async () => {
+    it("caveats a result using the engine's own wording, not a paraphrase", async () => {
       // "This image must be taken from a side angle" was printed by the original and never
       // enforced. Enforcing it silently would be no better; the result is shown, and labelled.
       signedInAs('Ada')
@@ -227,9 +227,7 @@ describe('Dashboard', () => {
 
       await upload()
 
-      expect(
-        await screen.findByText(/does not look like it was taken from the side/),
-      ).toBeInTheDocument()
+      expect(await screen.findByText(/looks like it was taken from the front/)).toBeInTheDocument()
       expect(screen.getByRole('heading', { name: 'Your results' })).toBeInTheDocument()
     })
 
@@ -241,9 +239,7 @@ describe('Dashboard', () => {
       await upload()
 
       await screen.findByRole('heading', { name: 'Your results' })
-      expect(
-        screen.queryByText(/does not look like it was taken from the side/),
-      ).not.toBeInTheDocument()
+      expect(screen.queryByText(/looks like it was taken from the front/)).not.toBeInTheDocument()
     })
   })
 
@@ -325,6 +321,24 @@ describe('Dashboard', () => {
       await user.click(screen.getByRole('button', { name: 'Submit' }))
 
       await screen.findByRole('alert')
+      expect(screen.queryByRole('heading', { name: 'Your results' })).not.toBeInTheDocument()
+    })
+  })
+
+  describe('a second file chosen mid-upload', () => {
+    it('does not let the first response win', async () => {
+      // Without aborting on file change, the in-flight request resolves into state beside the
+      // *new* file's preview — one photo shown with another photo's measurements.
+      signedInAs('Ada')
+      const release = heldResponse()
+      renderWithProviders(<Dashboard />)
+      const user = await upload()
+      await screen.findByRole('progressbar')
+
+      await user.upload(fileInput(), pngFile())
+      release()
+
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
       expect(screen.queryByRole('heading', { name: 'Your results' })).not.toBeInTheDocument()
     })
   })

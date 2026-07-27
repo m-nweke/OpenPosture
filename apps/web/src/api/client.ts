@@ -38,10 +38,22 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * How long to wait before giving up on one analysis.
+ *
+ * Generous, because the work is genuinely slow: a 10 MB upload over a poor connection plus model
+ * inference on the server. Short enough that a request lost to a dropped connection surfaces as a
+ * message rather than a spinner that never stops — the browser's own default is *no* timeout, so
+ * without this the failure mode is waiting forever.
+ */
+export const DEFAULT_TIMEOUT_MS = 60_000
+
 export interface AnalyseOptions {
   /** Called with 0–100 as the request body is sent. Real bytes, not a timer. */
   onProgress?: (percent: number) => void
   signal?: AbortSignal
+  /** Milliseconds before the request is abandoned. `0` disables the timeout entirely. */
+  timeoutMs?: number
 }
 
 /**
@@ -55,7 +67,7 @@ export function analysePosture(
   file: File,
   options: AnalyseOptions = {},
 ): Promise<AnalysisResponse> {
-  const { onProgress, signal } = options
+  const { onProgress, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = options
 
   return new Promise<AnalysisResponse>((resolve, reject) => {
     const request = new XMLHttpRequest()
@@ -64,6 +76,29 @@ export function analysePosture(
 
     request.open('POST', ANALYSES_ENDPOINT)
     request.responseType = 'text'
+
+    // The timeout is our own timer rather than `XMLHttpRequest.timeout`.
+    //
+    // The native attribute is the idiomatic mechanism and browsers enforce it — but it defaults
+    // to 0, meaning *no* timeout, and the earlier version of this file wired a `timeout` listener
+    // without ever setting it. That is a branch which can never run: the request hangs and the
+    // spinner never stops.
+    //
+    // Setting the attribute would fix production and stay unverifiable here, because the XHR
+    // implementation the tests run against does not enforce it. A guard nobody can test is the
+    // same shape of problem as the one being fixed, so this uses a timer that behaves identically
+    // in both places.
+    const timer =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            request.abort()
+            reject(new ApiError('The request timed out before the server answered.', { status: 0 }))
+          }, timeoutMs)
+        : undefined
+
+    const clearTimer = () => {
+      if (timer !== undefined) clearTimeout(timer)
+    }
 
     request.upload.addEventListener('progress', (event) => {
       // `lengthComputable` is false when the browser cannot know the total — rare for a file
@@ -75,6 +110,7 @@ export function analysePosture(
     })
 
     request.addEventListener('load', () => {
+      clearTimer()
       const parsed = parseBody(request.responseText)
 
       if (request.status >= 200 && request.status < 300) {
@@ -95,6 +131,7 @@ export function analysePosture(
     // Status 0 covers both a dropped connection and a blocked request. Neither has a body, so
     // there is nothing to parse and nothing to quote back to the user beyond "it did not arrive".
     request.addEventListener('error', () => {
+      clearTimer()
       reject(
         new ApiError('Could not reach the server. Check your connection and try again.', {
           status: 0,
@@ -102,15 +139,12 @@ export function analysePosture(
       )
     })
 
-    request.addEventListener('timeout', () => {
-      reject(new ApiError('The request timed out before the server answered.', { status: 0 }))
-    })
-
     // Rejection is driven from here rather than from the XHR `abort` event, because that event
     // is not guaranteed to fire. `abort()` on a request that has been opened but not sent moves
     // it straight to UNSENT without dispatching anything — so a caller passing an
     // already-aborted signal would wait on a promise that never settles. Found by a test.
     const cancel = () => {
+      clearTimer()
       request.abort()
       reject(new ApiError('The upload was cancelled.', { status: 0 }))
     }

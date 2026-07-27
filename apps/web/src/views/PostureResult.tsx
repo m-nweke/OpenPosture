@@ -19,8 +19,17 @@
 import type { PostureReport } from '../api/types'
 import styles from './PostureResult.module.css'
 
-/** Below this, the shoulder-width ratio says the photo is probably not lateral. */
-const LATERAL_VIEW_THRESHOLD = 0.35
+/**
+ * The engine's own code for "this photo is not lateral".
+ *
+ * Branching on the finding rather than on `view_confidence`'s value, deliberately. The
+ * thresholds that decide lateral-vs-frontal live in `posture-spec/rules.json`
+ * (`lateral_view_max_ratio`, `frontal_view_min_ratio`), and an earlier version of this file
+ * hardcoded one of them here — a second copy of a tuning value, in another language, which is
+ * exactly the drift `posture-spec` exists to prevent. The engine already decides; this reads
+ * the verdict.
+ */
+const FRONTAL_VIEW_CODE = 'frontal_view'
 
 interface Props {
   report: PostureReport
@@ -29,22 +38,24 @@ interface Props {
 
 export default function PostureResult({ report, imageUrl }: Props) {
   const measured = Object.entries(report.metrics).filter(([, metric]) => metric.status === 'ok')
-  const viewConfidence = report.metrics.view_confidence
-  const viewIsDoubtful =
-    viewConfidence?.status === 'ok' &&
-    viewConfidence.value !== null &&
-    viewConfidence.value > LATERAL_VIEW_THRESHOLD
+  const viewCaveat = report.findings.find((finding) => finding.code === FRONTAL_VIEW_CODE)
+  // Rendered as a caveat above the results rather than as one finding among many, and therefore
+  // removed from the list below — the same sentence twice reads as a bug.
+  const findings = report.findings.filter((finding) => finding.code !== FRONTAL_VIEW_CODE)
 
   return (
     <section className={styles.results} aria-labelledby="results-heading">
       <h2 id="results-heading">Your results</h2>
 
-      {viewIsDoubtful && (
+      {viewCaveat && (
         // `role="status"` rather than `alert`: it is a caveat on a result the user asked for,
         // not an interruption. Screen readers announce it without stealing focus.
+        //
+        // The engine's own wording, not a paraphrase. It already explains *why* the reading is
+        // softer — the depth estimate is weakest along the camera's axis — and restating that in
+        // the frontend would be a third place for the explanation to drift.
         <p className={styles.caveat} role="status">
-          This photo does not look like it was taken from the side, so these measurements are less
-          reliable than usual. A lateral photo gives a much better reading.
+          {viewCaveat.message}
         </p>
       )}
 
@@ -67,11 +78,11 @@ export default function PostureResult({ report, imageUrl }: Props) {
         <img src={imageUrl} alt="The photo you uploaded" className={styles.uploadedImage} />
       )}
 
-      {report.findings.length > 0 ? (
+      {findings.length > 0 ? (
         <section aria-labelledby="findings-heading">
           <h3 id="findings-heading">What we noticed</h3>
           <ul className={styles.findings}>
-            {report.findings.map((finding) => (
+            {findings.map((finding) => (
               <li key={finding.code} className={styles[finding.severity] ?? ''}>
                 <span className={styles.severityTag}>{finding.severity}</span>
                 {finding.message}

@@ -109,6 +109,21 @@ describe('analysePosture', () => {
     release?.()
   })
 
+  it('gives up rather than hanging forever', async () => {
+    // `XMLHttpRequest.timeout` defaults to 0, meaning no timeout at all. Wiring the listener
+    // without setting it leaves a branch that can never run and a spinner that never stops.
+    server.use(
+      http.post(ANALYSES_ENDPOINT, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        return HttpResponse.json(analysisOf(hunchbackReport()), { status: 201 })
+      }),
+    )
+
+    await expect(analysePosture(pngFile(), { timeoutMs: 10 })).rejects.toThrow(
+      'The request timed out before the server answered.',
+    )
+  })
+
   it('reports progress as bytes are sent', async () => {
     server.use(
       http.post(ANALYSES_ENDPOINT, () =>

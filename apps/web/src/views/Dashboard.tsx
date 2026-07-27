@@ -54,6 +54,11 @@ export default function Dashboard() {
   }, [file])
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Abort anything still in flight. Without this, picking a second file while the first is
+    // uploading leaves the first request running — and when it resolves it writes its report
+    // into state beside the *new* file's preview. The user then sees one photo with another
+    // photo's measurements, which is worse than either an error or a wait.
+    abortRef.current?.abort()
     setFile(event.target.files?.[0] ?? null)
     setAnalysis(null)
     setError(null)
