@@ -94,6 +94,18 @@ def test_an_inverted_knee_band_is_rejected() -> None:
         Thresholds(knee_seated_min_deg=130.0, knee_seated_max_deg=120.0)
 
 
+def test_a_kneeling_ceiling_that_reaches_into_the_seated_band_is_rejected() -> None:
+    """The ordering check the seated-band one did not cover.
+
+    `_describe` tests kneeling first, so raising `knee_kneeling_max_deg` to or above
+    `knee_seated_min_deg` does not produce a wrong number — it deletes the tucked-back band
+    entirely and relabels part of the seated range as kneeling. Same class of silent dead rule as
+    the trunk and craniovertebral checks above.
+    """
+    with pytest.raises(ValueError, match="knee_kneeling_max_deg"):
+        Thresholds(knee_kneeling_max_deg=70.0, knee_seated_min_deg=70.0)
+
+
 def test_the_view_bands_must_leave_a_non_negative_ambiguous_gap() -> None:
     with pytest.raises(ValueError, match="ambiguous-view band"):
         Thresholds(lateral_view_max_ratio=0.6, frontal_view_min_ratio=0.5)

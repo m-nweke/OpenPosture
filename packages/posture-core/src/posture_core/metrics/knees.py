@@ -56,10 +56,18 @@ def knee_flexion_deg(resolver: KeypointResolver, thresholds: Thresholds) -> Metr
 
 
 def _describe(value: float, side: str, thresholds: Thresholds) -> str:
+    """Every band names the side, and none of them says "legs" or "knees".
+
+    Only one leg was measured. A description that implies both is not a wording nit — it is the
+    metric claiming coverage it does not have. The band ordering here is what
+    :meth:`~posture_core.thresholds.Thresholds.__post_init__` validates: kneeling is tested first,
+    so a ``knee_kneeling_max_deg`` at or above ``knee_seated_min_deg`` would make the tucked-back
+    band unreachable.
+    """
     if value <= thresholds.knee_kneeling_max_deg:
         return f"your {side} knee is folded to {value:.0f}° — you appear to be kneeling"
     if value < thresholds.knee_seated_min_deg:
         return f"your {side} knee is tucked back sharply, at {value:.0f}°"
     if value <= thresholds.knee_seated_max_deg:
-        return f"knees are at a comfortable seated angle ({value:.0f}°)"
-    return f"legs are extended, with the {side} knee at {value:.0f}°"
+        return f"your {side} knee is at a comfortable seated angle ({value:.0f}°)"
+    return f"your {side} leg is extended, with the knee at {value:.0f}°"
