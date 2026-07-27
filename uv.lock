@@ -1425,7 +1425,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.7" },
     { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "structlog", specifier = ">=24.4" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'serve'", specifier = ">=0.34" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'serve'", specifier = ">=0.51.0" },
 ]
 provides-extras = ["serve", "inference"]
 
