@@ -58,12 +58,10 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
     recorder.context as unknown as CanvasRenderingContext2D,
   )
-  // The overlay measures the rendered image, which jsdom lays out at 0x0. Reporting a real box
-  // is what makes the scaling assertions meaningful rather than all-zero.
-  vi.spyOn(HTMLImageElement.prototype, 'getBoundingClientRect').mockReturnValue({
-    ...new DOMRect(0, 0, BOX.width, BOX.height),
-    toJSON: () => ({}),
-  })
+  // The box comes from the ResizeObserver stub below, which is the only thing the component reads
+  // — there is deliberately no `getBoundingClientRect` spy here. An unused DOM spy would mask a
+  // regression: if the component started measuring layout directly, this suite would keep passing
+  // on the spy's answer instead of failing on jsdom's 0x0.
   stubResizeObserver()
 })
 
