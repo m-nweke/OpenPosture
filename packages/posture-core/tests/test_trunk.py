@@ -7,13 +7,21 @@ rather than about somebody's reading of a photograph.
 from __future__ import annotations
 
 import pytest
-from builders import metric_of, resolver, unclear, value_of, with_thresholds, without
+from builders import (
+    flat_resolver,
+    metric_of,
+    unclear,
+    value_of,
+    with_thresholds,
+    without,
+)
 
 from posture_core import KeypointName as K
 from posture_core.metrics.trunk import NAME
 from posture_core.metrics.trunk import trunk_inclination_deg as trunk
 from posture_core.status import MetricStatus
 from posture_core.synthetic import Anthropometry, Facing, View
+from posture_core.thresholds import DEFAULT_THRESHOLDS
 
 
 @pytest.mark.parametrize("requested", [-30.0, -12.0, 0.0, 8.0, 25.0, 45.0])
@@ -173,29 +181,9 @@ def test_confidence_is_carried_through_from_the_weakest_input() -> None:
 
 
 def test_a_two_dimensional_backend_abstains_instead_of_guessing_in_pixels() -> None:
-    """ADR-0005's fallback path is not implemented, and says so rather than quietly computing an
-    angle in a space stretched by the aspect ratio."""
-    from posture_core import Landmark, PoseFrame
-    from posture_core.resolver import KeypointResolver
-    from posture_core.thresholds import DEFAULT_THRESHOLDS
-
-    flat = {
-        name: Landmark(x=landmark.x, y=landmark.y, visibility=0.95, presence=0.98)
-        for name, landmark in resolver(trunk_deg=20.0).frame.landmarks.items()
-    }
-    metric = trunk(
-        KeypointResolver(
-            PoseFrame(
-                landmarks=flat,
-                image_width=640,
-                image_height=480,
-                backend="flat",
-                inference_ms=0.0,
-            ),
-            DEFAULT_THRESHOLDS,
-        ),
-        DEFAULT_THRESHOLDS,
-    )
+    """ADR-0005's image-space fallback is not implemented, and says so rather than quietly
+    computing an angle in a space stretched by the aspect ratio."""
+    metric = trunk(flat_resolver(trunk_deg=20.0), DEFAULT_THRESHOLDS)
     assert metric.value is None
     assert "world coordinates" in metric.detail
 
