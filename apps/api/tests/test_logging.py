@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -84,6 +85,24 @@ class TestResponseHeader:
         """It is a diagnostic aid. Rejecting the request would make observability a liability."""
         assert client.get("/health", headers={"X-Request-ID": ""}).status_code == 200
 
+    @pytest.mark.parametrize("blank", ["", "   ", "\t"])
+    def test_a_whitespace_only_id_is_replaced_rather_than_echoed(
+        self, client: TestClient, blank: str
+    ) -> None:
+        """Whitespace is truthy and short, so it passes a naive length check — and then becomes
+        a header nobody can search for and a log key that groups unrelated requests together."""
+        response = client.get("/health", headers={"X-Request-ID": blank})
+
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"].strip()
+        assert response.headers["X-Request-ID"] != blank
+
+    def test_a_padded_id_is_trimmed_and_still_honoured(self, client: TestClient) -> None:
+        """A proxy that pads its header should still correlate, not be discarded."""
+        response = client.get("/health", headers={"X-Request-ID": "  padded-id  "})
+
+        assert response.headers["X-Request-ID"] == "padded-id"
+
     def test_the_header_name_is_configurable(self) -> None:
         settings = Settings(environment="test", request_id_header="X-Trace-Id", json_logs=True)
         with TestClient(create_app(settings)) as client:
@@ -154,6 +173,30 @@ class TestLogCorrelation:
 
         assert failures, "the failure was not logged"
         assert failures[0]["request_id"] == "failed-request"
+
+    def test_console_rendering_writes_no_escape_codes_into_a_buffer(
+        self, log_stream: io.StringIO, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Colour must follow the stream being written to, not the process's stderr.
+
+        stderr is forced to claim it is a terminal, because that is the only condition under
+        which the bug appears: pytest's capture makes the real stderr a non-TTY, so a version
+        asking `sys.stderr.isatty()` would render plain text here and the test would pass while
+        proving nothing. With a TTY stderr and a buffer target, escape codes must still stay out
+        of the buffer.
+        """
+
+        class _TtyStderr(io.StringIO):
+            def isatty(self) -> bool:
+                return True
+
+        monkeypatch.setattr(sys, "stderr", _TtyStderr())
+
+        configure_logging(Settings(environment="development", json_logs=False), stream=log_stream)
+        structlog.get_logger("test").warning("rendered_event")
+
+        assert "rendered_event" in log_stream.getvalue()
+        assert "\x1b[" not in log_stream.getvalue()
 
     def test_no_id_is_bound_outside_a_request(self) -> None:
         """Better than inventing one that correlates with nothing."""

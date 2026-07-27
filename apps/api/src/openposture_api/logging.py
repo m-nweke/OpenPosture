@@ -72,10 +72,20 @@ def configure_logging(settings: Settings, *, stream: TextIO | None = None) -> No
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]
 
+    target = stream if stream is not None else sys.stderr
+
+    # Colour is decided by the stream actually being written to, not by the process's stderr.
+    # Asking stderr while rendering into a buffer gets the answer for the wrong file: run the
+    # suite from a terminal and every captured line arrives wrapped in ANSI escapes, so an
+    # assertion on the rendered text fails for reasons that have nothing to do with the code.
+    # `isatty` is part of IOBase, but a caller can pass any file-like object, so this does not
+    # assume it exists.
+    colorize = callable(getattr(target, "isatty", None)) and target.isatty()
+
     renderer: structlog.typing.Processor = (
         structlog.processors.JSONRenderer()
         if settings.emit_json_logs
-        else structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
+        else structlog.dev.ConsoleRenderer(colors=colorize)
     )
 
     structlog.configure(
@@ -96,7 +106,7 @@ def configure_logging(settings: Settings, *, stream: TextIO | None = None) -> No
         ],
     )
 
-    handler = logging.StreamHandler(stream if stream is not None else sys.stderr)
+    handler = logging.StreamHandler(target)
     handler.setFormatter(formatter)
 
     root = logging.getLogger()
@@ -135,10 +145,11 @@ def request_id_middleware(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        inbound = request.headers.get(header_name)
-        request_id = (
-            inbound if inbound and 0 < len(inbound) <= _MAX_INBOUND_REQUEST_ID else uuid.uuid4().hex
-        )
+        # Stripped before it is judged: `"   "` is truthy and within the length bound, so
+        # without this it would be accepted, echoed as a header nobody can search for, and
+        # bound onto every log line for the request. Whitespace is not an identifier.
+        inbound = (request.headers.get(header_name) or "").strip()
+        request_id = inbound if 0 < len(inbound) <= _MAX_INBOUND_REQUEST_ID else uuid.uuid4().hex
 
         # `clear_contextvars` first: the context is per-task, and a task that handled an earlier
         # request could otherwise leak its bindings into this one.
