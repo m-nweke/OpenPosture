@@ -46,12 +46,21 @@ PoseBackendName = Literal["mediapipe", "fake"]
 
 Spelled out as a literal rather than derived from the registry's names so that an unknown value
 is rejected by *configuration* validation, with the field named, instead of raising from inside
-`create_backend` during startup. The assertion below keeps the two in step.
+`create_backend` during startup. The check below keeps the two in step.
 """
 
-# The literal above duplicates names the registry owns. Cheap insurance that a rename there is a
-# failed import here rather than a config field that silently no longer matches anything.
-assert (MEDIAPIPE_BACKEND, FAKE_BACKEND) == ("mediapipe", "fake")
+# The literal above duplicates names the registry owns, so a rename there must be a loud failure
+# here rather than a config field that silently no longer matches anything.
+#
+# An explicit raise, not an `assert`: `python -O` strips assertions, and a guard that disappears
+# under an optimisation flag is a guard that is absent exactly where it is least likely to be
+# noticed. The cost is one tuple comparison per process.
+if (MEDIAPIPE_BACKEND, FAKE_BACKEND) != ("mediapipe", "fake"):  # pragma: no cover
+    raise RuntimeError(
+        "pose backend names drifted: the registry now exposes "
+        f"{(MEDIAPIPE_BACKEND, FAKE_BACKEND)!r}, but PoseBackendName still declares "
+        "('mediapipe', 'fake'). Update the literal above."
+    )
 
 
 class Settings(BaseSettings):

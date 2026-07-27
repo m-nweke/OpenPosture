@@ -98,16 +98,26 @@ class TestLoading:
 class TestLifespan:
     def test_the_backend_is_built_once_per_process(self, settings: Settings) -> None:
         """The acceptance criterion, and the defect the original never fixed: many requests, one
-        model. A backend rebuilt per request would make every response pay the load."""
+        model. A backend rebuilt per request would make every response pay the load.
+
+        Identity is collected as the object itself, not `id(...)`. Against `id` this test passes
+        vacuously when loading fails — `id(None)` is a constant, so three failed loads look
+        exactly like one shared backend. The readiness assertion below rules that out first.
+        """
         app = create_app(settings)
 
         with TestClient(app) as client:
-            seen = []
+            assert client.get("/health/ready").status_code == 200
+            assert app.state.pose_backend_state.backend is not None
+
+            seen: list[PoseBackend] = []
             for _ in range(3):
                 client.get("/health/ready")
-                seen.append(id(app.state.pose_backend_state.backend))
+                backend = app.state.pose_backend_state.backend
+                assert backend is not None
+                seen.append(backend)
 
-        assert len(set(seen)) == 1
+        assert all(backend is seen[0] for backend in seen)
 
     def test_nothing_is_loaded_by_constructing_the_app(self, settings: Settings) -> None:
         """Construction must stay cheap and side-effect free — the whole reason for a factory."""

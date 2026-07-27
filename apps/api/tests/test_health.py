@@ -19,7 +19,7 @@ from openposture_api.health import ReadinessCheck, ReadinessProbe, build_health_
 from openposture_api.main import create_app
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 
 def _ready(name: str) -> ReadinessCheck:
@@ -31,21 +31,33 @@ def _not_ready(name: str, detail: str) -> ReadinessCheck:
 
 
 @pytest.fixture
-def probe_client() -> Callable[[list[ReadinessProbe]], TestClient]:
+def probe_client() -> Iterator[Callable[[list[ReadinessProbe]], TestClient]]:
     """Builds a bare app carrying only the probes a test names.
 
     The router is exercised directly rather than through `create_app`, which registers the
     pose backend's probe and will register storage's and the database's in later tickets.
     Aggregation semantics are the router's business, and asserting them through the factory
     makes every one of these tests fail the day a subsystem is added.
+
+    Every client it hands out is entered and exited by the fixture. That closes the underlying
+    transport rather than leaving it to the garbage collector, and it means these apps run their
+    lifespan — so if the bare app ever gains startup or shutdown hooks, they execute here too
+    instead of being silently skipped.
     """
+    clients: list[TestClient] = []
 
     def build(probes: list[ReadinessProbe]) -> TestClient:
         app = FastAPI()
         app.include_router(build_health_router(version=__version__, probes=probes))
-        return TestClient(app)
+        client = TestClient(app)
+        client.__enter__()
+        clients.append(client)
+        return client
 
-    return build
+    yield build
+
+    for client in clients:
+        client.__exit__(None, None, None)
 
 
 class TestLiveness:
@@ -121,7 +133,7 @@ class TestReadiness:
         """Load balancers route on the status code and never read the body."""
 
         async def failing() -> ReadinessCheck:
-            return _not_ready("database", "model not loaded")
+            return _not_ready("database", "connection pool exhausted")
 
         app = create_app(settings, readiness_probes=[failing])
         with TestClient(app) as client:
