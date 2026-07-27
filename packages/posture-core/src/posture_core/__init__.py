@@ -19,6 +19,8 @@ posture was fine whenever the system had failed to assess them at all.
 
 from __future__ import annotations
 
-__all__ = ["__version__"]
+from posture_core.keypoints import KeypointName, Landmark, PoseFrame
+
+__all__ = ["KeypointName", "Landmark", "PoseFrame", "__version__"]
 
 __version__ = "0.1.0"

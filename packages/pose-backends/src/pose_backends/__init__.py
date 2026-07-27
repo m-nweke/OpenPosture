@@ -15,6 +15,8 @@ that inversion is what keeps the core installable and testable with no inference
 
 from __future__ import annotations
 
-__all__ = ["__version__"]
+from pose_backends.base import ImageBGR, PoseBackend
+
+__all__ = ["ImageBGR", "PoseBackend", "__version__"]
 
 __version__ = "0.1.0"
