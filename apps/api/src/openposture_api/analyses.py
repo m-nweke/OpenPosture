@@ -71,6 +71,10 @@ def build_analyses_router() -> APIRouter:
             status.HTTP_400_BAD_REQUEST: {"description": "The file could not be decoded."},
             status.HTTP_413_CONTENT_TOO_LARGE: {"description": "Over the size limit."},
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"description": "Format not supported."},
+            # 502 is returned by the backend- and storage-failure handlers registered below.
+            # Listed here because OP-45 generates the frontend's types from this schema, so
+            # an unlisted status is a response the client is not typed to handle.
+            status.HTTP_502_BAD_GATEWAY: {"description": "Inference or storage failed downstream."},
             status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "Inference is unavailable."},
         },
     )
