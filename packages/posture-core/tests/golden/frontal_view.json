@@ -62,7 +62,7 @@
     },
     "knee_flexion_deg": {
       "confidence": 0.95,
-      "detail": "knees are at a comfortable seated angle (100°)",
+      "detail": "your left knee is at a comfortable seated angle (100°)",
       "status": "ok",
       "unit": "deg",
       "value": 100.0
