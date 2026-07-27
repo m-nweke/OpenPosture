@@ -1,79 +1,112 @@
-import { useEffect, useRef, useState } from 'react'
+/**
+ * The upload flow.
+ *
+ * This file used to render two hardcoded strings behind a five-second `setTimeout` that imitated
+ * thinking. Nothing was uploaded and no model was ever invoked. Deleting that is the point of
+ * Epic D: the number on this screen now describes the person who uploaded the photo.
+ *
+ * The states are one enum rather than a set of booleans, because they are genuinely exclusive and
+ * the combinations a boolean pair allows — uploading *and* showing results — are ones this screen
+ * should never be in.
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../auth'
+import { ApiError, analysePosture } from '../api/client'
+import type { AnalysisResponse } from '../api/types'
+import PostureResult from './PostureResult'
 import styles from './Dashboard.module.css'
 
-// Vue computed() with no reactive dependency is really just a constant, so
-// these live outside the component — recreating them each render would be waste.
-const POSTURE_DETECTION_RESULT =
-  'Our posture detection model detected you sitting with a reclined back, with hands not folded, ' +
-  'non-kneeling, and a forward neck. This is pretty good posture, but we have some recommendations ' +
-  'for improvement!'
-
-const WORKOUT_RESULT = [
-  'To fix the reclined back, openPosture recommends 90 seconds planks, 3 times a day.',
-  'For the kneeling, we recommend 3x20 each leg hamstring curls twice a day (use ankle weights if available).',
-  'For the forward neck, we recommend 3x20 shoulder shrugs, 3 times a day.',
-]
+type Status = 'idle' | 'uploading' | 'done' | 'error'
 
 export default function Dashboard() {
   // ProtectedRoute guarantees a user by the time this renders, but the type does not know that,
   // so the fallback stays. "Hello, there" beats "Hello, " if that assumption ever breaks.
   const { user } = useAuth()
   const name = user?.displayName ?? 'there'
+
+  const [file, setFile] = useState<File | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [showResults, setShowResults] = useState(false)
-  const [showLoading, setShowLoading] = useState(false)
+  const [status, setStatus] = useState<Status>('idle')
+  const [progress, setProgress] = useState(0)
+  const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
 
-  // Vue: ref(null) on a plain value that shouldn't trigger re-render.
-  // React: useRef is the escape hatch for exactly that — mutable, non-reactive.
-  const imageFile = useRef<File | null>(null)
-  const timerRef = useRef<number | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  // The Vue version leaves its setTimeout running if you navigate away mid-load.
-  // React makes the cleanup obvious because the effect *asks* for a teardown.
+  // An in-flight upload outlives the component otherwise, and its state update on return would
+  // warn about updating an unmounted component — the same class of leak the old `setTimeout`
+  // cleanup guarded against, for a request rather than a timer.
   useEffect(() => {
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current)
-    }
+    return () => abortRef.current?.abort()
   }, [])
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      imageFile.current = file
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        if (e.target) setImageUrl(e.target.result as string)
-      }
-      reader.readAsDataURL(file)
+  // Object URLs hold the file in memory until revoked. Left unrevoked, uploading twenty photos in
+  // one session leaks all twenty.
+  useEffect(() => {
+    if (!file) {
+      setImageUrl(null)
+      return
     }
+    const url = URL.createObjectURL(file)
+    setImageUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFile(event.target.files?.[0] ?? null)
+    setAnalysis(null)
+    setError(null)
+    setStatus('idle')
+    setProgress(0)
   }
 
-  const submitImage = () => {
-    // TODO: still mocked, same as the Vue app — there is no inference endpoint
-    // on the Flask API yet, so this just waits 5s and shows canned text.
-    console.log('Submit button clicked')
-    setShowLoading(true)
-    timerRef.current = window.setTimeout(() => {
-      setShowLoading(false)
-      setShowResults(true)
-    }, 5000)
-  }
+  const submit = useCallback(async () => {
+    if (!file || status === 'uploading') return
 
-  const clearImage = () => {
-    imageFile.current = null
-    setImageUrl(null)
-    setShowResults(false)
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setStatus('uploading')
+    setProgress(0)
+    setError(null)
+    setAnalysis(null)
+
+    try {
+      const result = await analysePosture(file, {
+        onProgress: setProgress,
+        signal: controller.signal,
+      })
+      setAnalysis(result)
+      setStatus('done')
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught
+          : new ApiError('Something went wrong analysing that photo.', { status: 0 }),
+      )
+      setStatus('error')
+    } finally {
+      abortRef.current = null
+    }
+  }, [file, status])
+
+  const clear = () => {
+    abortRef.current?.abort()
+    setFile(null)
+    setAnalysis(null)
+    setError(null)
+    setStatus('idle')
+    setProgress(0)
   }
 
   return (
     <div className={styles.container}>
       <h1>Hello, {name}</h1>
+
       <div className={styles.card}>
-        {/* Was a <p>. Promoting the instructions to the field's actual label — rather than
-            adding a second, redundant one — means a screen reader reads the requirements when
-            the input takes focus. Before this the control announced as a bare "file upload
-            button" with no hint that the photo has to be taken from the side. */}
+        {/* Promoted from a <p> to the field's actual label, so a screen reader reads the
+            requirements when the input takes focus rather than announcing a bare file button. */}
         <label className={styles.instructions} htmlFor="posture-image">
           Input an image of you sitting for posture evaluation. This image must be taken from a side
           angle.
@@ -81,39 +114,61 @@ export default function Dashboard() {
         <input
           type="file"
           id="posture-image"
-          accept="image/*"
-          onChange={handleFileUpload}
+          accept="image/jpeg,image/png,image/webp"
+          onChange={handleFileChange}
           className={styles.fileInput}
         />
-        <button className={styles.submitButton} onClick={submitImage}>
-          Submit
+        <button
+          className={styles.submitButton}
+          onClick={submit}
+          disabled={!file || status === 'uploading'}
+        >
+          {status === 'uploading' ? 'Analysing…' : 'Submit'}
         </button>
-        <button className={styles.clearButton} onClick={clearImage}>
+        <button className={styles.clearButton} onClick={clear} disabled={!file}>
           Clear
         </button>
       </div>
 
-      {/* Vue: v-if="showResults" → React: short-circuit on the condition */}
-      {showResults && (
-        <div className={styles.results}>
-          <h2>Here are your results:</h2>
-          {imageUrl && <img src={imageUrl} alt="Uploaded" className={styles.uploadedImage} />}
-          <p>{POSTURE_DETECTION_RESULT}</p>
-          {WORKOUT_RESULT.length > 0 && (
-            <div>
-              <h3>Posture Improvement Recommendations:</h3>
-              <ul>
-                {/* Vue: v-for with :key → React: .map() with a key prop */}
-                {WORKOUT_RESULT.map((recommendation) => (
-                  <li key={recommendation}>{recommendation}</li>
-                ))}
-              </ul>
-            </div>
+      {status === 'uploading' && (
+        <div className={styles.uploading}>
+          {/* A real <progress> element, driven by bytes actually sent. The browser announces it
+              to assistive technology for free, which a styled div does not. */}
+          <label htmlFor="upload-progress">Uploading your photo</label>
+          <progress id="upload-progress" max={100} value={progress}>
+            {progress}%
+          </progress>
+          <span>{progress}%</span>
+        </div>
+      )}
+
+      {status === 'error' && error && (
+        <div className={styles.error} role="alert">
+          <h2>We could not analyse that photo</h2>
+          <p>{error.message}</p>
+          {error.requestId && (
+            // Disclosed on purpose: it is the one piece of internal state that is safe to share,
+            // and the only thing that lets a user's report be joined to the server logs.
+            <p className={styles.requestId}>
+              Reference: <code>{error.requestId}</code>
+            </p>
           )}
         </div>
       )}
 
-      {showLoading && <div className={styles.loadingSpinner} />}
+      {status === 'done' && analysis && !analysis.pose_detected && (
+        <div className={styles.noPerson} role="status">
+          <h2>We could not find anyone in that photo</h2>
+          <p>
+            The upload worked, but no person was detected. Try a photo where your whole upper body
+            is visible, taken from the side.
+          </p>
+        </div>
+      )}
+
+      {status === 'done' && analysis?.report && (
+        <PostureResult report={analysis.report} imageUrl={imageUrl} />
+      )}
     </div>
   )
 }
