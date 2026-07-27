@@ -351,6 +351,50 @@ jobs:
   # ---------------------------------------------------------------------------
   # The single required check.
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # API contract
+  # ---------------------------------------------------------------------------
+  contract:
+    name: contract
+    needs: changes
+    # Runs when *either* side changes. A Python-only change is exactly the case that breaks the
+    # committed types, so filtering this on `web` alone would miss every drift worth catching.
+    if: github.event_name == 'push' || needs.changes.outputs.python == 'true' || needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-project
+        with:
+          python: ${{ env.PYTHON_VERSION }}
+          node: ${{ env.NODE_VERSION }}
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Regenerate the schema and the types
+        working-directory: apps/web
+        run: npm run codegen
+
+      - name: Fail on committed drift
+        # The generation is the easy half and everyone does it. *This* is the half that makes it
+        # a guarantee: if the committed artifacts do not match a fresh regeneration, the Python
+        # contract and the TypeScript the frontend compiles against have diverged, and the
+        # symptom would otherwise be a runtime `undefined` months later.
+        run: |
+          if ! git diff --exit-code -- apps/web/src/api/openapi.json apps/web/src/api/schema.d.ts; then
+            echo "::error::the committed API contract is stale. Run 'npm run codegen' in apps/web and commit the result."
+            exit 1
+          fi
+          echo "OK  committed contract matches a fresh regeneration"
+
+      - name: Types still compile against the regenerated schema
+        # Regeneration alone proves the files match. This proves the frontend still *typechecks*
+        # against them — a renamed field produces a clean regeneration and a broken build, and
+        # that is the failure this job exists to surface early.
+        working-directory: apps/web
+        run: npm run typecheck
+
   ci-ok:
     name: ci-ok
     # `always()` is load-bearing. Without it this job inherits its dependencies' skips, reports
@@ -367,6 +411,7 @@ jobs:
       - web-test
       - web-build
       - web-e2e
+      - contract
     runs-on: ubuntu-latest
     steps:
       - name: Report
@@ -375,6 +420,7 @@ jobs:
           echo "lint:          ${{ needs.lint.result }}"
           echo "typecheck:     ${{ needs.typecheck.result }}"
           echo "test-python:   ${{ needs.test-python.result }}"
+          echo "contract:      ${{ needs.contract.result }}"
           echo "web-lint:      ${{ needs.web-lint.result }}"
           echo "web-typecheck: ${{ needs.web-typecheck.result }}"
           echo "web-test:      ${{ needs.web-test.result }}"

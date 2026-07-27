@@ -14,14 +14,17 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from pydantic import ValidationError
 
 from openposture_api.config import Settings
 from openposture_api.images import MAX_IMAGE_BYTES
 from openposture_api.main import create_app
 from openposture_api.pose import get_pose_backend
+from openposture_api.schemas import PostureReportModel
 from openposture_api.storage import LocalDiskStorage, get_storage
 from pose_backends.errors import ModelLoadError
 from pose_backends.fake import FakePoseBackend, PosePreset
+from posture_core import build_report
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -30,6 +33,17 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 ENDPOINT = "/api/v1/analyses"
+
+
+def hunchback_report_dict() -> dict[str, Any]:
+    """A real report, serialised by the engine's own `to_dict()`.
+
+    Built rather than hand-written, so these assertions are about the actual contract. A literal
+    would drift from the engine and the tests would keep passing while saying nothing.
+    """
+    frame = FakePoseBackend(PosePreset.HUNCHBACK).detect(None)  # type: ignore[arg-type]
+    assert frame is not None
+    return build_report(frame).to_dict()
 
 
 def make_image(
@@ -332,3 +346,43 @@ class TestBackendFailure:
 
         assert response.status_code == 503
         assert response.json()["type"].endswith("/pose-backend-unavailable")
+
+
+class TestContractStrictness:
+    """The response models exist to make schema drift impossible to ship quietly.
+
+    Both halves are asserted, because both Pydantic defaults are permissive: unknown fields are
+    ignored, and types are coerced unless asked otherwise. A model carrying neither guard would
+    let a renamed, added or retyped field through while the OpenAPI document — and therefore the
+    frontend's generated types — went on describing the old shape.
+    """
+
+    def test_an_added_field_is_refused(self) -> None:
+        """A key appearing in `to_dict()` must not be silently dropped on its way out."""
+        payload = hunchback_report_dict()
+        payload["experimental_score"] = 42
+
+        with pytest.raises(ValidationError, match="experimental_score"):
+            PostureReportModel.model_validate(payload, strict=True)
+
+    def test_a_renamed_field_is_refused(self) -> None:
+        payload = hunchback_report_dict()
+        payload["overall"] = payload.pop("overall_score")
+
+        with pytest.raises(ValidationError):
+            PostureReportModel.model_validate(payload, strict=True)
+
+    def test_a_number_that_became_a_string_is_refused(self) -> None:
+        """The case non-strict validation hides: `"27.0"` parses, so the model would accept a
+        response the declared schema says is a number."""
+        payload = hunchback_report_dict()
+        payload["inference_ms"] = "27.0"
+
+        with pytest.raises(ValidationError, match="inference_ms"):
+            PostureReportModel.model_validate(payload, strict=True)
+
+    def test_the_engine_s_real_output_still_validates(self) -> None:
+        """The guard has to admit what the engine actually produces, or it is just an outage."""
+        model = PostureReportModel.model_validate(hunchback_report_dict(), strict=True)
+
+        assert model.metrics["trunk_inclination_deg"].value == 32.0

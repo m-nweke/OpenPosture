@@ -19,7 +19,7 @@ allowlist, or a backend that is not there.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, Final
+from typing import TYPE_CHECKING, Annotated, Final
 
 import structlog
 from fastapi import APIRouter, Depends, File, Request, UploadFile
@@ -34,6 +34,7 @@ from openposture_api.images import (
     decode_upload,
 )
 from openposture_api.pose import get_pose_backend
+from openposture_api.schemas import AnalysisResponse, ImageSize, PostureReportModel
 from openposture_api.storage import StorageBackend, StorageError, get_storage
 from pose_backends.base import PoseBackend
 from pose_backends.errors import PoseBackendError
@@ -61,6 +62,7 @@ def build_analyses_router() -> APIRouter:
     @router.post(
         "/analyses",
         status_code=status.HTTP_201_CREATED,
+        response_model=AnalysisResponse,
         summary="Analyse posture in a photograph",
         description=(
             "Upload a lateral photograph and receive a posture report. A report that could not "
@@ -83,7 +85,7 @@ def build_analyses_router() -> APIRouter:
         backend: Annotated[PoseBackend, Depends(get_pose_backend)],
         storage: Annotated[StorageBackend, Depends(get_storage)],
         image: Annotated[UploadFile, File(description="The photograph to analyse.")],
-    ) -> dict[str, Any]:
+    ) -> AnalysisResponse:
         raw = await _read_within_limit(image)
         decoded = decode_upload(raw)
 
@@ -100,12 +102,12 @@ def build_analyses_router() -> APIRouter:
             # An ordinary outcome — the user photographed their desk. 201, because the request
             # succeeded and "nobody in this image" is the finding.
             _LOGGER.info("analysis_no_pose", backend=backend.name, object_key=stored.key)
-            return {
-                "object_key": stored.key,
-                "pose_detected": False,
-                "report": None,
-                "image": {"width": decoded.width, "height": decoded.height},
-            }
+            return AnalysisResponse(
+                object_key=stored.key,
+                pose_detected=False,
+                report=None,
+                image=ImageSize(width=decoded.width, height=decoded.height),
+            )
 
         report = build_report(frame)
 
@@ -119,15 +121,22 @@ def build_analyses_router() -> APIRouter:
             score=report.overall_score,
         )
 
-        return {
-            "object_key": stored.key,
-            "pose_detected": True,
-            # `to_dict` is the engine's own serialiser, shared with the CLI and the golden
-            # corpus. A second one here would drift, and the cross-language parity check in
-            # Epic G depends on there being exactly one.
-            "report": report.to_dict(),
-            "image": {"width": decoded.width, "height": decoded.height},
-        }
+        return AnalysisResponse(
+            object_key=stored.key,
+            pose_detected=True,
+            # Validated from `to_dict()` rather than rebuilt from the dataclass. `to_dict` stays
+            # the engine's only serialiser — shared with the CLI and the golden corpus, and
+            # depended on by the cross-language parity check in Epic G — while the model gives
+            # the OpenAPI document a real shape.
+            #
+            # `strict=True` is what makes "they cannot disagree" true rather than aspirational.
+            # Pydantic's default coerces, so a field that became a string containing a number
+            # would validate happily and the schema would quietly stop describing the response.
+            # Together with `extra="forbid"` on the models, a rename, an added key or a changed
+            # type all raise here — on the first request, in the branch that produced them.
+            report=PostureReportModel.model_validate(report.to_dict(), strict=True),
+            image=ImageSize(width=decoded.width, height=decoded.height),
+        )
 
     return router
 

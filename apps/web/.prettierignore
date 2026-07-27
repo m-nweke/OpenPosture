@@ -4,3 +4,12 @@ node_modules
 playwright-report
 test-results
 package-lock.json
+
+# Generated from the backend's OpenAPI document by `npm run codegen`.
+#
+# Excluded so the committed artifact is byte-for-byte what the generator emits. Formatting them
+# would make every CI run of the contract job see a diff between the committed file and a fresh
+# regeneration — a drift alarm caused by Prettier rather than by the API, which is exactly the
+# kind of false failure that teaches people to ignore a check.
+src/api/openapi.json
+src/api/schema.d.ts
