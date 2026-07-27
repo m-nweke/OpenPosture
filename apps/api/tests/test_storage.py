@@ -467,3 +467,94 @@ class TestLocalDiskFailures:
             storage.get(key)
 
         assert not isinstance(caught.value, ObjectNotFoundError)
+
+
+class TestS3ConnectionHandling:
+    def test_the_response_body_is_closed_after_reading(self) -> None:
+        """`StreamingBody` holds an HTTP connection that `read()` does not release. Leaving it
+        open leaks a connection per fetch until the pool is exhausted, and the symptom is a hang
+        rather than an error — so this is asserted rather than assumed.
+        """
+        closed: list[bool] = []
+
+        class _Stream:
+            def read(self) -> bytes:
+                return PNG
+
+            def close(self) -> None:
+                closed.append(True)
+
+        class _Client:
+            def get_object(self, **_kwargs: object) -> dict[str, object]:
+                return {"Body": _Stream()}
+
+        storage = S3Storage(_BUCKET, client_factory=_Client)
+
+        assert storage.get("analyses/0123456789abcdef.png") == PNG
+        assert closed == [True]
+
+    def test_the_body_is_closed_even_when_reading_fails(self) -> None:
+        """A read that raises mid-stream is exactly when a leaked connection is least noticed."""
+        closed: list[bool] = []
+
+        class _Stream:
+            def read(self) -> bytes:
+                raise OSError("connection reset")
+
+            def close(self) -> None:
+                closed.append(True)
+
+        class _Client:
+            def get_object(self, **_kwargs: object) -> dict[str, object]:
+                return {"Body": _Stream()}
+
+        storage = S3Storage(_BUCKET, client_factory=_Client)
+
+        with pytest.raises(OSError, match="connection reset"):
+            storage.get("analyses/0123456789abcdef.png")
+
+        assert closed == [True]
+
+
+class TestMissingBucket:
+    def test_a_missing_bucket_is_a_fault_not_an_absent_object(self) -> None:
+        """A deleted or misnamed bucket must not read as an ordinary 404. Reporting it as
+        absence makes a misconfigured deployment look like data loss, which is the more
+        expensive of the two to diagnose.
+        """
+        error = ClientError(
+            {"Error": {"Code": "NoSuchBucket", "Message": "no bucket"}}, "GetObject"
+        )
+
+        class _Client:
+            def __getattr__(self, _name: str) -> object:
+                def raise_error(**_kwargs: object) -> None:
+                    raise error
+
+                return raise_error
+
+        storage = S3Storage(_BUCKET, client_factory=_Client)
+
+        with pytest.raises(StorageError) as caught:
+            storage.get("analyses/0123456789abcdef.png")
+
+        assert not isinstance(caught.value, ObjectNotFoundError)
+
+    def test_a_missing_bucket_does_not_make_exists_return_false(self) -> None:
+        """`exists` returning False for a broken bucket would let a caller conclude the object
+        was deleted and act on it."""
+        error = ClientError(
+            {"Error": {"Code": "NoSuchBucket", "Message": "no bucket"}}, "HeadObject"
+        )
+
+        class _Client:
+            def __getattr__(self, _name: str) -> object:
+                def raise_error(**_kwargs: object) -> None:
+                    raise error
+
+                return raise_error
+
+        storage = S3Storage(_BUCKET, client_factory=_Client)
+
+        with pytest.raises(StorageError):
+            storage.exists("analyses/0123456789abcdef.png")

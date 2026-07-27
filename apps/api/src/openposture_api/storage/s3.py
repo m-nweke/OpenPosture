@@ -36,12 +36,17 @@ DEFAULT_URL_EXPIRY_SECONDS: Final = 900
 """Fifteen minutes: long enough to load a page and re-render it, short enough that a URL leaked
 into a log or a referrer header is not a lasting grant."""
 
-_NOT_FOUND_CODES: Final = frozenset({"NoSuchKey", "404", "NoSuchBucket", "NotFound"})
-"""What "it is not there" looks like across implementations.
+_NOT_FOUND_CODES: Final = frozenset({"NoSuchKey", "404", "NotFound"})
+"""What "this object is not there" looks like across implementations.
 
-`GetObject` says `NoSuchKey`, `HeadObject` says `404` with no name because HEAD has no body to
-put one in, and MinIO is not always identical to AWS. Matching on a set beats matching on one
-string and discovering the difference in production.
+`GetObject` says `NoSuchKey`, `HeadObject` says `404` with no name because a HEAD response has no
+body to put one in, and MinIO is not always identical to AWS. Matching on a set beats matching on
+one string and discovering the difference in production.
+
+**`NoSuchBucket` is deliberately absent.** A missing bucket is a deployment fault — wrong name,
+wrong endpoint, never created — and reporting it as ordinary absence would turn a broken
+deployment into a plausible-looking 404 on every object. The failure would then look like data
+loss rather than misconfiguration, which is the more expensive of the two to diagnose.
 """
 
 
@@ -118,7 +123,15 @@ class S3Storage:
         validate_key(key)
         try:
             response = self._client.get_object(Bucket=self._bucket, Key=key)
-            body: bytes = response["Body"].read()
+            # `Body` is a `StreamingBody` wrapping a live HTTP response. Reading it does not
+            # release the underlying connection back to urllib3's pool — closing it does. Left
+            # unclosed, a service fetching many objects leaks connections and file descriptors
+            # until the pool is exhausted, and the symptom is a hang rather than an error.
+            stream = response["Body"]
+            try:
+                body: bytes = stream.read()
+            finally:
+                stream.close()
         except ClientError as exc:
             if _is_not_found(exc):
                 raise ObjectNotFoundError(f"no object stored at {key!r}") from exc
