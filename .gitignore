@@ -66,3 +66,11 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+
+# --- Model weights (OP-20) ---
+# Never committed. 9 MB is under GitHub's limit, but weights in git is how the legacy project
+# ended up with a 209 MB blob it could not push and a Dropbox link instead. `make fetch-model`
+# reproduces them from a pinned URL and verifies a pinned SHA256; models/checksums.txt is the
+# thing under version control.
+models/*.task
+models/*.task.download
