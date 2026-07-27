@@ -343,6 +343,40 @@ describe('Dashboard', () => {
     })
   })
 
+  describe('cancelling', () => {
+    it('clearing mid-upload does not report a failure', async () => {
+      // Aborting rejects the request, and an unfiltered catch turns that into a red alert saying
+      // "The upload was cancelled." on a form the user has just deliberately cleared — telling
+      // them something went wrong when nothing did.
+      signedInAs('Ada')
+      const release = heldResponse()
+      renderWithProviders(<Dashboard />)
+      const user = await upload()
+      await screen.findByRole('progressbar')
+
+      await user.click(screen.getByRole('button', { name: 'Clear' }))
+      release()
+
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('choosing another file mid-upload does not report a failure', async () => {
+      signedInAs('Ada')
+      const release = heldResponse()
+      renderWithProviders(<Dashboard />)
+      const user = await upload()
+      await screen.findByRole('progressbar')
+
+      await user.upload(fileInput(), pngFile())
+      release()
+
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'Your results' })).not.toBeInTheDocument()
+    })
+  })
+
   describe('clearing', () => {
     it('removes the result and re-disables submit', async () => {
       signedInAs('Ada')

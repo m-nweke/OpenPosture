@@ -73,6 +73,7 @@ export interface components {
          * @description What `POST /api/v1/analyses` returns on success.
          */
         AnalysisResponse: {
+            /** @description The uploaded photograph's dimensions after EXIF rotation is applied — what the user actually sees. This is the authoritative size for a client; see the note on `PostureReportModel.image` for why the two can differ. */
             image: components["schemas"]["ImageSize"];
             /**
              * Landmarks
@@ -245,6 +246,7 @@ export interface components {
             backend: string;
             /** Findings */
             findings: components["schemas"]["Finding"][];
+            /** @description The frame the *backend* measured, which is not always the frame that was uploaded. `FakePoseBackend` ignores the image entirely and reports its preset's own size, so this can differ from `AnalysisResponse.image` whenever the fake backend is in use. For anything to do with the uploaded photograph — scaling an overlay, for instance — use `AnalysisResponse.image`. */
             image: components["schemas"]["ImageSize"];
             /** Inference Ms */
             inference_ms: number;

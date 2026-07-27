@@ -3,6 +3,7 @@
 [![PR](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml)
 [![containers](https://github.com/m-nweke/OpenPosture/actions/workflows/containers.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/containers.yml)
 [![scientific-validation](https://github.com/m-nweke/OpenPosture/actions/workflows/scientific-validation.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/scientific-validation.yml)
+[![e2e](https://github.com/m-nweke/OpenPosture/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/e2e.yml)
 
 **Upload a photograph of yourself sitting. Get back angles measured from your own body, and an
 honest account of what could not be measured.**

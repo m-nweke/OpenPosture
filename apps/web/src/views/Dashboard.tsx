@@ -82,9 +82,18 @@ export default function Dashboard() {
         onProgress: setProgress,
         signal: controller.signal,
       })
+      // Superseded while in flight. Writing the result now would put this report beside whatever
+      // the screen has moved on to — a cleared form, or a different photo's preview.
+      if (controller.signal.aborted) return
       setAnalysis(result)
       setStatus('done')
     } catch (caught) {
+      // A cancelled upload is not a failure to report. Clearing the form and choosing a second
+      // file both abort the request, and both already put the screen where the user asked for
+      // it; surfacing "The upload was cancelled." as a red alert on top of that tells them
+      // something went wrong when nothing did.
+      if (controller.signal.aborted) return
+
       setError(
         caught instanceof ApiError
           ? caught
@@ -92,7 +101,9 @@ export default function Dashboard() {
       )
       setStatus('error')
     } finally {
-      abortRef.current = null
+      // Only if this request still owns the ref. A superseded request finishing later would
+      // otherwise clear the *current* one's controller, leaving it with no way to be aborted.
+      if (abortRef.current === controller) abortRef.current = null
     }
   }, [file, status])
 

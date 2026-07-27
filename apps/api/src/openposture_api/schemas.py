@@ -107,7 +107,15 @@ class PostureReportModel(ContractModel):
     rules_version: str
     backend: str
     inference_ms: float
-    image: ImageSize
+    image: ImageSize = Field(
+        description=(
+            "The frame the *backend* measured, which is not always the frame that was uploaded. "
+            "`FakePoseBackend` ignores the image entirely and reports its preset's own size, so "
+            "this can differ from `AnalysisResponse.image` whenever the fake backend is in use. "
+            "For anything to do with the uploaded photograph — scaling an overlay, for instance — "
+            "use `AnalysisResponse.image`."
+        )
+    )
     overall_score: float | None = Field(
         description=(
             "0 to 100, or `null` when nothing could be measured. Null rather than 0 or 100: both "
@@ -170,4 +178,10 @@ class AnalysisResponse(ContractModel):
             "derived artifact, and a cache-invalidation question every time the rules change."
         ),
     )
-    image: ImageSize
+    image: ImageSize = Field(
+        description=(
+            "The uploaded photograph's dimensions after EXIF rotation is applied — what the user "
+            "actually sees. This is the authoritative size for a client; see the note on "
+            "`PostureReportModel.image` for why the two can differ."
+        )
+    )
