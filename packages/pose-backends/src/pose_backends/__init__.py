@@ -16,7 +16,25 @@ that inversion is what keeps the core installable and testable with no inference
 from __future__ import annotations
 
 from pose_backends.base import ImageBGR, PoseBackend
+from pose_backends.errors import (
+    BackendUnavailableError,
+    InvalidImageError,
+    ModelLoadError,
+    ModelNotFoundError,
+    PoseBackendError,
+)
+from pose_backends.mediapipe_backend import MediaPipeBackend
 
-__all__ = ["ImageBGR", "PoseBackend", "__version__"]
+__all__ = [
+    "BackendUnavailableError",
+    "ImageBGR",
+    "InvalidImageError",
+    "MediaPipeBackend",
+    "ModelLoadError",
+    "ModelNotFoundError",
+    "PoseBackend",
+    "PoseBackendError",
+    "__version__",
+]
 
 __version__ = "0.1.0"

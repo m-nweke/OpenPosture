@@ -104,9 +104,21 @@ show_error_codes = true
 pretty = true
 exclude = ['^docs/archive/']
 
-# NOTE: `ignore_missing_imports` overrides for untyped third-party packages (cv2, mediapipe)
-# are added by OP-18, when the adapter first imports them. Declaring them now would trip
-# `warn_unused_configs` and train everyone to ignore mypy's output.
+# Untyped third-party packages, added in OP-18 when the adapter first imported them.
+#
+# `mediapipe` ships no type information and, being an optional extra (ADR-0002), is usually not
+# installed at all in the environment mypy runs in — CI installs the base package only. Either way
+# mypy cannot resolve it, and either way the answer is the same: trust the adapter's own
+# annotations and treat the library as Any.
+#
+# The blast radius is deliberately one module. `mediapipe` is imported inside two functions in
+# pose_backends/mediapipe_backend.py and nowhere else, so everything that crosses back into typed
+# code does so through RawDetection and RawLandmark, which are checked normally.
+#
+# `cv2` is here for the same reason and is reached only from the real-model tests and the CLI.
+[[tool.mypy.overrides]]
+module = ["mediapipe.*", "cv2.*"]
+ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
 # pytest
