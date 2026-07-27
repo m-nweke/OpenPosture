@@ -235,3 +235,30 @@ def test_has_world_landmarks_requires_every_reported_point_to_carry_metric_3d() 
 def test_empty_frame_has_no_world_landmarks() -> None:
     """`all()` over nothing is True, which would be exactly the wrong answer here."""
     assert make_frame({}).has_world_landmarks is False
+
+
+@pytest.mark.parametrize("field", ["visibility", "presence"])
+@pytest.mark.parametrize("value", [-0.01, 1.01, 5.0])
+def test_a_confidence_outside_zero_to_one_is_rejected(field: str, value: float) -> None:
+    """Caught at the boundary, where the landmark responsible can still be named.
+
+    `Finding` already refuses an impossible confidence, but that is three layers downstream and the
+    rules layer clamps on the way there — so a backend emitting `visibility=5.0` produced clean
+    findings and a metrics section that reported a confidence of `5.0` straight to the API. The
+    docstrings on both fields have always said `[0, 1]`; nothing enforced it.
+
+    Deliberately unlike `x` and `y`, which are *not* range-checked because MediaPipe extrapolates
+    them past the frame edge on purpose and that is real signal.
+    """
+    defaults = {"x": 0.5, "y": 0.5, "visibility": 0.9, "presence": 0.9}
+    with pytest.raises(ValueError, match=f"{field} must be a probability"):
+        Landmark(**{**defaults, field: value})
+
+
+def test_coordinates_outside_the_frame_are_still_allowed() -> None:
+    """The other half of the rule above, so the new check cannot creep onto `x` and `y`.
+
+    An extrapolated joint past the frame edge is the signal `OUT_OF_FRAME` is built on. Rejecting
+    it here would destroy the distinction the status model exists for.
+    """
+    assert Landmark(x=-0.4, y=1.8, visibility=0.9, presence=0.2).x == -0.4

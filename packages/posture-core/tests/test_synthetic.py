@@ -252,3 +252,16 @@ def test_frame_wraps_the_pose_with_a_constant_zero_latency() -> None:
     assert frame.inference_ms == 0.0
     assert frame.has_world_landmarks is True
     assert make_pose_frame(trunk_deg=10.0) == frame
+
+
+@pytest.mark.parametrize(("width", "height"), [(0, 480), (640, 0), (-1, 480), (640, -1)])
+def test_non_positive_frame_dimensions_are_rejected_by_the_builder(width: int, height: int) -> None:
+    """Caught here, not left to the division inside `_project`.
+
+    Projection divides by both dimensions, so without this check the caller gets
+    `ZeroDivisionError: float division by zero` from inside the builder — true, useless, and
+    several frames away from the argument that caused it. `PoseFrame` has the right message but
+    is never reached.
+    """
+    with pytest.raises(ValueError, match="dimensions must be positive"):
+        make_pose(image_width=width, image_height=height)

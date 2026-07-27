@@ -227,3 +227,41 @@ def test_the_figure_builder_uses_this_modules_up_vector() -> None:
     )
 
     assert _axes(Facing.RIGHT, View.LATERAL).up == (UP[0], UP[1], UP[2])
+
+
+def test_a_forward_axis_parallel_to_up_is_rejected() -> None:
+    """Otherwise it answers 45° to every question, including ones with an obvious answer.
+
+    With `forward` parallel to UP there is no sagittal plane: both projections read the same axis,
+    so `atan2(x, x)` is 45° regardless of the vector — a perfectly vertical torso included, whose
+    inclination is 0°. A constant answer that ignores its input is worse than a loud failure, and
+    this module's contract is that degenerate input raises.
+
+    Not reachable through `forward_axis`, which only ever returns a horizontal unit vector. This
+    guards the primitive, which is public and has no such promise attached.
+    """
+    with pytest.raises(DegenerateVectorError, match="parallel to UP"):
+        signed_angle_to_vertical(np.array([1.0, -1.0, 0.0]), UP)
+    with pytest.raises(DegenerateVectorError, match="parallel to UP"):
+        signed_angle_to_vertical(np.array([1.0, -1.0, 0.0]), GRAVITY)
+
+
+@pytest.mark.parametrize("tilt", [-0.05, 0.0, 0.3])
+def test_a_tilted_forward_axis_measures_the_same_angle_as_a_level_one(tilt: float) -> None:
+    """The vertical component of `forward` is removed rather than trusted to be absent.
+
+    Found by writing the test above and getting 2.86° for a plumb-vertical torso. `atan2` needs two
+    *perpendicular* axes to read an angle; given a forward axis 3° out of level it returns a
+    mixture, and the error is a quiet bias of exactly that tilt — a torso hanging straight down
+    reported as leaning. No caller passes a tilted axis today, so nothing was wrong in the report;
+    the function was simply relying on a precondition it never stated or enforced.
+    """
+    upright = np.array([0.0, -1.0, 0.0])
+    assert signed_angle_to_vertical(upright, np.array([1.0, tilt, 0.0])) == pytest.approx(
+        0.0, abs=1e-9
+    )
+
+    leaning = np.array([1.0, -1.0, 0.0])
+    assert signed_angle_to_vertical(leaning, np.array([1.0, tilt, 0.0])) == pytest.approx(
+        45.0, abs=1e-9
+    )

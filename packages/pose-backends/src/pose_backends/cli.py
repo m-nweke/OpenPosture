@@ -42,12 +42,22 @@ if TYPE_CHECKING:
 
 __all__ = ["OUTPUT_SCHEMA_VERSION", "main"]
 
-OUTPUT_SCHEMA_VERSION: Final = "1.0"
+OUTPUT_SCHEMA_VERSION: Final = "2.0"
 """Bumped deliberately when the JSON shape changes.
 
 Consumers exist outside this repository's test suite — the evaluation writeup in Epic H compares
 this output against a legacy capture that can never be regenerated. An unversioned format would
 make "the numbers changed" and "the format changed" indistinguishable after the fact.
+
+**2.0** — ``landmarks`` carries every canonical keypoint rather than only the detected ones, with
+the rest null-filled and marked ``not_reported``, and ``canonical_count`` is new.
+
+A major bump rather than 1.1, because the null fill is the kind of change that breaks a reader
+quietly. Under 1.0 a keypoint the backend did not return was *absent*, so a consumer indexing it
+got a ``KeyError`` and knew immediately. Now the key is present and its coordinates are ``None``,
+which reads as a value and only fails further downstream, in arithmetic, wearing someone else's
+stack trace. Adding ``canonical_count`` on its own would have been a minor bump; changing what an
+existing key can contain is not.
 """
 
 EXIT_OK: Final = 0
@@ -55,6 +65,13 @@ EXIT_NO_POSE: Final = 1
 """Distinct from a crash. "Nobody in this photo" is a *result*, and a script batching a directory
 of images needs to tell it apart from "the model file is missing"."""
 EXIT_ERROR: Final = 2
+
+NOT_REPORTED: Final = "not_reported"
+"""Status for a canonical keypoint this backend did not return at all.
+
+Distinct from every :class:`DisplayStatus` value, all of which describe a landmark that *was*
+returned. Absence and low confidence are different facts (OP-25).
+"""
 
 # Confidence below which a landmark is reported but not trusted. Matches MediaPipe's own default
 # detection confidence.
@@ -213,21 +230,44 @@ def _as_dict(frame: PoseFrame) -> dict[str, object]:
         "inference_ms": round(frame.inference_ms, 3),
         "image": {"width": frame.image_width, "height": frame.image_height},
         "landmark_count": len(frame),
-        # Sorted by canonical name rather than by the order the adapter happened to build them, so
-        # two captures of the same image diff cleanly.
+        "canonical_count": len(KeypointName),
+        # Every canonical keypoint, always, in name order — including the ones this backend did
+        # not report, which appear null-filled with a `not_reported` status.
+        #
+        # A key set that varied with what was detected would make two captures of the same image
+        # diff noisily, and would make "this backend stopped reporting a left heel" look identical
+        # to "this key was never in the format". The table already renders all 34 rows for that
+        # reason; the machine-readable form should not be the weaker of the two, since it is the
+        # one Epic H compares against a legacy baseline that cannot be regenerated.
         "landmarks": {
-            name.value: {
-                "x": round(landmark.x, 6),
-                "y": round(landmark.y, 6),
-                "x_world": None if landmark.x_world is None else round(landmark.x_world, 6),
-                "y_world": None if landmark.y_world is None else round(landmark.y_world, 6),
-                "z_world": None if landmark.z_world is None else round(landmark.z_world, 6),
-                "visibility": round(landmark.visibility, 4),
-                "presence": round(landmark.presence, 4),
-                "status": _display_status(landmark).value,
-            }
-            for name, landmark in sorted(frame.landmarks.items(), key=lambda item: item[0].value)
+            name.value: _landmark_dict(frame.get(name))
+            for name in sorted(KeypointName, key=lambda item: item.value)
         },
+    }
+
+
+def _landmark_dict(landmark: Landmark | None) -> dict[str, object]:
+    """One landmark's JSON shape, or the null-filled shape for one that was not reported."""
+    if landmark is None:
+        return {
+            "x": None,
+            "y": None,
+            "x_world": None,
+            "y_world": None,
+            "z_world": None,
+            "visibility": None,
+            "presence": None,
+            "status": NOT_REPORTED,
+        }
+    return {
+        "x": round(landmark.x, 6),
+        "y": round(landmark.y, 6),
+        "x_world": None if landmark.x_world is None else round(landmark.x_world, 6),
+        "y_world": None if landmark.y_world is None else round(landmark.y_world, 6),
+        "z_world": None if landmark.z_world is None else round(landmark.z_world, 6),
+        "visibility": round(landmark.visibility, 4),
+        "presence": round(landmark.presence, 4),
+        "status": _display_status(landmark).value,
     }
 
 

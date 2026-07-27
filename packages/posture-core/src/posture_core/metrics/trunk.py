@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Final
 from posture_core.geometry import midpoint, signed_angle_to_vertical
 from posture_core.keypoints import KeypointName
 from posture_core.metrics._support import abstain, measure, world_points
-from posture_core.resolver import Resolved
+from posture_core.resolver import FACING_INPUTS, Resolved
 from posture_core.status import Metric
 
 if TYPE_CHECKING:
@@ -74,7 +74,10 @@ def trunk_inclination_deg(resolver: KeypointResolver, thresholds: Thresholds) ->
             UNIT,
             "could not tell which way you are facing, so a forward lean cannot be told apart "
             "from leaning back",
-            inputs=REQUIRED,
+            # The facing landmarks, not this metric's own. The hips and shoulders are fine — the
+            # nose or the neck is what is missing, and a gap that listed four healthy keypoints
+            # would point the user at the wrong thing while saying nothing about the real one.
+            inputs=FACING_INPUTS,
         )
 
     hips = midpoint(points[KeypointName.LEFT_HIP], points[KeypointName.RIGHT_HIP])

@@ -14,7 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from pose_backends.cli import EXIT_ERROR, EXIT_NO_POSE, EXIT_OK, OUTPUT_SCHEMA_VERSION, main
+from pose_backends.cli import (
+    EXIT_ERROR,
+    EXIT_NO_POSE,
+    EXIT_OK,
+    NOT_REPORTED,
+    OUTPUT_SCHEMA_VERSION,
+    main,
+)
 from posture_core import KeypointName
 
 
@@ -284,3 +291,60 @@ def test_a_report_for_no_pose_still_exits_one(capsys: pytest.CaptureFixture[str]
     code, _, err = run(capsys, "--backend", "fake", "--preset", "no_person", "--report")
     assert code == EXIT_NO_POSE
     assert "No pose detected" in err
+
+
+def test_json_always_carries_every_canonical_keypoint(capsys: pytest.CaptureFixture[str]) -> None:
+    """A stable key set, whatever the backend reported.
+
+    A key set that varied with detection makes two captures of the same image diff noisily, and
+    makes "this backend stopped reporting a left heel" indistinguishable from "this key was never
+    in the format". The table already renders all 34 rows; the machine-readable form is the one
+    Epic H compares against a legacy baseline that cannot be regenerated, so it should not be the
+    weaker of the two.
+    """
+    _, out, _ = run(capsys, "--backend", "fake", "--preset", "partial_occlusion", "--json")
+    payload = json.loads(out)
+    assert set(payload["landmarks"]) == {name.value for name in KeypointName}
+    assert payload["landmark_count"] == 26
+    assert payload["canonical_count"] == 34
+
+
+def test_unreported_keypoints_are_null_filled_and_labelled(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`not_reported` is distinct from every status a returned landmark can carry."""
+    _, out, _ = run(capsys, "--backend", "fake", "--preset", "partial_occlusion", "--json")
+    knee = json.loads(out)["landmarks"]["left_knee"]
+    assert knee["status"] == "not_reported"
+    assert knee["x"] is None
+    assert knee["visibility"] is None
+
+
+def test_the_output_schema_version_records_the_null_filled_landmark_shape() -> None:
+    """Pinned to a literal on purpose, unlike the assertion above.
+
+    Every other version assertion here compares the payload against the constant, which agrees
+    with itself no matter what the constant says — useful for catching a payload that forgot to
+    carry the stamp, useless for catching a shape change that forgot to bump it. That is exactly
+    what happened: `landmarks` went from detected-only to every canonical key with null fill, and
+    the version stayed at 1.0.
+
+    The literal makes the bump a deliberate two-line edit. If you are changing this number, the
+    docstring on `OUTPUT_SCHEMA_VERSION` is where the reason goes.
+    """
+    assert OUTPUT_SCHEMA_VERSION == "2.0"
+
+
+def test_the_null_fill_is_what_the_major_bump_was_for(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The breaking half, stated as behaviour so the version note stays honest.
+
+    Under 1.0 an unreported keypoint was absent and indexing it raised `KeyError` immediately.
+    Now the key exists with `None` coordinates, which a consumer reads as a value and only trips
+    over later, in arithmetic.
+    """
+    _, out, _ = run(capsys, "--backend", "fake", "--preset", "partial_occlusion", "--json")
+    knee = json.loads(out)["landmarks"]["left_knee"]
+    assert knee["status"] == NOT_REPORTED
+    assert knee["x"] is None

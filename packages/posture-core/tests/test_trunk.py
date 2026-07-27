@@ -199,3 +199,18 @@ def test_coincident_landmarks_abstain_with_undefined_geometry() -> None:
     assert metric.value is None
     assert metric.status is MetricStatus.UNDEFINED_GEOMETRY
     assert "overlap" in metric.detail
+
+
+def test_the_facing_gap_names_the_facing_landmarks_not_the_torso() -> None:
+    """The gap has to blame the keypoint that is actually missing.
+
+    Dropping the nose makes `forward_axis` unavailable, so the metric abstains — but its inputs
+    were the hips and shoulders, all four of which resolved perfectly. The report therefore listed
+    four `ok` keypoints as the reason and never mentioned the nose at all, which is precisely
+    backwards from what `Gap.keypoints` exists to provide.
+    """
+    metric = metric_of(trunk, **without(K.NOSE))
+    assert metric.value is None
+    assert "which way you are facing" in metric.detail
+    assert set(metric.inputs) == {K.NOSE, K.NECK}
+    assert K.LEFT_HIP not in metric.inputs

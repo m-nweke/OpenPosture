@@ -123,3 +123,12 @@ def test_a_two_dimensional_backend_abstains() -> None:
     metric = cva(flat_resolver(neck_deg=30.0), DEFAULT_THRESHOLDS)
     assert metric.value is None
     assert "world coordinates" in metric.detail
+
+
+def test_the_facing_gap_names_the_facing_landmarks_not_the_ears() -> None:
+    """Same defect as `trunk`, same fix — the ears and shoulders were never the problem."""
+    metric = metric_of(cva, **without(K.NOSE))
+    assert metric.value is None
+    assert "which way you are facing" in metric.detail
+    assert set(metric.inputs) == {K.NOSE, K.NECK}
+    assert K.LEFT_EAR not in metric.inputs

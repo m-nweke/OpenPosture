@@ -73,6 +73,12 @@ fetch-model:
 ## or swapped model fails the workflow instead of quietly changing its results.
 verify-model:
 	@expected="$(expected_sha)"; \
+	if [ -z "$$expected" ]; then \
+		echo "ERROR: no pinned SHA256 for $(MODEL_FILE) in $(CHECKSUMS)." >&2; \
+		echo "       Variants available:" >&2; \
+		grep -E "^[0-9a-f]{64}  " $(CHECKSUMS) | sed 's/^.*  /         /' >&2; \
+		exit 1; \
+	fi; \
 	if [ ! -f "$(MODEL_TARGET)" ]; then \
 		echo "ERROR: $(MODEL_TARGET) is missing. Run \`make fetch-model\`." >&2; exit 1; \
 	fi; \

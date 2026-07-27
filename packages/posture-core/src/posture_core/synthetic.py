@@ -234,6 +234,12 @@ def make_pose(
     :param omit: keypoints to leave out entirely, for degradation tests. Absence is not the same
         as zero confidence and the two must stay distinguishable.
     """
+    if image_width <= 0 or image_height <= 0:
+        # Checked here rather than left to PoseFrame. `_project` divides by both, so without this
+        # the caller gets `ZeroDivisionError: float division by zero` from inside the builder —
+        # true, useless, and several frames away from the argument that caused it.
+        raise ValueError(f"image dimensions must be positive, got {image_width}x{image_height}")
+
     body = body if body is not None else Anthropometry()
     axes = _axes(facing, view)
     dropped = frozenset(omit)

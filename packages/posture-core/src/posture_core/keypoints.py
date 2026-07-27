@@ -151,6 +151,20 @@ class Landmark:
                 f"z_world={self.z_world!r}"
             )
 
+        # Unlike `x` and `y` above, these two really are probabilities, and the range is checked.
+        # `Finding` already refuses an out-of-range confidence, but that guard sits three layers
+        # downstream and the rules layer clamps on the way — so a backend emitting `visibility=5.0`
+        # produced clean findings and a metrics section reporting a confidence of 5.0 to the API.
+        # The boundary is the place to catch an adapter bug, and it is the only place that can name
+        # the landmark responsible.
+        for field, value in (("visibility", self.visibility), ("presence", self.presence)):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(
+                    f"{field} must be a probability in [0, 1], got {value!r}. A value outside "
+                    "that range can only come from an adapter bug, and it would travel into the "
+                    "report as a confidence no interface can render honestly."
+                )
+
     @property
     def has_world(self) -> bool:
         """Whether this landmark carries metric 3D, and so whether world-space rules may use it."""

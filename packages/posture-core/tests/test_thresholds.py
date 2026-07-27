@@ -121,3 +121,14 @@ def test_every_field_has_a_default_so_a_caller_can_override_one_thing() -> None:
     every test into restating the whole configuration."""
     for field in dataclasses.fields(Thresholds):
         assert field.default is not dataclasses.MISSING, field.name
+
+
+def test_a_negative_heel_tolerance_is_rejected() -> None:
+    """A negative tolerance reports every level or raised heel as unsupported.
+
+    Unlike the ordering checks above this one is not unreachable-rule territory — it fires
+    constantly and produces a finding on almost every photograph, which reads as the metric being
+    broken rather than as the configuration being wrong.
+    """
+    with pytest.raises(ValueError, match="heel_contact_tolerance_m must not be negative"):
+        Thresholds(heel_contact_tolerance_m=-0.01)

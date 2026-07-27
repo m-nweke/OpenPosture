@@ -49,7 +49,10 @@ def default_model_path() -> Path:
     link recorded in a readme, with no checksum and no stated origin, so a dead link made the whole
     project unrunnable and a corrupted copy was indistinguishable from a good one.
     """
-    override = os.environ.get("MODEL_PATH")
+    # Stripped, and an empty result treated as unset. A stray space in a Compose env file or a CI
+    # variable would otherwise produce `Path("   ")` and a "model not found" error naming a path
+    # that is invisible in the message.
+    override = (os.environ.get("MODEL_PATH") or "").strip()
     return Path(override) if override else DEFAULT_MODEL_PATH
 
 
