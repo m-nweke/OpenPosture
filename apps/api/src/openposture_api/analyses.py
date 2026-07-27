@@ -34,7 +34,12 @@ from openposture_api.images import (
     decode_upload,
 )
 from openposture_api.pose import get_pose_backend
-from openposture_api.schemas import AnalysisResponse, ImageSize, PostureReportModel
+from openposture_api.schemas import (
+    AnalysisResponse,
+    DetectedLandmark,
+    ImageSize,
+    PostureReportModel,
+)
 from openposture_api.storage import StorageBackend, StorageError, get_storage
 from pose_backends.base import PoseBackend
 from pose_backends.errors import PoseBackendError
@@ -43,6 +48,8 @@ from posture_core import build_report
 if TYPE_CHECKING:
     from fastapi import FastAPI
     from starlette.responses import JSONResponse
+
+    from posture_core import PoseFrame, PostureReport
 
 __all__ = ["API_PREFIX", "build_analyses_router", "register_analysis_error_handlers"]
 
@@ -106,6 +113,7 @@ def build_analyses_router() -> APIRouter:
                 object_key=stored.key,
                 pose_detected=False,
                 report=None,
+                landmarks=[],
                 image=ImageSize(width=decoded.width, height=decoded.height),
             )
 
@@ -124,6 +132,7 @@ def build_analyses_router() -> APIRouter:
         return AnalysisResponse(
             object_key=stored.key,
             pose_detected=True,
+            landmarks=_landmarks_for(frame, report),
             # Validated from `to_dict()` rather than rebuilt from the dataclass. `to_dict` stays
             # the engine's only serialiser — shared with the CLI and the golden corpus, and
             # depended on by the cross-language parity check in Epic G — while the model gives
@@ -139,6 +148,34 @@ def build_analyses_router() -> APIRouter:
         )
 
     return router
+
+
+def _landmarks_for(frame: PoseFrame, report: PostureReport) -> list[DetectedLandmark]:
+    """Pair each measured point with the status the resolver gave it.
+
+    The coordinates come from the frame and the status from the report, because they answer
+    different questions: the frame says *where* the model thinks a point is, and the resolver says
+    whether that belief is good enough to act on. A client needs both — drawing a
+    `low_confidence` elbow identically to a measured one presents a guess as a measurement, which
+    is the failure this project exists to remove.
+    """
+    # Indexed, not `.get(...)` with a default. `KeypointResolver` classifies *every* member of
+    # `KeypointName`, and `frame.landmarks` is keyed by that same enum, so a miss here is not a
+    # missing status — it is a broken invariant, and a default would hide it behind a plausible
+    # value. `not_detected` in particular would be a lie: the resolver only assigns it when the
+    # frame has no landmark at all, which cannot be true of one we are iterating over.
+    statuses = report.quality.keypoints
+    return [
+        DetectedLandmark(
+            name=str(name),
+            x=landmark.x,
+            y=landmark.y,
+            status=str(statuses[name]),  # type: ignore[arg-type]
+            visibility=landmark.visibility,
+            presence=landmark.presence,
+        )
+        for name, landmark in frame.landmarks.items()
+    ]
 
 
 async def _read_within_limit(upload: UploadFile) -> bytes:

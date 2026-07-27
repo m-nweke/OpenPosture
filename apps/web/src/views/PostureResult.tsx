@@ -16,7 +16,8 @@
  * than being presented as fact.
  */
 
-import type { PostureReport } from '../api/types'
+import type { AnalysisResponse, PostureReport } from '../api/types'
+import SkeletonOverlay from './SkeletonOverlay'
 import styles from './PostureResult.module.css'
 
 /**
@@ -34,9 +35,10 @@ const FRONTAL_VIEW_CODE = 'frontal_view'
 interface Props {
   report: PostureReport
   imageUrl: string | null
+  landmarks: AnalysisResponse['landmarks']
 }
 
-export default function PostureResult({ report, imageUrl }: Props) {
+export default function PostureResult({ report, imageUrl, landmarks }: Props) {
   const measured = Object.entries(report.metrics).filter(([, metric]) => metric.status === 'ok')
   const viewCaveat = report.findings.find((finding) => finding.code === FRONTAL_VIEW_CODE)
   // Rendered as a caveat above the results rather than as one finding among many, and therefore
@@ -74,9 +76,14 @@ export default function PostureResult({ report, imageUrl }: Props) {
         Assessed {report.quality.assessed} of {report.quality.total} measurements.
       </p>
 
-      {imageUrl && (
-        <img src={imageUrl} alt="The photo you uploaded" className={styles.uploadedImage} />
-      )}
+      {imageUrl &&
+        (landmarks.length > 0 ? (
+          <SkeletonOverlay imageUrl={imageUrl} landmarks={landmarks} />
+        ) : (
+          // No landmarks means nothing to draw. Showing a bare canvas would suggest the overlay
+          // failed rather than that there was nothing to overlay.
+          <img src={imageUrl} alt="The photo you uploaded" className={styles.uploadedImage} />
+        ))}
 
       {findings.length > 0 ? (
         <section aria-labelledby="findings-heading">

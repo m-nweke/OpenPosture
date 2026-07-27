@@ -75,6 +75,11 @@ export interface components {
         AnalysisResponse: {
             image: components["schemas"]["ImageSize"];
             /**
+             * Landmarks
+             * @description Every landmark the backend returned, for drawing a skeleton over the photo. Empty when no pose was detected. The overlay is drawn client-side from these — the server never writes an annotated image, which would cost a round trip, storage for a derived artifact, and a cache-invalidation question every time the rules change.
+             */
+            landmarks: components["schemas"]["DetectedLandmark"][];
+            /**
              * Object Key
              * @description Where the uploaded image was stored. A key, never a URL — a URL embeds a host and an expiry, and persisting one means a hostname change invalidates it.
              */
@@ -91,6 +96,48 @@ export interface components {
              * @description The photograph to analyse.
              */
             image: string;
+        };
+        /**
+         * DetectedLandmark
+         * @description One measured point, in the form a client needs to draw it.
+         *
+         *     **Normalised to the image, not in pixels.** The frontend renders the photo at whatever size
+         *     the viewport allows, so a pixel coordinate would be wrong the moment the layout changed. `x`
+         *     and `y` are fractions of width and height, which stay correct under any scale — the same
+         *     reasoning as the world-space metrics, applied to presentation.
+         *
+         *     World coordinates are deliberately absent: they are metres from the hip and mean nothing on
+         *     a 2D canvas.
+         */
+        DetectedLandmark: {
+            /** Name */
+            name: string;
+            /**
+             * Presence
+             * @description [0, 1] — confidence the point is in frame at all.
+             */
+            presence: number;
+            /**
+             * Status
+             * @description How usable this point is. A client must render anything other than `ok` distinctly or not at all — drawing a guessed position as though it were measured is the confident-wrong-answer failure this project exists to remove.
+             * @enum {string}
+             */
+            status: "ok" | "low_confidence" | "not_detected" | "out_of_frame";
+            /**
+             * Visibility
+             * @description [0, 1] — confidence the point is not occluded.
+             */
+            visibility: number;
+            /**
+             * X
+             * @description Fraction of image width. May fall outside [0, 1].
+             */
+            x: number;
+            /**
+             * Y
+             * @description Fraction of image height, origin top-left.
+             */
+            y: number;
         };
         /**
          * Finding

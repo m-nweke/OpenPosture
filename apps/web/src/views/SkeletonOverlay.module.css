@@ -1,0 +1,23 @@
+/* The canvas sits exactly on top of the image, so `position: relative` on the figure is what the
+   absolute positioning below is measured against. */
+
+.figure {
+  position: relative;
+  display: inline-block;
+  margin: 1rem 0;
+  max-width: 100%;
+}
+
+.image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  /* The photo underneath stays selectable and right-clickable; the overlay is decoration. */
+  pointer-events: none;
+}

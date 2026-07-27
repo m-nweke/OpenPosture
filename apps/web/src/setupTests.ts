@@ -23,3 +23,21 @@ afterEach(() => {
 afterAll(() => {
   server.close()
 })
+
+/**
+ * jsdom implements neither `ResizeObserver` nor a canvas 2D context.
+ *
+ * Both are stubbed rather than pulled in as dependencies, because what the tests need is the
+ * *ability to observe calls*, not a real rendering engine. A component that measures its own
+ * layout has nothing to measure in jsdom anyway — the overlay's own tests drive the box size
+ * explicitly, which is more deterministic than hoping jsdom reports one.
+ */
+class ResizeObserverStub implements ResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+if (!('ResizeObserver' in globalThis)) {
+  globalThis.ResizeObserver = ResizeObserverStub
+}

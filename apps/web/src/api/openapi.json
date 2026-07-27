@@ -8,6 +8,14 @@
           "image": {
             "$ref": "#/components/schemas/ImageSize"
           },
+          "landmarks": {
+            "description": "Every landmark the backend returned, for drawing a skeleton over the photo. Empty when no pose was detected. The overlay is drawn client-side from these \u2014 the server never writes an annotated image, which would cost a round trip, storage for a derived artifact, and a cache-invalidation question every time the rules change.",
+            "items": {
+              "$ref": "#/components/schemas/DetectedLandmark"
+            },
+            "title": "Landmarks",
+            "type": "array"
+          },
           "object_key": {
             "description": "Where the uploaded image was stored. A key, never a URL \u2014 a URL embeds a host and an expiry, and persisting one means a hostname change invalidates it.",
             "title": "Object Key",
@@ -33,6 +41,7 @@
           "object_key",
           "pose_detected",
           "report",
+          "landmarks",
           "image"
         ],
         "title": "AnalysisResponse",
@@ -51,6 +60,57 @@
           "image"
         ],
         "title": "Body_create_analysis_api_v1_analyses_post",
+        "type": "object"
+      },
+      "DetectedLandmark": {
+        "additionalProperties": false,
+        "description": "One measured point, in the form a client needs to draw it.\n\n**Normalised to the image, not in pixels.** The frontend renders the photo at whatever size\nthe viewport allows, so a pixel coordinate would be wrong the moment the layout changed. `x`\nand `y` are fractions of width and height, which stay correct under any scale \u2014 the same\nreasoning as the world-space metrics, applied to presentation.\n\nWorld coordinates are deliberately absent: they are metres from the hip and mean nothing on\na 2D canvas.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "presence": {
+            "description": "[0, 1] \u2014 confidence the point is in frame at all.",
+            "title": "Presence",
+            "type": "number"
+          },
+          "status": {
+            "description": "How usable this point is. A client must render anything other than `ok` distinctly or not at all \u2014 drawing a guessed position as though it were measured is the confident-wrong-answer failure this project exists to remove.",
+            "enum": [
+              "ok",
+              "low_confidence",
+              "not_detected",
+              "out_of_frame"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "[0, 1] \u2014 confidence the point is not occluded.",
+            "title": "Visibility",
+            "type": "number"
+          },
+          "x": {
+            "description": "Fraction of image width. May fall outside [0, 1].",
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "description": "Fraction of image height, origin top-left.",
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "x",
+          "y",
+          "status",
+          "visibility",
+          "presence"
+        ],
+        "title": "DetectedLandmark",
         "type": "object"
       },
       "Finding": {

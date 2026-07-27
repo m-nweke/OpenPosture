@@ -8,6 +8,8 @@
 
 import type { AnalysisResponse, Metric, PostureReport } from '../api/types'
 
+type Landmark = AnalysisResponse['landmarks'][number]
+
 function ok(value: number, unit: string, detail: string): Metric {
   return { value, unit, status: 'ok', detail, confidence: 0.95 }
 }
@@ -119,11 +121,46 @@ export function frontalViewReport(): PostureReport {
   return report
 }
 
-export function analysisOf(report: PostureReport | null): AnalysisResponse {
+function point(name: string, x: number, y: number, status: Landmark['status'] = 'ok'): Landmark {
+  return {
+    name,
+    x,
+    y,
+    status,
+    visibility: status === 'ok' ? 0.95 : 0.2,
+    presence: status === 'out_of_frame' ? 0.1 : 0.98,
+  }
+}
+
+/**
+ * A skeleton with a deliberate mix of statuses.
+ *
+ * Six `ok`, one `low_confidence`, one `not_detected` — so a test can assert exactly how many
+ * points are drawn and how many are drawn *differently*, which is the whole contract of the
+ * overlay. A fixture where everything is `ok` would pass against a component that ignored status.
+ */
+export function landmarksWithGaps(): Landmark[] {
+  return [
+    point('left_shoulder', 0.4, 0.3),
+    point('right_shoulder', 0.5, 0.3),
+    point('left_hip', 0.4, 0.6),
+    point('right_hip', 0.5, 0.6),
+    point('left_knee', 0.42, 0.8),
+    point('left_ankle', 0.44, 0.95),
+    point('left_elbow', 0.35, 0.45, 'low_confidence'),
+    point('left_wrist', 0.3, 0.55, 'not_detected'),
+  ]
+}
+
+export function analysisOf(
+  report: PostureReport | null,
+  landmarks: Landmark[] = report ? landmarksWithGaps() : [],
+): AnalysisResponse {
   return {
     object_key: 'analyses/0123456789abcdef0123456789abcdef.jpg',
     pose_detected: report !== null,
     report,
+    landmarks,
     image: { width: 640, height: 480 },
   }
 }
