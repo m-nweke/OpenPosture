@@ -43,7 +43,7 @@ from openposture_api.schemas import (
 from openposture_api.storage import StorageBackend, StorageError, get_storage
 from pose_backends.base import PoseBackend
 from pose_backends.errors import PoseBackendError
-from posture_core import KeypointStatus, build_report
+from posture_core import build_report
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -159,15 +159,18 @@ def _landmarks_for(frame: PoseFrame, report: PostureReport) -> list[DetectedLand
     `low_confidence` elbow identically to a measured one presents a guess as a measurement, which
     is the failure this project exists to remove.
     """
+    # Indexed, not `.get(...)` with a default. `KeypointResolver` classifies *every* member of
+    # `KeypointName`, and `frame.landmarks` is keyed by that same enum, so a miss here is not a
+    # missing status — it is a broken invariant, and a default would hide it behind a plausible
+    # value. `not_detected` in particular would be a lie: the resolver only assigns it when the
+    # frame has no landmark at all, which cannot be true of one we are iterating over.
     statuses = report.quality.keypoints
     return [
         DetectedLandmark(
             name=str(name),
             x=landmark.x,
             y=landmark.y,
-            # `NOT_DETECTED` is the honest default: the resolver reports on canonical keypoints,
-            # and a landmark it has no opinion about is one nothing has vouched for.
-            status=str(statuses.get(name, KeypointStatus.NOT_DETECTED)),  # type: ignore[arg-type]
+            status=str(statuses[name]),  # type: ignore[arg-type]
             visibility=landmark.visibility,
             presence=landmark.presence,
         )
