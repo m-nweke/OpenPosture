@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Final
 
 from posture_core.keypoints import KeypointName
 from posture_core.metrics._support import measure, require_either_side, world_points
+from posture_core.resolver import Resolved
 from posture_core.status import Metric
 
 if TYPE_CHECKING:
@@ -45,17 +46,33 @@ SIDES: Final = {
 
 
 def heel_contact_m(resolver: KeypointResolver, thresholds: Thresholds) -> Metric:
-    """How far the visible heel sits above its own toe, in metres.
+    """How far the most-raised visible heel sits above its own toe, in metres.
 
     Positive means the heel is higher than the toe — a hanging foot. Around zero means flat.
     Negative, toe higher than heel, happens when someone rests back on their heel, and is reported
     as such rather than clamped to zero: clamping would turn a real and unusual foot position into
     a report of a perfectly ordinary one.
+
+    **When both feet are usable, the larger rise wins — not the more confident foot.** The
+    confidence-based choice made by :func:`require_either_side` is right for a *joint angle*, where
+    either side answers the same question and the better-seen one answers it more reliably. It is
+    wrong here: one unsupported foot is worth reporting, and picking by confidence would let a
+    well-seen planted foot mask a dangling one. Confidence still decides when only one side
+    resolves, which is the common case in a lateral view.
     """
     resolved = require_either_side(resolver, SIDES)
     if not isinstance(resolved, tuple):
         return resolved.as_metric(HEEL_CONTACT, "m")
-    side, resolution = resolved
+
+    # At least one side is usable; take every side that is, so the worst foot is the one reported.
+    usable = {
+        name: candidate
+        for name, keys in SIDES.items()
+        if isinstance(candidate := resolver.require(*keys), Resolved)
+    }
+    side, resolution = max(
+        usable.items(), key=lambda item: _rise(item[0], item[1]) or float("-inf")
+    )
 
     points = world_points(HEEL_CONTACT, "m", resolution)
     if isinstance(points, Metric):
@@ -73,6 +90,19 @@ def heel_contact_m(resolver: KeypointResolver, thresholds: Thresholds) -> Metric
         compute=lambda: float(points[toe][1] - points[heel][1]),
         describe=lambda value: _describe(value, side, thresholds),
     )
+
+
+def _rise(side: str, resolution: Resolved) -> float | None:
+    """Heel height above toe for one already-resolved side, or ``None`` without world coordinates.
+
+    Used only to pick between two usable feet. The chosen side is then measured through the normal
+    path, so the value in the report comes from one place.
+    """
+    heel, toe = SIDES[side]
+    heel_world, toe_world = resolution.world(heel), resolution.world(toe)
+    if heel_world is None or toe_world is None:
+        return None
+    return float(toe_world[1] - heel_world[1])
 
 
 def _describe(value: float, side: str, thresholds: Thresholds) -> str:

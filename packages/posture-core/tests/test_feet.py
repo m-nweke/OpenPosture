@@ -146,3 +146,48 @@ def test_the_value_does_not_move_with_frame_size() -> None:
     assert value_of(heel, image_width=1920, image_height=1080) == pytest.approx(
         value_of(heel), abs=1e-9
     )
+
+
+def test_the_more_raised_foot_is_reported_when_both_are_usable() -> None:
+    """Not the more confident one.
+
+    Confidence is the right tiebreak for a joint angle, where either side answers the same question
+    and the better-seen one answers it more reliably. It is the wrong tiebreak here: one
+    unsupported foot is worth reporting, and choosing by confidence would let a well-seen planted
+    foot mask a dangling one.
+    """
+    original = frame_with_foot(heel_rise_m=0.0)
+    landmarks = dict(original.landmarks)
+
+    # Left foot clearly raised but less confidently seen; right foot flat and seen perfectly.
+    left_toe = landmarks[K.LEFT_FOOT_INDEX]
+    assert left_toe.y_world is not None
+    for name in (K.LEFT_HEEL, K.LEFT_FOOT_INDEX):
+        existing = landmarks[name]
+        landmarks[name] = Landmark(
+            x=existing.x,
+            y=existing.y,
+            visibility=0.6,
+            presence=0.99,
+            x_world=existing.x_world,
+            y_world=(left_toe.y_world - 0.14) if name is K.LEFT_HEEL else existing.y_world,
+            z_world=existing.z_world,
+        )
+
+    frame = PoseFrame(
+        landmarks=landmarks,
+        image_width=original.image_width,
+        image_height=original.image_height,
+        backend="synthetic",
+        inference_ms=0.0,
+    )
+    metric = heel(KeypointResolver(frame, DEFAULT_THRESHOLDS), DEFAULT_THRESHOLDS)
+    assert metric.value == pytest.approx(0.14, abs=1e-6)
+    assert "left" in metric.detail
+
+
+def test_confidence_still_decides_when_only_one_foot_is_usable() -> None:
+    """The lateral-view case, which is the common one."""
+    metric = metric_of(heel, **unclear(K.RIGHT_HEEL, K.RIGHT_FOOT_INDEX))
+    assert metric.value is not None
+    assert "left" in metric.detail
