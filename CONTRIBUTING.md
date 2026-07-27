@@ -25,10 +25,14 @@ uv tool install pre-commit && pre-commit install
 ## The architectural rule
 
 ```
-posture-core  <--  pose-backends  <--  apps/api
+posture-core  <--  posture-spec  <--  pose-backends  <--  apps/api
 ```
 
 One direction, no cycles, and nothing depends on `apps/api`.
+
+`posture-spec` sits where it does for one reason: it parses `rules.json`, and parsing JSON is I/O.
+The package that owns the numbers is therefore one level *out* from the engine that uses them,
+depending on the core rather than the other way round.
 
 **`posture-core` may depend on numpy and the standard library. Nothing else — ever.** Not FastAPI,
 not Pydantic, not MediaPipe, not a logger, not a settings object. That constraint is what lets the
@@ -53,8 +57,10 @@ Depth goes in the pull request, not duplicated into git.
 
 ## Quality gates
 
-Everything below runs in CI as
-[`pr.yml`](.github/workflows/pr.yml); `ci-ok` is the single required check.
+Everything below runs in CI as [`pr.yml`](.github/workflows/pr.yml); `ci-ok` is the single
+required check. [`scientific-validation.yml`](.github/workflows/scientific-validation.yml) runs
+alongside it, aggregated by `scientific-ok`, and asks a different question — see
+[below](#the-scientific-gates).
 
 ```bash
 # Python
@@ -99,8 +105,42 @@ controlled, not the weights. `MODEL_VARIANT=lite|full|heavy` switches variants a
 [`models/checksums.txt`](models/checksums.txt).
 
 Most of the pose-backend suite deliberately does *not* need any of this. The adapter's landmark
-mapping is tested against a stub, and `POSE_BACKEND=fake` runs the whole application with no model
-at all — which is why the pull-request workflow finishes in minutes without a download.
+mapping is tested against a stub, and the fake backend runs the whole pipeline with no model at
+all — which is why the pull-request workflow finishes in minutes without a download.
+
+### The scientific gates
+
+`pr.yml` asks whether the change broke the software. `scientific-validation.yml` asks whether the
+engine still measures what it claims to measure, which is a different failure and deserves a
+separate red mark. Three jobs — invariance properties, the golden corpus, and threshold drift —
+each runnable locally:
+
+```bash
+uv run pytest packages/posture-core/tests/test_properties.py   # scale, translation, degradation
+uv run pytest packages/posture-core/tests/test_boundaries.py   # ±ε at every threshold
+uv run pytest packages/posture-core/tests/test_golden.py       # the report snapshot corpus
+uv run pytest packages/posture-spec                            # rules.json vs Thresholds drift
+```
+
+The invariance properties are the load-bearing ones: they are the proof that the redesign fixed
+the original engine's central defect, and they would fail catastrophically against
+`posture_image.py` ([ADR-0005](docs/adr/0005-scale-invariant-metrics.md)).
+
+Golden snapshots are regenerated deliberately, never by an environment variable the test run
+checks:
+
+```bash
+uv run python packages/posture-core/tests/regenerate_golden.py
+```
+
+**Read the diff — it is the review.** A retuned threshold should visibly move verdicts and
+confidences across the corpus; anything it moves that you did not expect is the finding. CI runs
+the same script and fails if it produces a diff, so stale snapshots cannot ride along in someone
+else's pull request.
+
+`scientific-ok` is not yet in the `main` ruleset's required checks — only `ci-ok` is — so treat a
+failure here as blocking by convention rather than relying on GitHub to stop you
+([`.github/main-ruleset.md`](.github/main-ruleset.md)).
 
 ## Conventions worth knowing
 
@@ -109,10 +149,15 @@ linux `aarch64` wheels, and `numpy<2` / `protobuf<5` are ceilings it imposes on 
 workspace. Dependabot is configured not to propose bumps to any of them. See
 [`docs/adr/0002-mediapipe-pose.md`](docs/adr/0002-mediapipe-pose.md).
 
-**Thresholds are not literals in code.** They will live in `packages/posture-spec/rules.json`
-(arriving with the rules engine in Epic C), loaded by both the Python engine and its TypeScript
-mirror, so retuning is one change in one place and the two implementations cannot drift. Magic
-numbers in pixels are the defect described in FINDINGS §2.6 — do not add one in the meantime.
+**Thresholds are not literals in code.** They live in
+[`packages/posture-spec/src/posture_spec/rules.json`](packages/posture-spec/src/posture_spec/rules.json),
+loaded into the frozen `Thresholds` dataclass the engine takes as an argument. The TypeScript
+mirror in Epic G will load the same file, so retuning is one change in one place and the two
+implementations cannot drift. Magic numbers in pixels are the defect described in FINDINGS §2.6.
+
+Adding a tunable means adding it in both places. `packages/posture-spec/tests/test_spec.py`
+fails if a field exists in the dataclass but not the file, or the reverse, or if the shipped
+values do not round-trip — so drift is a red build rather than a surprise later.
 
 **A metric that cannot be computed returns a gap, never a guess.** The single most damaging
 behaviour in the original was reporting "Straight back position" whenever assessment failed —

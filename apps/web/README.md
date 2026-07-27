@@ -39,7 +39,7 @@ a wrong password, and genuinely restores your session across a reload, all insid
 Accounts live in a `Map` and passwords are compared in plaintext, so **none of it is secure and
 none of it should survive Epic E**. What survives is the interface.
 
-Epic E (OP-30) deletes `InMemoryAuthProvider.tsx`, adds an API-backed provider satisfying the
+Epic E (OP-57) deletes `InMemoryAuthProvider.tsx`, adds an API-backed provider satisfying the
 same interface, and changes one line of `src/auth/index.ts` plus one of `main.tsx`. No component
 imports anything auth-specific, so no component should need to change. If one does, the boundary
 was drawn in the wrong place.
