@@ -151,7 +151,9 @@ def test_the_score_is_none_when_nothing_could_be_measured() -> None:
         DEFAULT_THRESHOLDS,
     )
     assert empty.overall_score is None
-    assert empty.findings == []
+    # A tuple, not a list: `__post_init__` copies the findings into one so a frozen report is
+    # frozen all the way down rather than only at its attribute bindings.
+    assert empty.findings == ()
     assert len(empty.quality.gaps) == empty.quality.total
 
 
@@ -338,3 +340,42 @@ def test_a_reports_quality_section_cannot_be_edited_after_the_fact() -> None:
         quality.keypoints[K.NOSE] = "ok"  # type: ignore[index]
     with pytest.raises(AttributeError):
         quality.gaps.append(None)  # type: ignore[attr-defined]
+
+
+def test_a_reports_metrics_and_findings_cannot_be_edited_after_the_fact() -> None:
+    """The same guard the quality section already had, applied to the two containers that matter
+    most.
+
+    `frozen=True` stopped `report.overall_score = 100.0` and nothing else: `build_report` handed
+    over a live dict and a live list, so deleting an inconvenient finding or rewriting a metric's
+    value was an ordinary mutation. The module docstring promises one frame yields one
+    byte-identical document forever, and that promise was only good until someone took it up.
+    """
+    result = report(**SLOUCHED)
+    assert result.findings, "the fixture needs at least one finding for this to mean anything"
+
+    with pytest.raises(TypeError):
+        result.metrics["trunk_inclination_deg"] = None  # type: ignore[index]
+    with pytest.raises(AttributeError):
+        result.findings.append(None)  # type: ignore[attr-defined]
+    with pytest.raises(AttributeError):
+        result.findings.clear()  # type: ignore[attr-defined]
+
+
+def test_the_score_is_rounded_like_every_other_float_in_the_document() -> None:
+    """Invisible at the default 15.0 penalty, which divides cleanly — which is exactly the risk.
+
+    This fixture produces two major findings, so the score is `100 - 2p`. At `p = 32.2` that is
+    `35.599999999999994`. Fifty-six of the first four hundred tenths do something similar here, so
+    the default being clean is luck, not design. An unrounded score would scatter that noise
+    through the golden corpus on the first threshold retune, and through the cross-language
+    comparison in OP-36, where it would read as two engines disagreeing rather than as an artefact
+    of binary floating point.
+    """
+    tuned = with_thresholds(score_penalty_per_finding=32.2)
+    raw = build_report(frame(**SLOUCHED), tuned).overall_score
+    assert raw is not None
+    assert raw != round(raw, 4), "premise: this penalty must produce a non-representable score"
+
+    serialised = build_report(frame(**SLOUCHED), tuned).to_dict()["overall_score"]
+    assert serialised == round(raw, 4)
