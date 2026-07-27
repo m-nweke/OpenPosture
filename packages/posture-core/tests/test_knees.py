@@ -66,6 +66,17 @@ def test_the_description_reflects_the_configured_bands(
     assert expected in metric_of(knee, thigh_deg=thigh, shank_deg=shank).detail
 
 
+@pytest.mark.parametrize(("thigh", "shank"), [(15.0, 165.0), (120.0, 5.0), (85.0, 5.0), (0.0, 0.0)])
+def test_every_description_names_the_side_it_measured(thigh: float, shank: float) -> None:
+    """Only one leg is measured, so the report must never imply otherwise.
+
+    Every band has to say which. The seated band did not, which is easy to miss precisely because
+    it is the band most photographs land in.
+    """
+    detail = metric_of(knee, thigh_deg=thigh, shank_deg=shank).detail
+    assert "left" in detail or "right" in detail
+
+
 def test_the_bands_are_injected() -> None:
     strict = with_thresholds(knee_kneeling_max_deg=110.0)
     assert "kneeling" in metric_of(knee, thigh_deg=85.0, shank_deg=5.0, thresholds=strict).detail
@@ -80,7 +91,10 @@ def test_the_visible_leg_is_used_when_the_far_one_is_occluded() -> None:
     """
     metric = metric_of(knee, **unclear(K.RIGHT_KNEE, K.RIGHT_ANKLE, K.RIGHT_HIP))
     assert metric.value is not None
-    assert "left knee" in metric.detail or "seated angle" in metric.detail
+    # The side, specifically. The looser `or "seated angle"` this used to allow would have passed
+    # against a description that identified no side at all, which is exactly the regression the
+    # test exists to catch.
+    assert "left knee" in metric.detail
 
 
 def test_the_more_confident_side_wins_rather_than_the_first_one() -> None:

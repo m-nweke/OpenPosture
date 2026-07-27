@@ -61,5 +61,5 @@ def _describe(value: float, side: str, thresholds: Thresholds) -> str:
     if value < thresholds.knee_seated_min_deg:
         return f"your {side} knee is tucked back sharply, at {value:.0f}°"
     if value <= thresholds.knee_seated_max_deg:
-        return f"knees are at a comfortable seated angle ({value:.0f}°)"
+        return f"your {side} knee is at a comfortable seated angle ({value:.0f}°)"
     return f"legs are extended, with the {side} knee at {value:.0f}°"
