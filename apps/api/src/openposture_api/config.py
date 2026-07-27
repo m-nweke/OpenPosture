@@ -19,12 +19,17 @@ setting ends up with two different defaults in two different places. Everything 
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Final, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-__all__ = ["ENV_PREFIX", "Environment", "Settings", "get_settings"]
+from pose_backends.fake import BACKEND_NAME as FAKE_BACKEND
+from pose_backends.fake import PosePreset
+from pose_backends.mediapipe_backend import BACKEND_NAME as MEDIAPIPE_BACKEND
+
+__all__ = ["ENV_PREFIX", "Environment", "PoseBackendName", "Settings", "get_settings"]
 
 ENV_PREFIX: Final = "OPENPOSTURE_"
 """Namespaced so the container's environment cannot collide with ours.
@@ -35,6 +40,18 @@ ENV_PREFIX: Final = "OPENPOSTURE_"
 Environment = Literal["development", "test", "production"]
 
 LogLevel = Literal["debug", "info", "warning", "error", "critical"]
+
+PoseBackendName = Literal["mediapipe", "fake"]
+"""Which inference adapter to build.
+
+Spelled out as a literal rather than derived from the registry's names so that an unknown value
+is rejected by *configuration* validation, with the field named, instead of raising from inside
+`create_backend` during startup. The assertion below keeps the two in step.
+"""
+
+# The literal above duplicates names the registry owns. Cheap insurance that a rename there is a
+# failed import here rather than a config field that silently no longer matches anything.
+assert (MEDIAPIPE_BACKEND, FAKE_BACKEND) == ("mediapipe", "fake")
 
 
 class Settings(BaseSettings):
@@ -80,6 +97,27 @@ class Settings(BaseSettings):
         min_length=1,
         description=(
             "Inbound header carrying a caller-supplied correlation ID, echoed on every response."
+        ),
+    )
+
+    pose_backend: PoseBackendName = Field(
+        default="mediapipe",
+        description=(
+            "Which inference adapter to load at startup. `fake` runs the whole application with "
+            "no model at all, which is what lets CI and the container smoke test work offline."
+        ),
+    )
+
+    pose_backend_preset: PosePreset = Field(
+        default=PosePreset.STRAIGHT,
+        description="Scenario the fake backend returns. Ignored by `mediapipe`.",
+    )
+
+    model_path: Path | None = Field(
+        default=None,
+        description=(
+            "Override the model location. `None` defers to the backend's own default, which is "
+            "`MODEL_PATH` and then `models/pose_landmarker_full.task`."
         ),
     )
 

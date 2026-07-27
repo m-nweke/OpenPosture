@@ -16,6 +16,7 @@ It is the deployment entry point and nothing else should import it.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 import structlog
@@ -24,10 +25,19 @@ from fastapi import FastAPI
 from openposture_api import __version__
 from openposture_api.config import Settings, get_settings
 from openposture_api.errors import register_error_handlers
-from openposture_api.health import build_health_router
+from openposture_api.health import ReadinessCheck, build_health_router
 from openposture_api.logging import configure_logging, request_id_middleware
+from openposture_api.pose import (
+    PoseBackendState,
+    PoseBackendUnavailableError,
+    close_pose_backend,
+    handle_pose_backend_unavailable,
+    load_pose_backend,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from openposture_api.health import ReadinessProbe
 
 __all__ = ["app", "create_app"]
@@ -47,24 +57,46 @@ def create_app(
     settings: Settings | None = None,
     *,
     readiness_probes: list[ReadinessProbe] | None = None,
+    load_backend: bool = True,
 ) -> FastAPI:
     """Construct an application instance.
 
     Args:
         settings: Configuration to build against. Defaults to the process settings read from the
             environment. Tests pass an explicit instance rather than mutating `os.environ`.
-        readiness_probes: Subsystem checks for `/health/ready`. Empty until OP-40 registers the
-            pose backend; injected so a test can build an app whose dependencies are pretend.
+        readiness_probes: Extra subsystem checks for `/health/ready`. The pose backend registers
+            itself; these are appended after it. Injected so a test can build an app whose
+            dependencies are pretend.
+        load_backend: Whether `lifespan` builds the pose backend. Tests that override
+            `get_pose_backend` set this to `False` so no model is touched and startup is instant.
+            A deployment never sets it.
 
     Returns:
-        A configured app. Constructing it performs no I/O and opens no connections — that starts
-        with the `lifespan` handler in OP-40.
+        A configured app. Constructing it still performs no I/O — the backend is built when
+        `lifespan` runs, which is on startup, not at import.
     """
     resolved = settings or get_settings()
 
     # Before anything else, so that any log line emitted during construction is already
     # structured and at the configured level.
     configure_logging(resolved)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Load the model once, here, and release it on the way out.
+
+        Startup is synchronous on purpose: the ASGI server accepts no connections until this
+        returns, so an instance that is still loading cannot be sent traffic. That *is* the
+        not-ready state — an orchestrator probing during it gets a refused connection rather
+        than a 503, which reaches the same conclusion without a background task and the
+        half-initialised window one would open.
+        """
+        state = load_pose_backend(resolved) if load_backend else PoseBackendState()
+        app.state.pose_backend_state = state
+        try:
+            yield
+        finally:
+            close_pose_backend(state)
 
     app = FastAPI(
         title="OpenPosture API",
@@ -75,18 +107,31 @@ def create_app(
         # surface area. `/openapi.json` stays available because OP-45 generates the frontend's
         # types from it.
         redoc_url=None,
+        lifespan=lifespan,
     )
 
     app.state.settings = resolved
+    # Present before startup so that a route reaching for it during a failed lifespan finds a
+    # state object describing "not loaded" rather than an AttributeError.
+    app.state.pose_backend_state = PoseBackendState()
 
     # Registered before the routes it wraps. Starlette runs middleware outermost-first, so this
     # binds the request ID before any handler — including the error handlers — can log.
     app.middleware("http")(request_id_middleware(resolved))
 
     register_error_handlers(app)
+    app.add_exception_handler(PoseBackendUnavailableError, handle_pose_backend_unavailable)
+
+    # The probe reads `app.state` when it runs, not when it is registered, so binding it here —
+    # before lifespan has produced a state — reports the real thing at request time.
+    async def pose_probe() -> ReadinessCheck:
+        state: PoseBackendState = app.state.pose_backend_state
+        return await state.probe()
+
+    probes: list[ReadinessProbe] = [pose_probe, *(readiness_probes or [])]
 
     app.include_router(
-        build_health_router(version=__version__, probes=readiness_probes),
+        build_health_router(version=__version__, probes=probes),
     )
 
     _LOGGER.info(
@@ -94,7 +139,8 @@ def create_app(
         environment=resolved.environment,
         version=__version__,
         docs_enabled=resolved.docs_url is not None,
-        readiness_probes=len(readiness_probes or []),
+        pose_backend=resolved.pose_backend if load_backend else "disabled",
+        readiness_probes=len(probes),
     )
 
     return app

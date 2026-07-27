@@ -7,12 +7,19 @@ fail restarts the container instead of routing around it.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from openposture_api import __version__
 from openposture_api.config import Settings
-from openposture_api.health import ReadinessCheck
+from openposture_api.health import ReadinessCheck, ReadinessProbe, build_health_router
 from openposture_api.main import create_app
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _ready(name: str) -> ReadinessCheck:
@@ -21,6 +28,24 @@ def _ready(name: str) -> ReadinessCheck:
 
 def _not_ready(name: str, detail: str) -> ReadinessCheck:
     return ReadinessCheck(name=name, ready=False, detail=detail)
+
+
+@pytest.fixture
+def probe_client() -> Callable[[list[ReadinessProbe]], TestClient]:
+    """Builds a bare app carrying only the probes a test names.
+
+    The router is exercised directly rather than through `create_app`, which registers the
+    pose backend's probe and will register storage's and the database's in later tickets.
+    Aggregation semantics are the router's business, and asserting them through the factory
+    makes every one of these tests fail the day a subsystem is added.
+    """
+
+    def build(probes: list[ReadinessProbe]) -> TestClient:
+        app = FastAPI()
+        app.include_router(build_health_router(version=__version__, probes=probes))
+        return TestClient(app)
+
+    return build
 
 
 class TestLiveness:
@@ -45,41 +70,41 @@ class TestLiveness:
 
 class TestReadiness:
     def test_readiness_with_no_registered_probes_is_ready_and_says_so_honestly(
-        self, client: TestClient
+        self, probe_client: Callable[[list[ReadinessProbe]], TestClient]
     ) -> None:
-        """Nothing to check yet — but `checks` is present and empty rather than absent, so a
-        consumer written now does not break when OP-40 starts filling it."""
-        response = client.get("/health/ready")
+        """`checks` is present and empty rather than absent, so a consumer written against a
+        subsystem-free build does not break when subsystems start registering."""
+        response = probe_client([]).get("/health/ready")
 
         assert response.status_code == 200
         assert response.json() == {"status": "ready", "version": __version__, "checks": []}
 
-    def test_every_probe_passing_is_ready(self, settings: Settings) -> None:
+    def test_every_probe_passing_is_ready(
+        self, probe_client: Callable[[list[ReadinessProbe]], TestClient]
+    ) -> None:
         async def backend() -> ReadinessCheck:
             return _ready("pose_backend")
 
         async def storage() -> ReadinessCheck:
             return _ready("storage")
 
-        app = create_app(settings, readiness_probes=[backend, storage])
-        with TestClient(app) as client:
-            response = client.get("/health/ready")
+        response = probe_client([backend, storage]).get("/health/ready")
 
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "ready"
         assert [check["name"] for check in body["checks"]] == ["pose_backend", "storage"]
 
-    def test_one_failing_probe_fails_the_whole_check(self, settings: Settings) -> None:
+    def test_one_failing_probe_fails_the_whole_check(
+        self, probe_client: Callable[[list[ReadinessProbe]], TestClient]
+    ) -> None:
         async def backend() -> ReadinessCheck:
             return _ready("pose_backend")
 
         async def storage() -> ReadinessCheck:
             return _not_ready("storage", "bucket unreachable")
 
-        app = create_app(settings, readiness_probes=[backend, storage])
-        with TestClient(app) as client:
-            response = client.get("/health/ready")
+        response = probe_client([backend, storage]).get("/health/ready")
 
         assert response.status_code == 503
         body = response.json()
@@ -96,13 +121,15 @@ class TestReadiness:
         """Load balancers route on the status code and never read the body."""
 
         async def failing() -> ReadinessCheck:
-            return _not_ready("pose_backend", "model not loaded")
+            return _not_ready("database", "model not loaded")
 
         app = create_app(settings, readiness_probes=[failing])
         with TestClient(app) as client:
             assert client.get("/health/ready").status_code == 503
 
-    def test_probes_report_in_registration_order(self, settings: Settings) -> None:
+    def test_probes_report_in_registration_order(
+        self, probe_client: Callable[[list[ReadinessProbe]], TestClient]
+    ) -> None:
         """Stable ordering keeps a health payload diffable between two deploys."""
 
         async def first() -> ReadinessCheck:
@@ -114,8 +141,6 @@ class TestReadiness:
         async def third() -> ReadinessCheck:
             return _ready("c")
 
-        app = create_app(settings, readiness_probes=[first, second, third])
-        with TestClient(app) as client:
-            body = client.get("/health/ready").json()
+        body = probe_client([first, second, third]).get("/health/ready").json()
 
         assert [check["name"] for check in body["checks"]] == ["a", "b", "c"]
