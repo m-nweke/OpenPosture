@@ -1,0 +1,87 @@
+{
+  "backend": "synthetic",
+  "findings": [
+    {
+      "code": "trunk_slouch",
+      "confidence": 0.95,
+      "message": "Your torso is leaning 32° forward. Try bringing your hips back into the chair so your back is supported.",
+      "metric": "trunk_inclination_deg",
+      "severity": "major",
+      "value": 32.0
+    },
+    {
+      "code": "forward_head",
+      "confidence": 0.95,
+      "message": "Your head sits well forward of your shoulders (craniovertebral angle 28°, below the 50° mark). Drawing your chin back over your shoulders takes the load off your neck.",
+      "metric": "craniovertebral_angle_deg",
+      "severity": "major",
+      "value": 28.0
+    }
+  ],
+  "image": {
+    "height": 480,
+    "width": 640
+  },
+  "inference_ms": 0.0,
+  "metrics": {
+    "arms_crossed": {
+      "confidence": 0.95,
+      "detail": "arms are not folded",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.9323
+    },
+    "craniovertebral_angle_deg": {
+      "confidence": 0.95,
+      "detail": "head is well forward of your shoulders (craniovertebral angle 28°)",
+      "status": "ok",
+      "unit": "deg",
+      "value": 28.0
+    },
+    "elbow_flexion_deg": {
+      "confidence": 0.95,
+      "detail": "your left elbow is bent to 115°",
+      "status": "ok",
+      "unit": "deg",
+      "value": 115.0
+    },
+    "heel_contact_m": {
+      "confidence": 0.95,
+      "detail": "your left foot is flat and supported",
+      "status": "ok",
+      "unit": "m",
+      "value": 0.0
+    },
+    "knee_flexion_deg": {
+      "confidence": 0.95,
+      "detail": "your left knee is at a comfortable seated angle (100°)",
+      "status": "ok",
+      "unit": "deg",
+      "value": 100.0
+    },
+    "trunk_inclination_deg": {
+      "confidence": 0.95,
+      "detail": "leaning 32° forward — a pronounced slouch",
+      "status": "ok",
+      "unit": "deg",
+      "value": 32.0
+    },
+    "view_confidence": {
+      "confidence": 0.95,
+      "detail": "photographed from the side, which is the best angle for this assessment",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.0
+    }
+  },
+  "overall_score": 70.0,
+  "quality": {
+    "assessed": 7,
+    "coverage": 1.0,
+    "gaps": [],
+    "keypoints": {},
+    "total": 7
+  },
+  "rules_version": "1.0.0",
+  "schema_version": "1.0"
+}
