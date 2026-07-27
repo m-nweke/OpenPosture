@@ -196,9 +196,14 @@ class KeypointResolver:
         misdocumented config and made spine classification backwards for one facing direction
         (FINDINGS §2.1); there is nothing here to get backwards.
 
-        ``None`` when the subject faces the camera squarely, where "forward" is along the view
-        axis and no sagittal measurement is meaningful anyway — which ``view_confidence`` (OP-31)
-        reports as its own gap.
+        Facing the camera squarely returns a *valid* axis pointing along the view direction, not
+        ``None``. World landmarks are metric 3D, so the sagittal plane is still well defined and
+        the lean is still recovered — this docstring previously claimed otherwise, written before
+        that was measured. What degrades head-on is the reliability of the depth estimate, which
+        ``view_confidence`` (OP-31) turns into reduced confidence rather than an abstention.
+
+        ``None`` means the axis genuinely cannot be derived: no nose or no neck, no world
+        coordinates, or a face pointing straight up or down so there is no horizontal component.
         """
         nose = self._frame.get(KeypointName.NOSE)
         neck = self._frame.get(KeypointName.NECK)

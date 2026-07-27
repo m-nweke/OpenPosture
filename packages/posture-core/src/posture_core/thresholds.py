@@ -119,7 +119,13 @@ class Thresholds:
 
     # -- heel contact (OP-30) ------------------------------------------------------------------
     heel_contact_tolerance_m: float = 0.05
-    """How far above the lowest foot point a heel may sit and still count as grounded.
+    """How far above **its own toe** a heel may sit and still count as grounded.
+
+    The toe — ``LEFT_FOOT_INDEX`` / ``RIGHT_FOOT_INDEX`` — not the lowest point of the foot, which
+    is what this said before and is not what ``heel_contact_m`` measures. The distinction matters
+    when tuning: the metric is a comparison between two landmarks on the same foot, so the
+    tolerance is a *tilt*, not a clearance above the floor. There is no floor in the coordinate
+    system.
 
     In metres, from world landmarks — which is why this metric is possible at all. The 18-point
     COCO schema the legacy engine used had no foot landmarks, so its feet check was a tautology
@@ -177,6 +183,13 @@ class Thresholds:
             raise ValueError(
                 "lateral_view_max_ratio must be below frontal_view_min_ratio; the gap between "
                 "them is the ambiguous-view band, and it cannot be negative"
+            )
+        if self.heel_contact_tolerance_m < 0.0:
+            raise ValueError(
+                f"heel_contact_tolerance_m must not be negative, got "
+                f"{self.heel_contact_tolerance_m}. A negative tolerance would report every foot "
+                "with a level or raised heel as unsupported, which is almost certainly a "
+                "configuration error rather than an intent"
             )
         if self.score_penalty_per_finding < 0.0:
             raise ValueError("score_penalty_per_finding must not be negative")

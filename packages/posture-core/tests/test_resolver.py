@@ -203,8 +203,13 @@ def test_forward_axis_survives_a_deep_slouch() -> None:
 
 
 def test_forward_axis_points_at_the_camera_in_a_frontal_view() -> None:
-    """Correct, and the reason sagittal metrics must abstain on such a photo (OP-31): the lean is
-    along the view axis, so it projects to nothing."""
+    """A frontal view yields a valid axis along the view direction.
+
+    Only that. An earlier version of this docstring claimed sagittal metrics must abstain here,
+    which contradicts `test_trunk.py`: world landmarks are metric 3D, so the full lean is
+    recovered from a head-on photo. Reduced reliability is `view_confidence`'s business (OP-31),
+    and it downgrades confidence rather than abstaining.
+    """
     axis = resolver_for(view=View.FRONTAL).forward_axis()
     assert axis is not None
     assert axis[2] == pytest.approx(-1.0, abs=1e-6)
