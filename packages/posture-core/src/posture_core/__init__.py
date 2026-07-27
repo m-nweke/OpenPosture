@@ -20,7 +20,26 @@ posture was fine whenever the system had failed to assess them at all.
 from __future__ import annotations
 
 from posture_core.keypoints import KeypointName, Landmark, PoseFrame
+from posture_core.report import PostureReport, build_report
+from posture_core.rules import Finding, Severity
+from posture_core.status import Gap, KeypointStatus, Metric, MetricStatus
+from posture_core.thresholds import DEFAULT_THRESHOLDS, Thresholds
 
-__all__ = ["KeypointName", "Landmark", "PoseFrame", "__version__"]
+__all__ = [
+    "DEFAULT_THRESHOLDS",
+    "Finding",
+    "Gap",
+    "KeypointName",
+    "KeypointStatus",
+    "Landmark",
+    "Metric",
+    "MetricStatus",
+    "PoseFrame",
+    "PostureReport",
+    "Severity",
+    "Thresholds",
+    "__version__",
+    "build_report",
+]
 
 __version__ = "0.1.0"
