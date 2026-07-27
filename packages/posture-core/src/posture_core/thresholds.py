@@ -98,12 +98,30 @@ class Thresholds:
     """Between this and the cutoff, worth mentioning but not calling a fault."""
 
     # -- arms and elbows (OP-28) ---------------------------------------------------------------
-    arms_crossed_ratio: float = 0.15
-    """``|forearm - upper_arm| / torso_length`` below which the arms read as crossed.
+    arms_crossed_ratio: float = 0.70
+    """Wrist-to-opposite-elbow distance over torso length, below which the arms read as folded.
 
     Normalised by torso length, which is the entire fix for the legacy `±100` pixel literal: the
-    same crossed arms at twice the camera distance produced half the pixel difference and a
+    same folded arms at twice the camera distance produced half the pixel separation and a
     different verdict. Dividing by a length measured on the same body cancels the scale.
+
+    **The value was measured, not assumed.** `docs/V2-PLAN.md` proposed 0.15 against a different
+    formula — `|forearm - upper_arm| / torso` — which compares two segments of the *same* arm and
+    evaluates to ~0.06 for typical adult proportions in any posture whatsoever; it would have
+    reported folded arms for everybody. Running the real backend over the eight fixtures gives a
+    clean separation on the wrist-to-opposite-elbow measure:
+
+        straight_armsfolded.jpg   0.53   <- the one fixture with folded arms
+        bench_feet_dangling.jpg   0.91
+        hunchback_right.jpg       1.00
+        desk_lean_exif.jpeg       1.04
+        hunchback_left.jpg        1.05
+        reclined_right.jpg        1.04
+        kneeling_right.jpg        1.07
+        desk_hunch.jpeg           1.20
+
+    0.70 sits in the gap with room on both sides. Eight photographs is a small sample and this
+    should be revisited against the evaluation set in Epic H.
     """
 
     elbow_flexed_deg: float = 120.0
