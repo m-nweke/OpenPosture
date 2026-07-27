@@ -32,6 +32,11 @@ dependencies = [
 # does not build a server it never starts.
 serve = ["uvicorn[standard]>=0.34"]
 
+# The real pose backend. `pose-backends` keeps mediapipe optional so the fake backend can run
+# without a 300 MB inference stack; this extra is how the container image — which does want
+# real inference — asks for it by name rather than by pinning mediapipe a second time here.
+inference = ["pose-backends[mediapipe]"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

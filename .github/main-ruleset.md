@@ -58,12 +58,20 @@ them individually would make merging depend on how GitHub treats skipped checks.
 aggregator also means a job can be renamed or split without silently dropping protection. See the
 header comment in [`.github/workflows/pr.yml`](workflows/pr.yml).
 
-**`scientific-ok` is not required yet.** `scientific-validation.yml` arrived with the shared
-threshold spec and runs its own aggregator on every pull request, but the ruleset has not been
-updated to require it, so a red scientific gate does not currently block a merge. Adding it is a
-ruleset change, not a workflow change. Until then, treat a `scientific-ok` failure as blocking by
-convention: it means a metric moved, which is exactly the class of change that should never merge
-unreviewed.
+**`scientific-ok` and `containers-ok` are not required yet.** `scientific-validation.yml` arrived
+with the shared threshold spec and `containers.yml` with the first Compose commit (OP-43). Both
+run their own aggregator on every pull request, but the ruleset has not been updated to require
+them, so a red gate in either does not currently block a merge. Adding them is a ruleset change,
+not a workflow change:
+
+```bash
+gh api -X PUT repos/{owner}/{repo}/rulesets/<id> --input .github/main-ruleset.json
+```
+
+after adding `scientific-ok` and `containers-ok` to `required_status_checks` in the JSON. Until
+then, treat a failure in either as blocking by convention. `scientific-ok` failing means a metric
+moved, which should never merge unreviewed; `containers-ok` failing means `docker compose up`
+does not work from a clean clone, which is the quickstart the README promises.
 
 ## Two rules from the OP-15 ticket that are deliberately absent
 

@@ -12,6 +12,20 @@ export default defineConfig({
     // The Vue app is archived (OP-10), so this takes the default port back.
     port: 5173,
     strictPort: true,
+    proxy: {
+      // Everything under /api goes to the API service, so the browser only ever talks to one
+      // origin. That is what removes CORS from this project entirely: no preflight, no CORS
+      // middleware to misconfigure, no credentialed-request cookie subtleties, and — the part
+      // that bit the original — no per-environment API base URL. `HelloWorld.tsx` hardcoded
+      // `http://127.0.0.1:5000/`, which works on exactly one machine.
+      //
+      // The target is read from the environment so the same config serves both cases: `api:8000`
+      // over the compose network, and `localhost:8000` when the API is run directly on the host.
+      '/api': {
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
   },
   resolve: {
     alias: {
