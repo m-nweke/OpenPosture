@@ -108,6 +108,20 @@ def test_a_two_dimensional_backend_abstains() -> None:
     assert arms_crossed(flat_resolver(**ARMS_FOLDED), DEFAULT_THRESHOLDS).value is None
 
 
+def test_arms_crossed_needs_both_arms_and_says_so_when_one_is_hidden() -> None:
+    """The honest limitation, asserted so it cannot be forgotten.
+
+    Unlike every other bilateral metric here, this one genuinely cannot fall back to a single side:
+    "each wrist near the opposite elbow" is a statement about both arms at once. In a strict
+    lateral view the far arm is occluded, so the metric abstains — which is correct, and means
+    folded arms are not assessable from the very view the app asks users for. Recorded here rather
+    than discovered later by someone wondering why the field is always null.
+    """
+    metric = metric_of(arms_crossed, **unclear(K.RIGHT_WRIST, K.RIGHT_ELBOW), **ARMS_FOLDED)
+    assert metric.value is None
+    assert metric.status is MetricStatus.LOW_CONFIDENCE
+
+
 # ---------------------------------------------------------------------------------------------
 # elbow_flexion_deg
 # ---------------------------------------------------------------------------------------------
@@ -130,16 +144,27 @@ def test_flexion_is_the_shoulder_elbow_wrist_angle(
     ) == pytest.approx(expected, abs=1e-6)
 
 
-def test_the_more_bent_elbow_is_reported_and_named() -> None:
-    """Not an average.
+def test_the_measured_arm_is_named_in_the_description() -> None:
+    """One arm, not both, and the report says which.
 
-    A bent elbow is the signal — an arm propped on a desk, or folded across the chest — and
-    averaging it with a straight arm produces a number describing neither. The description names
-    the side so the report cannot imply it applies to both.
+    In a lateral view the far arm is behind the torso and reported below the visibility threshold,
+    so requiring both made every fixture abstain. Since only one arm is measured, the description
+    must never imply otherwise.
     """
     metric = metric_of(elbow_flexion_deg, upper_arm_deg=0.0, forearm_deg=90.0)
     assert metric.value == pytest.approx(90.0, abs=1e-6)
     assert "left elbow" in metric.detail or "right elbow" in metric.detail
+
+
+def test_the_visible_arm_is_used_when_the_far_one_is_occluded() -> None:
+    metric = metric_of(
+        elbow_flexion_deg,
+        upper_arm_deg=0.0,
+        forearm_deg=90.0,
+        **unclear(K.RIGHT_SHOULDER, K.RIGHT_ELBOW, K.RIGHT_WRIST),
+    )
+    assert metric.value == pytest.approx(90.0, abs=1e-6)
+    assert "left elbow" in metric.detail
 
 
 @pytest.mark.parametrize("scale", [0.5, 2.0])
@@ -158,10 +183,11 @@ def test_the_flexed_band_comes_from_the_injected_threshold() -> None:
     assert "fairly straight" in metric_of(elbow_flexion_deg, thresholds=lenient, **bent).detail
 
 
-def test_a_missing_elbow_produces_a_gap() -> None:
-    metric = metric_of(elbow_flexion_deg, **without(K.RIGHT_ELBOW))
+def test_both_elbows_missing_produces_a_gap() -> None:
+    metric = metric_of(elbow_flexion_deg, **without(K.LEFT_ELBOW, K.RIGHT_ELBOW))
     assert metric.value is None
     assert "right elbow" in metric.detail
+    assert "left elbow" in metric.detail
 
 
 def test_a_collapsed_forearm_abstains_rather_than_reporting_zero_degrees() -> None:

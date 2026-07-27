@@ -14,15 +14,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from posture_core.geometry import DegenerateVectorError, Vector3, world_vec
-from posture_core.status import Metric, MetricStatus
+from posture_core.resolver import Resolved, Unresolved
+from posture_core.status import KeypointStatus, Metric, MetricStatus
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from posture_core.keypoints import KeypointName
-    from posture_core.resolver import Resolved
+    from posture_core.resolver import KeypointResolver
 
-__all__ = ["abstain", "measure", "world_points"]
+__all__ = ["abstain", "measure", "require_either_side", "world_points"]
 
 
 def abstain(
@@ -97,4 +98,47 @@ def measure(
         detail=describe(value),
         inputs=tuple(resolution.landmarks),
         confidence=resolution.confidence,
+    )
+
+
+def require_either_side(
+    resolver: KeypointResolver, sides: Mapping[str, tuple[KeypointName, ...]]
+) -> tuple[str, Resolved] | Unresolved:
+    """Resolve whichever side of the body the camera actually saw.
+
+    **Measured, not assumed.** Requiring both knees, both elbows or both feet was the first
+    implementation, and running it over the eight fixtures with the real backend made every single
+    one abstain: in a lateral view — the view this application asks users for — the far limb is
+    behind the torso and MediaPipe reports it below the visibility threshold, correctly. An engine
+    that abstains on every photograph it was designed for is honest and useless.
+
+    So a bilateral metric needs one *usable* side, and reports which. The side with the higher
+    confidence wins, so the near leg is chosen over the inferred far one rather than by an
+    arbitrary left-first rule.
+
+    When neither side resolves, the problems from both are merged into a single refusal, and a
+    structurally missing landmark outranks a merely unclear one — the same precedence the resolver
+    itself uses, for the same reason: reframing the shot subsumes lighting it better.
+    """
+    best: tuple[str, Resolved] | None = None
+    problems: dict[KeypointName, KeypointStatus] = {}
+
+    for side, keypoints in sides.items():
+        resolution = resolver.require(*keypoints)
+        if isinstance(resolution, Resolved):
+            if best is None or resolution.confidence > best[1].confidence:
+                best = (side, resolution)
+        else:
+            problems.update(resolution.problems)
+
+    if best is not None:
+        return best
+
+    structural = any(
+        status in (KeypointStatus.NOT_DETECTED, KeypointStatus.OUT_OF_FRAME)
+        for status in problems.values()
+    )
+    return Unresolved(
+        status=(MetricStatus.INSUFFICIENT_KEYPOINTS if structural else MetricStatus.LOW_CONFIDENCE),
+        problems=problems,
     )
