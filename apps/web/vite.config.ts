@@ -39,9 +39,12 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/setupTests.ts'],
     css: true,
-    // Playwright owns e2e/. Without this, `vitest run` collects those specs, fails to resolve
-    // @playwright/test's runner and reports errors that look like broken tests.
-    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
+    // Playwright owns both e2e directories. Without this, `vitest run` collects those specs,
+    // fails to resolve @playwright/test's runner and reports errors that look like broken
+    // tests — which is exactly what happened when `e2e-stack/` was added and this list was
+    // not: the spec parsed under Vitest, called `fileURLToPath` on a non-file URL and failed
+    // a job that had nothing to do with it.
+    exclude: ['node_modules/**', 'dist/**', 'e2e/**', 'e2e-stack/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

@@ -58,20 +58,21 @@ them individually would make merging depend on how GitHub treats skipped checks.
 aggregator also means a job can be renamed or split without silently dropping protection. See the
 header comment in [`.github/workflows/pr.yml`](workflows/pr.yml).
 
-**`scientific-ok` and `containers-ok` are not required yet.** `scientific-validation.yml` arrived
-with the shared threshold spec and `containers.yml` with the first Compose commit (OP-43). Both
-run their own aggregator on every pull request, but the ruleset has not been updated to require
-them, so a red gate in either does not currently block a merge. Adding them is a ruleset change,
-not a workflow change:
+**`scientific-ok`, `containers-ok` and `e2e-ok` are not required yet.** `scientific-validation.yml`
+arrived with the shared threshold spec, `containers.yml` with the first Compose commit (OP-43), and
+`e2e.yml` with the first full-stack journey (OP-47). Each runs its own aggregator on every pull
+request, but the ruleset has not been updated to require them, so a red gate in any of them does
+not currently block a merge. Adding them is a ruleset change, not a workflow change:
 
 ```bash
 gh api -X PUT repos/{owner}/{repo}/rulesets/<id> --input .github/main-ruleset.json
 ```
 
-after adding `scientific-ok` and `containers-ok` to `required_status_checks` in the JSON. Until
-then, treat a failure in either as blocking by convention. `scientific-ok` failing means a metric
-moved, which should never merge unreviewed; `containers-ok` failing means `docker compose up`
-does not work from a clean clone, which is the quickstart the README promises.
+after adding `scientific-ok`, `containers-ok` and `e2e-ok` to `required_status_checks` in the JSON.
+Until then, treat a failure in any of them as blocking by convention. `scientific-ok` failing means
+a metric moved, which should never merge unreviewed; `containers-ok` failing means `docker compose
+up` does not work from a clean clone, which is the quickstart the README promises; `e2e-ok` failing
+means a person cannot complete the one journey the application exists for.
 
 ## Two rules from the OP-15 ticket that are deliberately absent
 
