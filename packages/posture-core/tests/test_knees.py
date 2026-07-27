@@ -57,7 +57,7 @@ def test_the_angle_does_not_move_with_leg_length(scale: float) -> None:
         (15.0, 165.0, "kneeling"),
         (120.0, 5.0, "tucked back sharply"),
         (85.0, 5.0, "comfortable seated angle"),
-        (0.0, 0.0, "legs are extended"),
+        (0.0, 0.0, "leg is extended"),
     ],
 )
 def test_the_description_reflects_the_configured_bands(
@@ -70,15 +70,35 @@ def test_the_description_reflects_the_configured_bands(
 def test_every_description_names_the_side_it_measured(thigh: float, shank: float) -> None:
     """Only one leg is measured, so the report must never imply otherwise.
 
-    Every band has to say which. The seated band did not, which is easy to miss precisely because
-    it is the band most photographs land in.
+    Every band has to say which. The seated band did not, and the extended band said "legs" in the
+    plural — both easy to miss, and the seated one is the band most photographs land in.
     """
     detail = metric_of(knee, thigh_deg=thigh, shank_deg=shank).detail
     assert "left" in detail or "right" in detail
 
 
+@pytest.mark.parametrize(("thigh", "shank"), [(15.0, 165.0), (120.0, 5.0), (85.0, 5.0), (0.0, 0.0)])
+def test_no_description_implies_both_legs_were_measured(thigh: float, shank: float) -> None:
+    """Naming a side is not enough if the sentence around it is still plural.
+
+    "legs are extended, with the left knee at 180°" names a side and still claims both legs were
+    assessed. Only one was.
+    """
+    detail = metric_of(knee, thigh_deg=thigh, shank_deg=shank).detail
+    assert "legs" not in detail
+    assert "knees" not in detail
+
+
 def test_the_bands_are_injected() -> None:
-    strict = with_thresholds(knee_kneeling_max_deg=110.0)
+    """The seated floor moves with the kneeling ceiling, because the two are validated together.
+
+    Overriding `knee_kneeling_max_deg` alone up to 110 would now be rejected at construction: it
+    would reach past the 70° seated floor and delete the tucked-back band. That rejection is the
+    point of the check, so the test configures a coherent set instead of a contradictory one.
+    """
+    strict = with_thresholds(
+        knee_kneeling_max_deg=110.0, knee_seated_min_deg=115.0, knee_seated_max_deg=140.0
+    )
     assert "kneeling" in metric_of(knee, thigh_deg=85.0, shank_deg=5.0, thresholds=strict).detail
 
 
