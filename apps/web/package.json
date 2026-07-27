@@ -14,10 +14,12 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "codegen": "npm run codegen:schema && npm run codegen:types",
+    "codegen:schema": "cd ../.. && uv run python scripts/dump_openapi.py apps/web/src/api/openapi.json",
+    "codegen:types": "npx --yes openapi-typescript@7.13.0 src/api/openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {
-    "axios": "^1.18.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.1"

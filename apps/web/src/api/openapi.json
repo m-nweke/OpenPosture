@@ -1,0 +1,585 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisResponse": {
+        "description": "What `POST /api/v1/analyses` returns on success.",
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageSize"
+          },
+          "object_key": {
+            "description": "Where the uploaded image was stored. A key, never a URL \u2014 a URL embeds a host and an expiry, and persisting one means a hostname change invalidates it.",
+            "title": "Object Key",
+            "type": "string"
+          },
+          "pose_detected": {
+            "title": "Pose Detected",
+            "type": "boolean"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PostureReportModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` exactly when `pose_detected` is false."
+          }
+        },
+        "required": [
+          "object_key",
+          "pose_detected",
+          "report",
+          "image"
+        ],
+        "title": "AnalysisResponse",
+        "type": "object"
+      },
+      "Body_create_analysis_api_v1_analyses_post": {
+        "properties": {
+          "image": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The photograph to analyse.",
+            "title": "Image",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "title": "Body_create_analysis_api_v1_analyses_post",
+        "type": "object"
+      },
+      "Finding": {
+        "description": "Something the engine noticed, already worded for a person.",
+        "properties": {
+          "code": {
+            "description": "Stable identifier. Branch on this, not on `message`.",
+            "title": "Code",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "major",
+              "minor",
+              "info"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "metric",
+          "value",
+          "confidence"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "Gap": {
+        "description": "A metric that could not be assessed, and what stopped it.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "keypoints": {
+            "additionalProperties": {
+              "enum": [
+                "ok",
+                "low_confidence",
+                "not_detected",
+                "out_of_frame"
+              ],
+              "type": "string"
+            },
+            "title": "Keypoints",
+            "type": "object"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "insufficient_keypoints",
+              "low_confidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "status",
+          "detail",
+          "keypoints"
+        ],
+        "title": "Gap",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "description": "Liveness. Deliberately has no field that could ever be false.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version of the running service.",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "ImageSize": {
+        "properties": {
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "ImageSize",
+        "type": "object"
+      },
+      "Metric": {
+        "description": "One measurement, or an honest absence of one.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "detail": {
+            "description": "Phrased for display by the engine, not by the client.",
+            "title": "Detail",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "insufficient_keypoints",
+              "low_confidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` whenever `status` is not `ok`. Never a guess \u2014 that is the point.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "unit",
+          "status",
+          "detail",
+          "confidence"
+        ],
+        "title": "Metric",
+        "type": "object"
+      },
+      "PostureReportModel": {
+        "description": "One assessment of one photograph. Mirrors `PostureReport.to_dict()` exactly.",
+        "properties": {
+          "backend": {
+            "title": "Backend",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "image": {
+            "$ref": "#/components/schemas/ImageSize"
+          },
+          "inference_ms": {
+            "title": "Inference Ms",
+            "type": "number"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "overall_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0 to 100, or `null` when nothing could be measured. Null rather than 0 or 100: both would be confident claims about a photograph the engine could not assess.",
+            "title": "Overall Score"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality"
+          },
+          "rules_version": {
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "rules_version",
+          "backend",
+          "inference_ms",
+          "image",
+          "overall_score",
+          "findings",
+          "metrics",
+          "quality"
+        ],
+        "title": "PostureReportModel",
+        "type": "object"
+      },
+      "Quality": {
+        "description": "How much of the body the engine could actually see.",
+        "properties": {
+          "assessed": {
+            "title": "Assessed",
+            "type": "integer"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "number"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/Gap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "keypoints": {
+            "additionalProperties": {
+              "enum": [
+                "ok",
+                "low_confidence",
+                "not_detected",
+                "out_of_frame"
+              ],
+              "type": "string"
+            },
+            "title": "Keypoints",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assessed",
+          "total",
+          "coverage",
+          "gaps",
+          "keypoints"
+        ],
+        "title": "Quality",
+        "type": "object"
+      },
+      "Readiness": {
+        "description": "Aggregate readiness: ready only when every registered check is.",
+        "properties": {
+          "checks": {
+            "description": "One entry per registered subsystem, in registration order.",
+            "items": {
+              "$ref": "#/components/schemas/ReadinessCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Readiness",
+        "type": "object"
+      },
+      "ReadinessCheck": {
+        "description": "One subsystem's answer.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it is not ready. Omitted when it is.",
+            "title": "Detail"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ready"
+        ],
+        "title": "ReadinessCheck",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "\nPosture assessment from a single photograph.\n\nThe analysis is deterministic and model-derived: landmarks come from a pose backend, and the\nverdicts come from a pure rules engine that reports a *gap* when it cannot measure something\nrather than guessing.\n",
+    "title": "OpenPosture API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/analyses": {
+      "post": {
+        "description": "Upload a lateral photograph and receive a posture report. A report that could not assess some metrics still returns 201 with those metrics listed under `quality.gaps` \u2014 abstention is an answer, not an error.",
+        "operationId": "create_analysis_api_v1_analyses_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_analysis_api_v1_analyses_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "The file could not be decoded."
+          },
+          "413": {
+            "description": "Over the size limit."
+          },
+          "415": {
+            "description": "Format not supported."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Inference or storage failed downstream."
+          },
+          "503": {
+            "description": "Inference is unavailable."
+          }
+        },
+        "summary": "Analyse posture in a photograph",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Whether the process is alive. Checks nothing external and never fails for an external reason.",
+        "operationId": "liveness_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Whether this instance can serve traffic. Returns 503 when any registered subsystem is not ready.",
+        "operationId": "readiness_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Readiness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

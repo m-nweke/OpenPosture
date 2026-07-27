@@ -1,82 +1,44 @@
 /**
- * The shape of what the API returns.
+ * The API's types, aliased from the generated schema.
  *
- * **Hand-written, and temporarily so.** OP-45 generates these from the backend's OpenAPI schema
- * with `openapi-typescript` and deletes this file. Until then they are a second source of truth,
- * which is exactly the thing that rots: rename a field in Python and nothing here complains until
- * a `undefined` shows up in the browser months later.
+ * **Nothing here is hand-written any more.** Every type below points into `schema.d.ts`, which
+ * `npm run codegen` produces from the backend's OpenAPI document. Rename a field in Python and
+ * `tsc` fails here, rather than a browser producing `undefined` some months later.
  *
- * Kept deliberately close to `PostureReport.to_dict()` so the swap is a re-import, not a rewrite.
+ * This file exists only to give those generated names readable, stable aliases —
+ * `components['schemas']['PostureReportModel']` is accurate and unpleasant to read. Adding a
+ * *shape* here rather than an alias would reintroduce the second source of truth this ticket
+ * removed, so don't.
  */
 
-/** Why a metric has no value. Mirrors `posture_core.MetricStatus`. */
-export type MetricStatus = 'ok' | 'insufficient_keypoints' | 'low_confidence'
+import type { components } from './schema'
 
-/** Mirrors `posture_core.KeypointStatus`. */
-export type KeypointStatus = 'ok' | 'low_confidence' | 'not_detected' | 'out_of_frame'
+type Schemas = components['schemas']
 
-export type Severity = 'major' | 'minor' | 'info'
+/** Why a metric has no value. Generated from `posture_core.MetricStatus`. */
+export type MetricStatus = Schemas['Metric']['status']
 
-export interface Metric {
-  /** `null` whenever `status !== 'ok'`. Never a guess — that distinction is the whole point. */
-  value: number | null
-  unit: string
-  status: MetricStatus
-  /** Human-readable, already phrased for display by the engine. */
-  detail: string
-  confidence: number | null
-}
+export type KeypointStatus = Schemas['Gap']['keypoints'][string]
 
-export interface Finding {
-  code: string
-  severity: Severity
-  message: string
-  metric: string
-  value: number
-  confidence: number
-}
+export type Severity = Schemas['Finding']['severity']
 
-/** One metric the engine could not assess, and what stopped it. */
-export interface Gap {
-  metric: string
-  status: MetricStatus
-  detail: string
-  keypoints: Record<string, KeypointStatus>
-}
+export type Metric = Schemas['Metric']
+export type Finding = Schemas['Finding']
+export type Gap = Schemas['Gap']
+export type Quality = Schemas['Quality']
 
-export interface Quality {
-  assessed: number
-  total: number
-  coverage: number
-  gaps: Gap[]
-  keypoints: Record<string, KeypointStatus>
-}
+/** The report itself. Named `PostureReportModel` on the wire; the alias drops the suffix. */
+export type PostureReport = Schemas['PostureReportModel']
 
-export interface PostureReport {
-  schema_version: string
-  rules_version: string
-  backend: string
-  inference_ms: number
-  image: { width: number; height: number }
-  overall_score: number | null
-  findings: Finding[]
-  metrics: Record<string, Metric>
-  quality: Quality
-}
-
-export interface AnalysisResponse {
-  object_key: string
-  pose_detected: boolean
-  /** `null` exactly when `pose_detected` is false. */
-  report: PostureReport | null
-  image: { width: number; height: number }
-}
+export type AnalysisResponse = Schemas['AnalysisResponse']
 
 /**
  * An RFC 9457 problem document.
  *
- * `type` is the field worth branching on — it is stable and machine-readable, where `title` and
- * `detail` are prose a copy edit can change.
+ * Still hand-written, and deliberately: FastAPI documents error *statuses* but not the shape of
+ * this body, because the handlers build it directly rather than through a response model. Worth
+ * a follow-up — until then this is the one type here that can drift, and the frontend branches
+ * only on `type`, which is the field least likely to.
  */
 export interface Problem {
   type: string

@@ -1,34 +1,17 @@
-import { useEffect, useState } from 'react'
-import axios from 'axios'
 import styles from './HelloWorld.module.css'
 
-// Vue: defineProps<{ msg: string }>()
-// React: props are just the function's first argument.
+/**
+ * The landing header.
+ *
+ * It used to call `axios.get('http://127.0.0.1:5000/')` on mount and render whatever came back —
+ * a hardcoded host, pointing at a Flask sanity route that returned the string "Hello World" and
+ * no longer exists. That one line is the concrete reason the Vite proxy exists (OP-43): an API
+ * address baked into a component works on exactly one machine.
+ *
+ * The call is deleted rather than repointed. It fetched nothing this page needs, and the app now
+ * has exactly one way to reach the API — `src/api/client.ts`, over a relative URL.
+ */
 export default function HelloWorld({ msg }: { msg: string }) {
-  const [testData, setTestData] = useState('')
-
-  // Vue used onBeforeMount (fires before the first paint). React has no
-  // pre-render async hook — useEffect always runs *after* render, so the first
-  // frame shows the empty string. That's why `testData` starts as ''.
-  useEffect(() => {
-    let cancelled = false
-
-    axios
-      .get('http://127.0.0.1:5000/')
-      .then((response) => {
-        if (!cancelled) setTestData(response.data)
-      })
-      .catch((error) => {
-        console.error('Error getting data: ', error)
-      })
-
-    // StrictMode double-invokes effects in dev; this flag stops a late response
-    // from writing into an unmounted component.
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   return (
     <div className={styles.greetings}>
       <h1 className={styles.orange}>{msg}</h1>
@@ -36,7 +19,6 @@ export default function HelloWorld({ msg }: { msg: string }) {
         A virtual posture assessment tool created by graduate student developers from the University
         of Missouri-Kansas City
       </h3>
-      <p>{testData}</p>
     </div>
   )
 }
