@@ -79,8 +79,8 @@ Two coverage floors, chosen rather than defaulted:
 Clear a floor by writing a test, not by adding an exclusion. Generated code and type-only modules
 may be excluded; a difficult branch may not.
 
-`-m "not model"` deselects tests needing real model weights. CI never downloads them; they will run
-on demand in `model-validation.yml`, which arrives with the landmark CLI in OP-21.
+`-m "not model"` deselects tests needing real model weights. CI never downloads them; they run on
+demand in `model-validation.yml`.
 
 To run them locally you need the weights and the inference stack:
 
