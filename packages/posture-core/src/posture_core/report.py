@@ -110,6 +110,15 @@ class PostureReport:
     output that means something.
     """
 
+    def __post_init__(self) -> None:
+        # Same reason as `Quality.__post_init__`: `frozen=True` freezes the attribute bindings, not
+        # the containers bound to them. `build_report` hands over a live dict and a live list, so
+        # without this a caller could edit a report's metrics or delete a finding after the fact —
+        # and the module docstring's promise that one frame always yields one byte-identical
+        # document would hold only until someone took it up on the offer.
+        object.__setattr__(self, "metrics", MappingProxyType(dict(self.metrics)))
+        object.__setattr__(self, "findings", tuple(self.findings))
+
     def to_dict(self) -> dict[str, Any]:
         """A JSON-ready shape. Ordered for a readable diff, not for parsing.
 
@@ -123,7 +132,13 @@ class PostureReport:
             "backend": self.backend,
             "inference_ms": round(self.inference_ms, 3),
             "image": {"width": self.image_width, "height": self.image_height},
-            "overall_score": self.overall_score,
+            # Rounded like every other float here. The default 15.0 penalty happens to divide
+            # cleanly, so this reads as unnecessary today — but 100 - (8.3 * 3.5) is
+            # 70.94999999999999, and most non-integer penalties do something similar. Leaving it
+            # raw means the first threshold retune scatters noise through the golden corpus and
+            # the cross-language comparison in OP-36, where the diff would look like a real
+            # disagreement between two engines rather than a float artefact.
+            "overall_score": _round(self.overall_score),
             "findings": [
                 {
                     "code": finding.code,
