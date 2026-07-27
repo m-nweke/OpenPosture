@@ -6,7 +6,8 @@
         "description": "What `POST /api/v1/analyses` returns on success.",
         "properties": {
           "image": {
-            "$ref": "#/components/schemas/ImageSize"
+            "$ref": "#/components/schemas/ImageSize",
+            "description": "The uploaded photograph's dimensions after EXIF rotation is applied \u2014 what the user actually sees. This is the authoritative size for a client; see the note on `PostureReportModel.image` for why the two can differ."
           },
           "landmarks": {
             "description": "Every landmark the backend returned, for drawing a skeleton over the photo. Empty when no pose was detected. The overlay is drawn client-side from these \u2014 the server never writes an annotated image, which would cost a round trip, storage for a derived artifact, and a cache-invalidation question every time the rules change.",
@@ -328,7 +329,8 @@
             "type": "array"
           },
           "image": {
-            "$ref": "#/components/schemas/ImageSize"
+            "$ref": "#/components/schemas/ImageSize",
+            "description": "The frame the *backend* measured, which is not always the frame that was uploaded. `FakePoseBackend` ignores the image entirely and reports its preset's own size, so this can differ from `AnalysisResponse.image` whenever the fake backend is in use. For anything to do with the uploaded photograph \u2014 scaling an overlay, for instance \u2014 use `AnalysisResponse.image`."
           },
           "inference_ms": {
             "title": "Inference Ms",
