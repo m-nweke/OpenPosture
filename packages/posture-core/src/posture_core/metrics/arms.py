@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from posture_core.geometry import angle_between, distance, midpoint
+from posture_core.geometry import MIN_LENGTH, angle_between, distance, midpoint
 from posture_core.keypoints import KeypointName
 from posture_core.metrics._support import abstain, measure, require_either_side, world_points
 from posture_core.resolver import Resolved
@@ -87,12 +87,16 @@ def arms_crossed(resolver: KeypointResolver, thresholds: Thresholds) -> Metric:
         midpoint(points[KeypointName.LEFT_HIP], points[KeypointName.RIGHT_HIP]),
         midpoint(points[KeypointName.LEFT_SHOULDER], points[KeypointName.RIGHT_SHOULDER]),
     )
-    if torso <= 0.0:
+    # `distance` is never negative, so a `<= 0.0` test would only catch the exact-zero case. A
+    # torso of 1e-12 m divides the ratio up to ~1e11, which compares as "not folded" against any
+    # threshold — a confident wrong answer from a measurement that does not exist. Same threshold
+    # the geometry layer uses for a vector with no direction, because it is the same degeneracy.
+    if torso < MIN_LENGTH:
         return abstain(
             ARMS_CROSSED,
             "ratio",
-            "your shoulders and hips overlap in this photo, so there is no body length to "
-            "measure against",
+            "your shoulders and hips are at the same point in this photo, so there is no body "
+            "length to measure against",
             inputs=CROSSED_REQUIRED,
         )
 
