@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from posture_core.geometry import distance, image_vec, midpoint
+from posture_core.geometry import MIN_LENGTH, distance, image_vec, midpoint
 from posture_core.keypoints import KeypointName
 from posture_core.metrics._support import abstain, measure
 from posture_core.resolver import Resolved
@@ -69,7 +69,13 @@ def view_confidence(resolver: KeypointResolver, thresholds: Thresholds) -> Metri
         midpoint(points[KeypointName.LEFT_HIP], points[KeypointName.RIGHT_HIP]),
         midpoint(points[KeypointName.LEFT_SHOULDER], points[KeypointName.RIGHT_SHOULDER]),
     )
-    if torso <= 0.0:
+    # `distance` is never negative, so a `<= 0.0` test would only catch the exact-zero case — the
+    # one a backend is least likely to produce. A torso a fraction of a pixel long divides the
+    # ratio up to an enormous number, which reads as "photographed from the front" against any
+    # threshold and then drags every sagittal finding down to the confidence floor. Same threshold
+    # `arms_crossed` uses for the same division, and the same one the geometry layer uses for a
+    # vector with no direction, because it is the same degeneracy.
+    if torso < MIN_LENGTH:
         return abstain(
             NAME,
             UNIT,
