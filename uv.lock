@@ -19,6 +19,7 @@ members = [
     "openposture-api",
     "pose-backends",
     "posture-core",
+    "posture-spec",
 ]
 
 [[package]]
@@ -1104,6 +1105,7 @@ version = "0.1.0"
 source = { editable = "packages/pose-backends" }
 dependencies = [
     { name = "posture-core" },
+    { name = "posture-spec" },
 ]
 
 [package.optional-dependencies]
@@ -1115,6 +1117,7 @@ mediapipe = [
 requires-dist = [
     { name = "mediapipe", marker = "extra == 'mediapipe'", specifier = "==0.10.18" },
     { name = "posture-core", editable = "packages/posture-core" },
+    { name = "posture-spec", editable = "packages/posture-spec" },
 ]
 provides-extras = ["mediapipe"]
 
@@ -1128,6 +1131,17 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "numpy", specifier = ">=1.26,<2" }]
+
+[[package]]
+name = "posture-spec"
+version = "0.1.0"
+source = { editable = "packages/posture-spec" }
+dependencies = [
+    { name = "posture-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "posture-core", editable = "packages/posture-core" }]
 
 [[package]]
 name = "protobuf"

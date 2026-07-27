@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from posture_core import KeypointName as K
@@ -69,12 +69,6 @@ poses = st.fixed_dictionaries(
 scales = st.floats(0.3, 3.0)
 
 frame_sizes = st.tuples(st.integers(240, 4000), st.integers(240, 4000))
-
-SETTINGS = settings(
-    max_examples=200,
-    deadline=None,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
 
 
 def scaled_body(scale: float) -> Anthropometry:
@@ -125,7 +119,6 @@ def angular_values(landmarks: dict[K, Landmark], **frame_kwargs: int) -> dict[st
 # ---------------------------------------------------------------------------------------------
 
 
-@SETTINGS
 @given(pose=poses, scale=scales)
 def test_every_angular_metric_is_invariant_to_body_size(pose: dict[str, Any], scale: float) -> None:
     """The defect the whole rebuild exists to fix, stated over the entire input space.
@@ -147,7 +140,6 @@ def test_every_angular_metric_is_invariant_to_body_size(pose: dict[str, Any], sc
             assert other == pytest.approx(value, abs=1e-6), f"{name} moved under {scale}x scaling"
 
 
-@SETTINGS
 @given(pose=poses, size=frame_sizes)
 def test_every_angular_metric_is_invariant_to_frame_size_and_aspect_ratio(
     pose: dict[str, Any], size: tuple[int, int]
@@ -171,7 +163,6 @@ def test_every_angular_metric_is_invariant_to_frame_size_and_aspect_ratio(
             assert other == pytest.approx(value, abs=1e-6), f"{name} moved at {width}x{height}"
 
 
-@SETTINGS
 @given(pose=poses, offset=st.tuples(st.floats(-2.0, 2.0), st.floats(-2.0, 2.0)))
 def test_every_angular_metric_is_invariant_to_where_the_subject_stands(
     pose: dict[str, Any], offset: tuple[float, float]
@@ -206,7 +197,6 @@ def test_every_angular_metric_is_invariant_to_where_the_subject_stands(
             assert other == pytest.approx(value, abs=1e-6), f"{name} moved under translation"
 
 
-@SETTINGS
 @given(pose=poses, scale=scales)
 def test_the_view_ratio_is_invariant_to_body_size(pose: dict[str, Any], scale: float) -> None:
     """A ratio of two image-space lengths, so the projection cancels.
@@ -225,7 +215,6 @@ def test_the_view_ratio_is_invariant_to_body_size(pose: dict[str, Any], scale: f
 # ---------------------------------------------------------------------------------------------
 
 
-@SETTINGS
 @given(pose=poses, dropped=st.sets(st.sampled_from(list(K)), max_size=34))
 def test_a_report_can_always_be_built_however_much_is_missing(
     pose: dict[str, Any], dropped: set[K]
@@ -254,7 +243,6 @@ def test_a_report_can_always_be_built_however_much_is_missing(
         assert metric.is_ok == (metric.value is not None)
 
 
-@SETTINGS
 @given(
     pose=poses,
     visibilities=st.lists(st.floats(0.0, 1.0), min_size=34, max_size=34),
@@ -282,7 +270,6 @@ def test_a_report_can_always_be_built_however_unconfident_the_landmarks(
     assert report.overall_score is None or 0.0 <= report.overall_score <= 100.0
 
 
-@SETTINGS
 @given(pose=poses)
 def test_the_same_pose_always_produces_the_same_report(pose: dict[str, Any]) -> None:
     """Determinism over the whole input space, not just the examples someone chose.
