@@ -39,8 +39,29 @@ RULES_PATH: Final = Path(__file__).with_name("rules.json")
 
 
 def load_rules(path: Path | None = None) -> dict[str, Any]:
-    """The raw document, exactly as both implementations see it."""
-    return json.loads((path or RULES_PATH).read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    """The raw document, exactly as both implementations see it.
+
+    The top level must be an object. Checking here rather than trusting the annotation is what
+    keeps the failure legible: without it, `load_thresholds` iterates whatever came back and
+    reports the pieces as if they were keys. A file containing ``"hello"`` complained that the
+    engine did not know the keys ``['e', 'h', 'l', 'o']``; a bare number or ``null`` raised
+    ``TypeError: 'int' object is not iterable`` from inside a function whose whole purpose is to
+    explain configuration mistakes.
+    """
+    resolved = path or RULES_PATH
+    document = json.loads(resolved.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        # TRY004 wants `TypeError` for an isinstance check, and it is wrong for this one. A caller
+        # passed a path, not a bad type — what is malformed is the *contents of a file*, which is
+        # the same class of mistake as an unknown key or a contradictory value, and both of those
+        # raise `ValueError` a few lines down. Anyone catching configuration errors here should
+        # need one except clause, not two.
+        raise ValueError(  # noqa: TRY004
+            f"{resolved.name} must contain a JSON object mapping threshold names to values, "
+            f"not {type(document).__name__}. The file is the tuning surface both engines read, "
+            "so its shape is part of the contract."
+        )
+    return document
 
 
 def load_thresholds(path: Path | None = None) -> Thresholds:

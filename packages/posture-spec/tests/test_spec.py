@@ -107,3 +107,52 @@ def test_the_version_travels_with_the_values() -> None:
     """Two reports are only comparable if they were produced by the same rules, so the version
     stamp has to live in the same file as the numbers it describes."""
     assert load_rules()["version"] == DEFAULT_THRESHOLDS.version
+
+
+@pytest.mark.parametrize(
+    ("document", "shape"),
+    [
+        ("[1, 2]", "list"),
+        ('[{"trunk_slouch_deg": 20.0}]', "list"),
+        ('"hello"', "str"),
+        ("5", "int"),
+        ("null", "NoneType"),
+    ],
+)
+def test_a_document_that_is_not_an_object_is_rejected_by_shape(
+    tmp_path: object, document: str, shape: str
+) -> None:
+    """Valid JSON, wrong shape — and every one of these used to fail incomprehensibly.
+
+    `load_thresholds` iterated whatever came back and reported the pieces as keys, so `"hello"`
+    complained that the engine did not know `['e', 'h', 'l', 'o']`, and a bare number or `null`
+    raised `TypeError: 'int' object is not iterable` from inside the function whose entire job is
+    to explain configuration mistakes. A list of objects raised `TypeError: unhashable type:
+    'dict'`.
+
+    The file is the tuning surface both engines read, so its top-level shape is part of the
+    contract and belongs in the loader rather than being discovered downstream.
+    """
+    import pathlib
+
+    path = pathlib.Path(str(tmp_path)) / "rules.json"
+    path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=f"must contain a JSON object.*not {shape}"):
+        load_thresholds(path)
+
+
+def test_a_malformed_file_still_reports_as_a_json_error(tmp_path: object) -> None:
+    """The shape check must not swallow the parse error above it.
+
+    A truncated or hand-mangled file is a different mistake from a well-formed document of the
+    wrong type, and conflating them would send someone looking for a threshold name in a file that
+    does not parse.
+    """
+    import pathlib
+
+    path = pathlib.Path(str(tmp_path)) / "rules.json"
+    path.write_text('{"trunk_slouch_deg": 20.0', encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        load_thresholds(path)
