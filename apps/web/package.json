@@ -18,7 +18,8 @@
     "codegen": "npm run codegen:schema && npm run codegen:types",
     "codegen:schema": "cd ../.. && uv run python scripts/dump_openapi.py apps/web/src/api/openapi.json",
     "codegen:types": "npx --yes openapi-typescript@7.13.0 src/api/openapi.json -o src/api/schema.d.ts",
-    "test:e2e:stack": "playwright test --config playwright.stack.config.ts"
+    "test:e2e:stack": "playwright test --config playwright.stack.config.ts",
+    "screenshot": "playwright test --config playwright.stack.config.ts screenshot.spec.ts"
   },
   "dependencies": {
     "react": "^19.2.8",
