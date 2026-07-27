@@ -1,0 +1,20 @@
+{
+  "description": "Every tunable in the OpenPosture rules engine. Loaded by the Python engine (posture_spec.load_thresholds) and, from Epic G, by its TypeScript mirror. Neither hardcodes a number. Field-by-field reasoning lives on posture_core.Thresholds; this file is the values, not the argument for them.",
+  "version": "1.0.0",
+  "min_visibility": 0.5,
+  "min_presence": 0.5,
+  "trunk_upright_deg": 10.0,
+  "trunk_slouch_deg": 20.0,
+  "trunk_recline_deg": -20.0,
+  "cva_forward_head_deg": 50.0,
+  "cva_borderline_deg": 55.0,
+  "arms_crossed_ratio": 0.7,
+  "elbow_flexed_deg": 120.0,
+  "knee_seated_min_deg": 70.0,
+  "knee_seated_max_deg": 120.0,
+  "knee_kneeling_max_deg": 60.0,
+  "heel_contact_tolerance_m": 0.05,
+  "lateral_view_max_ratio": 0.35,
+  "frontal_view_min_ratio": 0.55,
+  "score_penalty_per_finding": 15.0
+}

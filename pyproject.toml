@@ -28,6 +28,7 @@ members = ["apps/api", "packages/*"]
 
 [tool.uv.sources]
 posture-core = { workspace = true }
+posture-spec = { workspace = true }
 pose-backends = { workspace = true }
 
 # Installed into the workspace environment for local development and CI.
@@ -90,7 +91,7 @@ ignore = [
 "**/tests/**" = ["ANN", "S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["posture_core", "pose_backends", "openposture_api"]
+known-first-party = ["posture_core", "posture_spec", "pose_backends", "openposture_api"]
 
 [tool.ruff.format]
 docstring-code-format = true

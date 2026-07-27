@@ -6,7 +6,9 @@ requires-python = ">=3.11"
 
 # Depends on posture-core because the CANONICAL TYPES LIVE THERE. The rules engine defines the
 # contract; inference adapters conform to it. That inversion is what makes backends swappable.
-dependencies = ["posture-core"]
+# posture-spec supplies the tuned thresholds to the `--report` CLI, so the command line and the
+# API are configured by the same file rather than by two copies of the same defaults.
+dependencies = ["posture-core", "posture-spec"]
 
 [project.optional-dependencies]
 # The real backend is optional so that `pose-backends` can be installed — and FakePoseBackend
