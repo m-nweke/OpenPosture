@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "GRAVITY",
+    "MIN_LENGTH",
     "UP",
     "DegenerateVectorError",
     "Vector3",
@@ -58,9 +59,17 @@ UP: Final[Vector3] = np.array([0.0, -1.0, 0.0])
 
 GRAVITY: Final[Vector3] = -UP
 
-# Below this length a vector's direction is numerical noise. 1e-9 m is a nanometre; any real
-# anatomical segment is at least ~1e-2 m, so this only ever fires on coincident landmarks.
-_MIN_LENGTH: Final = 1e-9
+MIN_LENGTH: Final = 1e-9
+"""Below this, a length is numerical noise rather than a measurement.
+
+1e-9 m is a nanometre; any real anatomical segment is at least ~1e-2 m, so this only ever fires on
+coincident landmarks — which a backend does produce when a joint is fully occluded and it collapses
+two points onto each other.
+
+**Public**, because dividing by a length is not confined to this module. A metric that normalises
+by torso length has exactly the same degeneracy to handle, and a second epsilon defined next to
+each division is the kind of duplicate that drifts. One threshold, one meaning.
+"""
 
 
 class DegenerateVectorError(ValueError):
@@ -103,7 +112,7 @@ def norm(vector: Vector3) -> float:
 def unit(vector: Vector3) -> Vector3:
     """The direction of ``vector``, length 1."""
     length = norm(vector)
-    if length < _MIN_LENGTH:
+    if length < MIN_LENGTH:
         raise DegenerateVectorError(
             f"cannot take the direction of a zero-length vector (length {length:g})"
         )
@@ -130,7 +139,7 @@ def angle_between(a: Vector3, b: Vector3) -> float:
     """
     cross = float(np.linalg.norm(np.cross(a, b)))
     dot = float(np.dot(a, b))
-    if norm(a) < _MIN_LENGTH or norm(b) < _MIN_LENGTH:
+    if norm(a) < MIN_LENGTH or norm(b) < MIN_LENGTH:
         raise DegenerateVectorError("cannot measure an angle against a zero-length vector")
     return float(np.degrees(np.arctan2(cross, dot)))
 
@@ -151,7 +160,7 @@ def signed_angle_to_vertical(vector: Vector3, forward: Vector3) -> float:
 
     Returns a value in ``(-180, 180]``.
     """
-    if norm(vector) < _MIN_LENGTH:
+    if norm(vector) < MIN_LENGTH:
         raise DegenerateVectorError("cannot measure the inclination of a zero-length vector")
 
     # Project onto the sagittal plane spanned by UP and `forward`, then read the angle off
@@ -161,7 +170,7 @@ def signed_angle_to_vertical(vector: Vector3, forward: Vector3) -> float:
     forward_unit = unit(np.asarray(forward, dtype=np.float64))
     along_up = float(np.dot(vector, UP))
     along_forward = float(np.dot(vector, forward_unit))
-    if abs(along_up) < _MIN_LENGTH and abs(along_forward) < _MIN_LENGTH:
+    if abs(along_up) < MIN_LENGTH and abs(along_forward) < MIN_LENGTH:
         raise DegenerateVectorError(
             "vector has no component in the sagittal plane, so its inclination is undefined"
         )
