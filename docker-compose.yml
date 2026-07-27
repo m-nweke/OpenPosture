@@ -20,6 +20,9 @@ services:
       # works from a clean clone with nothing to download and no API key — which is the whole
       # promise of the quickstart. CI overrides it to `fake` for speed.
       OPENPOSTURE_POSE_BACKEND: ${OPENPOSTURE_POSE_BACKEND:-mediapipe}
+      # Which scenario the fake backend returns. Ignored by mediapipe; the container smoke
+      # test sets it so the numbers it asserts on are deterministic.
+      OPENPOSTURE_POSE_BACKEND_PRESET: ${OPENPOSTURE_POSE_BACKEND_PRESET:-straight}
       OPENPOSTURE_ENVIRONMENT: ${OPENPOSTURE_ENVIRONMENT:-development}
       OPENPOSTURE_LOG_LEVEL: ${OPENPOSTURE_LOG_LEVEL:-info}
       # Local disk rather than MinIO: one fewer service until Epic E needs it, and the Protocol

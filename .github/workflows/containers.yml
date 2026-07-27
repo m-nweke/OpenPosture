@@ -1,0 +1,175 @@
+# Container and Compose validation.
+#
+# `pr.yml` proves the code is correct in a virtualenv. This proves the *stack* works: that both
+# images build, that Compose is valid, that the services start, become ready, talk to each other,
+# and shut down cleanly. Those fail for entirely different reasons — a missing system library, a
+# wrong bind mount, a service name the proxy cannot resolve — none of which a unit test can see.
+#
+# Required from the first Docker commit, per the delivery rule: a capability and its check ship
+# together, and Docker is not exempt.
+#
+# **Fake backends, deliberately.** The purpose is to prove the containers build, start, wire
+# together and become ready. Pulling real model weights would add minutes and make the job fail
+# for reasons that have nothing to do with containerization. Real-model validation lives in the
+# `workflow_dispatch` job created in OP-21.
+
+name: containers
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Cheap checks that need no build. Run first so a typo in the Compose file
+  # fails in seconds rather than after a multi-minute image build.
+  # ---------------------------------------------------------------------------
+  validate:
+    name: compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compose file is valid
+        run: docker compose config --quiet
+
+      - name: The image's model hash matches models/checksums.txt
+        # The Dockerfile cannot read a file at build time, so the pinned SHA256 is duplicated
+        # into an `ADD --checksum`. Duplicated constants drift; this is the check that says so
+        # out loud instead of letting the image silently fetch a different model than the one
+        # `make fetch-model` verifies.
+        run: |
+          expected="$(grep -E '^[0-9a-f]{64}  pose_landmarker_full\.task$' models/checksums.txt | cut -d' ' -f1)"
+          if [ -z "$expected" ]; then
+            echo "::error::no pinned hash for pose_landmarker_full.task in models/checksums.txt"
+            exit 1
+          fi
+          if ! grep -q "sha256:${expected}" apps/api/Dockerfile; then
+            echo "::error::apps/api/Dockerfile does not pin the hash in models/checksums.txt (${expected})"
+            exit 1
+          fi
+          echo "OK  model hash pinned consistently: ${expected}"
+
+  # ---------------------------------------------------------------------------
+  # Build, start, smoke-test, tear down.
+  # ---------------------------------------------------------------------------
+  stack:
+    name: build and smoke-test
+    needs: validate
+    runs-on: ubuntu-latest
+    env:
+      # No model download, no 300 MB inference stack. See the header.
+      OPENPOSTURE_POSE_BACKEND: fake
+      OPENPOSTURE_POSE_BACKEND_PRESET: hunchback
+      OPENPOSTURE_ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build images
+        # GitHub Actions cache rather than a registry: no credentials, and a cold build of the
+        # API image is several minutes because of the inference stack.
+        uses: docker/bake-action@37816e747588cb137173af99ab33873600c46ea8 # v6.9.0
+        with:
+          files: docker-compose.yml
+          load: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 180
+
+      - name: API reports ready
+        run: |
+          body="$(curl --fail --silent --show-error http://localhost:8000/health/ready)"
+          echo "$body"
+          echo "$body" | grep -q '"status":"ready"'
+          echo "$body" | grep -q '"name":"pose_backend"'
+
+      - name: Web is served
+        run: curl --fail --silent --show-error --output /dev/null http://localhost:5173/
+
+      - name: The Vite proxy reaches the API
+        # The point of the whole arrangement: the browser's origin serves both the app and the
+        # API, so there is no CORS and no per-environment base URL. If this passes on :5173 the
+        # proxy is wired; if it only passes on :8000 it is not.
+        run: |
+          body="$(curl --fail --silent --show-error http://localhost:5173/api/v1/analyses -X POST \
+            -F "image=@fixtures/images/desk_hunch.jpeg")"
+          echo "$body" | head -c 400
+          echo "$body" | grep -q '"pose_detected":true'
+          echo "$body" | grep -q '"trunk_inclination_deg"'
+
+      - name: An upload produces a real report end to end
+        # Asserts a *value*, not merely that a response arrived. With the fake backend the
+        # numbers are deterministic, so this is an exact check rather than a tolerance — and it
+        # would pass against a mocked frontend, which is why the assertion is on the API.
+        run: |
+          body="$(curl --fail --silent --show-error http://localhost:8000/api/v1/analyses -X POST \
+            -F "image=@fixtures/images/desk_hunch.jpeg")"
+          echo "$body" | python3 -c "
+          import json, sys
+          report = json.load(sys.stdin)['report']
+          trunk = report['metrics']['trunk_inclination_deg']
+          assert trunk['status'] == 'ok', trunk
+          assert abs(trunk['value'] - 32.0) < 0.01, trunk
+          assert report['backend'] == 'fake', report['backend']
+          print('trunk_inclination_deg =', trunk['value'], '(expected 32.0 from the hunchback preset)')
+          "
+
+      - name: Errors use the documented problem shape
+        run: |
+          status="$(curl --silent --output /tmp/problem.json --write-out '%{http_code}' \
+            http://localhost:8000/api/v1/analyses -X POST -F "image=@README.md")"
+          cat /tmp/problem.json
+          test "$status" = "400"
+          grep -q '"type"' /tmp/problem.json
+          grep -q '"instance"' /tmp/problem.json
+
+      - name: Capture logs
+        # On failure only. A green run's logs are noise; a red run without them is undebuggable.
+        if: failure()
+        run: docker compose logs --no-color > /tmp/compose-logs.txt 2>&1 || true
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: compose-logs
+          path: /tmp/compose-logs.txt
+          retention-days: 7
+
+      - name: Shut down cleanly
+        # `always()` so a failed assertion still tears down, and `-v` so the named volume does not
+        # survive into the next run and make a stale object look like a fresh one.
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  containers-ok:
+    name: containers-ok
+    if: always()
+    needs: [validate, stack]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "validate: ${{ needs.validate.result }}"
+          echo "stack:    ${{ needs.stack.result }}"
+
+      - name: Fail if any job did not succeed
+        # Skipped counts as failure here, unlike in pr.yml: nothing path-filters this workflow,
+        # so a skipped job means something went wrong rather than "not relevant to this change".
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
