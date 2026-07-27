@@ -111,4 +111,13 @@ def _describe(value: float, side: str, thresholds: Thresholds) -> str:
             f"your {side} heel is {value * 100:.0f} cm above your toes — that foot is not "
             "resting on the floor"
         )
+    if value < -thresholds.heel_contact_tolerance_m:
+        # The docstring promises this is reported rather than clamped, so it needs its own
+        # sentence. Folding it into "flat and supported" would describe a foot tipped back on its
+        # heel as an ordinary one, which is the sort of quiet inaccuracy this package exists to
+        # avoid — and it is the posture of someone bracing against a chair with their toes up.
+        return (
+            f"your {side} toes are {abs(value) * 100:.0f} cm above your heel — that foot is "
+            "tipped back rather than flat"
+        )
     return f"your {side} foot is flat and supported"

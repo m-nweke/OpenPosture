@@ -191,3 +191,28 @@ def test_confidence_still_decides_when_only_one_foot_is_usable() -> None:
     metric = metric_of(heel, **unclear(K.RIGHT_HEEL, K.RIGHT_FOOT_INDEX))
     assert metric.value is not None
     assert "left" in metric.detail
+
+
+def test_a_foot_tipped_back_on_its_heel_is_described_as_such() -> None:
+    """Not as "flat and supported".
+
+    The docstring promises negative values are reported rather than clamped, and the description
+    has to keep that promise or the promise is only true of the number. A foot with its toes well
+    above its heel is someone bracing against a chair, which is a real posture and not an ordinary
+    one.
+    """
+    metric = heel(
+        KeypointResolver(frame_with_foot(heel_rise_m=-0.10), DEFAULT_THRESHOLDS),
+        DEFAULT_THRESHOLDS,
+    )
+    assert "tipped back" in metric.detail
+    assert "10 cm" in metric.detail
+
+
+def test_a_slightly_tipped_foot_inside_the_tolerance_is_still_flat() -> None:
+    """The tolerance is symmetric: a small tilt either way is an ordinary foot."""
+    metric = heel(
+        KeypointResolver(frame_with_foot(heel_rise_m=-0.01), DEFAULT_THRESHOLDS),
+        DEFAULT_THRESHOLDS,
+    )
+    assert "flat and supported" in metric.detail
