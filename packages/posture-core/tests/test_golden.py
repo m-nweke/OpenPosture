@@ -21,9 +21,14 @@ Three reasons, in order of weight:
 
 ## Updating them
 
-`python -m tests.regenerate_golden` — or delete a file and run the suite, which writes it and
-fails once with a message saying so. Never edit one by hand: a golden file that was reasoned about
-rather than generated is a golden file that asserts what someone hoped for.
+`uv run python packages/posture-core/tests/regenerate_golden.py`, from the repository root — the
+same command the failure message prints, so there is one instruction rather than two. (`python -m
+tests.regenerate_golden` also works, but only from `packages/posture-core`, and a command that
+silently depends on the working directory is not the one to put in a docstring.)
+
+Or delete a file and run the suite, which writes it and fails once with a message saying so. Never
+edit one by hand: a golden file that was reasoned about rather than generated is a golden file
+that asserts what someone hoped for.
 """
 
 from __future__ import annotations
@@ -137,8 +142,21 @@ def test_every_snapshot_on_disk_still_has_a_case() -> None:
 
 def test_the_snapshots_record_the_versions_that_produced_them() -> None:
     """Without both stamps a snapshot cannot be interpreted after a threshold moves — you cannot
-    tell whether the engine changed or the yardstick did."""
+    tell whether the engine changed or the yardstick did.
+
+    The existence check is not redundant with the test above. That one writes a missing snapshot
+    and fails with an explanation; this one only reads, so on a deleted file — the documented way
+    to regenerate one — it raised `FileNotFoundError` and reported a missing path rather than the
+    thing to do about it. Under a full run the parametrised test happens to write the file first
+    and this never surfaces; run in isolation, or with `-k`, it is the only failure you see.
+    """
     for name in CASES:
-        payload = json.loads((GOLDEN / f"{name}.json").read_text(encoding="utf-8"))
+        path = GOLDEN / f"{name}.json"
+        assert path.exists(), (
+            f"golden snapshot {path.name} is missing. Run the whole file to have it written for "
+            f"review, or regenerate the corpus with "
+            f"`uv run python packages/posture-core/tests/regenerate_golden.py`."
+        )
+        payload = json.loads(path.read_text(encoding="utf-8"))
         assert payload["schema_version"]
         assert payload["rules_version"]
