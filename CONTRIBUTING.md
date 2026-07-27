@@ -82,6 +82,23 @@ may be excluded; a difficult branch may not.
 `-m "not model"` deselects tests needing real model weights. CI never downloads them; they run on
 demand in `model-validation.yml`.
 
+To run them locally you need the weights and the inference stack:
+
+```bash
+make fetch-model                       # downloads and verifies a pinned SHA256
+uv pip install "mediapipe==0.10.18"    # the optional extra; ~857 MB of site-packages
+uv run pytest -m model
+```
+
+`make fetch-model` writes to `models/`, which is gitignored — the checksum is what is version
+controlled, not the weights. `MODEL_VARIANT=lite|full|heavy` switches variants at fetch time and
+`MODEL_PATH` overrides the location at run time; both are documented in
+[`models/checksums.txt`](models/checksums.txt).
+
+Most of the pose-backend suite deliberately does *not* need any of this. The adapter's landmark
+mapping is tested against a stub, and `POSE_BACKEND=fake` runs the whole application with no model
+at all — which is why the pull-request workflow finishes in minutes without a download.
+
 ## Conventions worth knowing
 
 **Pinned versions are usually load-bearing.** `mediapipe==0.10.18` is the last release publishing

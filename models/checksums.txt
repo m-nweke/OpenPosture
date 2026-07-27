@@ -1,0 +1,53 @@
+# SHA256 checksums for the MediaPipe Pose Landmarker model variants.
+#
+# THIS FILE IS THE SINGLE SOURCE OF TRUTH for model integrity. It is consumed by:
+#
+#   * `make fetch-model`     — verifies a download before moving it into place
+#   * `make verify-model`    — verifies whatever is already on disk
+#   * the API image build    — `ADD --checksum=sha256:<the full hash below>` (Epic D, OP-43)
+#   * `model-validation.yml` — verifies the hash before running anything (OP-21)
+#
+# Format is exactly what `shasum -a 256` emits: `<hash>  <filename>`, one per line, `#` comments
+# ignored. Familiar and trivially greppable.
+#
+# The Makefile deliberately does NOT use `shasum -c` to check it. `shasum -c` treats a line it
+# cannot parse as a warning and still exits 0 — verified on macOS — so a typo'd hash or a file
+# that is simply absent passes the "check" silently. A gate that can pass without verifying
+# anything is worse than no gate, because it is trusted. The Makefile greps the expected hash for
+# one named file and compares it explicitly instead.
+#
+# Replaces the legacy arrangement, where a 209 MB `model.h5` exceeded GitHub's file limit and was
+# distributed by a bare Dropbox link in a readme — no checksum, no licence, no stated origin. A
+# dead link made the entire project unrunnable, and nobody could have told a corrupted copy from
+# a good one. See docs/FINDINGS.md and docs/adr/0002-mediapipe-pose.md.
+#
+# --------------------------------------------------------------------------------------------
+# PIN THE VERSIONED PATH, NOT `latest`
+# --------------------------------------------------------------------------------------------
+# Google publishes each variant under both `/float16/1/` and `/float16/latest/`. These are NOT
+# the same file. Verified 2026-07-26 by downloading both twice: each URL is stable across fetches,
+# but for `pose_landmarker_full` the two differ in exactly four bytes (offsets 12, 2959110,
+# 9398046, 9398112 — container metadata, not weights) and therefore have different hashes:
+#
+#     /float16/1/       5134a3aa...
+#     /float16/latest/  4eaa5eb7...
+#
+# Identical file size, different content. A pin against `latest` would look correct for as long
+# as nobody re-published, then fail a checksum for reasons that would take an afternoon to
+# understand. The Makefile fetches `/1/`.
+#
+# --------------------------------------------------------------------------------------------
+# VARIANTS — set MODEL_VARIANT in the Makefile to switch, or MODEL_PATH at runtime
+# --------------------------------------------------------------------------------------------
+# lite    5.5 MB   fastest, lowest accuracy. Viable for browser-side live mode (Epic G).
+# full    9.0 MB   the default. The accuracy/latency point this project is calibrated against.
+# heavy   29 MB    most accurate, ~3x the latency of full. Worth trying if evaluation (Epic H)
+#                  shows the full model is the limiting factor rather than the rules.
+#
+# Nothing in the code depends on which one is loaded — all three emit the same 33 landmarks with
+# world coordinates, which is exactly what the PoseBackend Protocol is for. Swapping is a
+# MODEL_PATH change, not a rebuild.
+
+59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a  pose_landmarker_lite.task
+5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1  pose_landmarker_full.task
+64437af838a65d18e5ba7a0d39b465540069bc8aae8308de3e318aad31fcbc7b  pose_landmarker_heavy.task

@@ -26,16 +26,28 @@ from pose_backends.mediapipe_backend import MediaPipeBackend
 __all__ = ["DEFAULT_MODEL_PATH", "create_backend", "default_model_path"]
 
 DEFAULT_MODEL_PATH: Final = Path("models/pose_landmarker_full.task")
-"""Where ``make fetch-model`` puts the weights, relative to the repository or image root."""
+"""Where ``make fetch-model`` puts the weights.
+
+**Relative, and therefore resolved against the working directory** — which is the repository root
+locally and the image's ``WORKDIR`` in a container. That is a deliberate default rather than a
+repeat of the legacy engine's cwd dependence: there, relative paths to weights and config were
+buried inside the inference code, so the thing only ran from within ``API/`` and there was no way
+to say otherwise. Here it is one documented default with :envvar:`MODEL_PATH` as the override, and
+``MediaPipeBackend`` resolves whatever it is given to an absolute path before loading.
+"""
 
 
 def default_model_path() -> Path:
-    """The model location, with ``MODEL_PATH`` taking precedence.
+    """The model location, with :envvar:`MODEL_PATH` taking precedence.
 
-    The override exists so a heavier or lighter model variant — lite at 5.5 MB, full at 9 MB,
-    heavy at 29 MB — can be swapped in without rebuilding the image (OP-20). It also replaces the
-    legacy arrangement's worst property: weights fetched from a bare Dropbox link recorded in a
-    readme, so a dead link made the whole project unrunnable.
+    The override exists so a variant can be swapped in without rebuilding: lite at 5.5 MB, full at
+    9 MB, heavy at 29 MB. Nothing in the code depends on which one loads — all three emit the same
+    33 landmarks with world coordinates — so this is a configuration change, not a code change.
+    See ``models/checksums.txt`` for the pins and the tradeoffs.
+
+    It also replaces the legacy arrangement's worst property: weights fetched from a bare Dropbox
+    link recorded in a readme, with no checksum and no stated origin, so a dead link made the whole
+    project unrunnable and a corrupted copy was indistinguishable from a good one.
     """
     override = os.environ.get("MODEL_PATH")
     return Path(override) if override else DEFAULT_MODEL_PATH
