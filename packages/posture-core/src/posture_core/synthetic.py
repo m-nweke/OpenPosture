@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final, TypeAlias
 
+from posture_core.geometry import UP
 from posture_core.keypoints import KeypointName, Landmark, PoseFrame
 
 __all__ = [
@@ -168,13 +169,16 @@ class _Frame:
 def _axes(facing: Facing, view: View) -> _Frame:
     """Build the subject's axes.
 
-    ``up`` is ``(0, -1, 0)`` because the coordinate system is y-**down**, matching MediaPipe.
+    ``up`` comes from :data:`posture_core.geometry.UP` rather than being written out again. It is
+    ``(0, -1, 0)`` because the coordinate system is y-**down**, and a second copy of that constant
+    is exactly the kind of duplicate that survives a sign flip in one place and not the other —
+    which would invert every posture verdict built on this figure while raising nothing.
     ``left = cross(up, forward)`` keeps the basis right-handed, which is what makes a single set of
     segment formulas work for both camera positions: in a lateral view ``left`` comes out along
     the depth axis, in a frontal view it comes out along the image's horizontal axis. No branching
     inside the construction itself.
     """
-    up: Vec3 = (0.0, -1.0, 0.0)
+    up: Vec3 = (float(UP[0]), float(UP[1]), float(UP[2]))
     if view is View.FRONTAL:
         # Facing the camera. "Forward" is out of the screen, so a forward lean is a change in
         # depth and is nearly invisible in the projected image — the whole point of the preset.
