@@ -1,0 +1,122 @@
+# The full-stack journey.
+#
+# `pr.yml` proves each layer is correct in isolation and `containers.yml` proves the stack starts
+# and answers. This proves a *person* can use it: a browser uploads a photograph and a measured
+# number appears on screen, through the Vite proxy, the API, the pose backend, the rules engine and
+# the React render.
+#
+# The assertion is an exact value, and that is the whole point. Asserting that a results panel
+# appeared would have passed against the hardcoded constants OP-44 deleted — they rendered after a
+# five-second timer and looked like a working app. `32°` proves a specific number was computed and
+# travelled the full chain.
+#
+# **Fake backend, so the number is exact rather than approximate.** The `hunchback` preset is an
+# analytic stick figure built at 32°, so the engine measures 32° every time. A real model would
+# force a tolerance, and a tolerance is where flake starts — and a flaky end-to-end test is worse
+# than none, because people learn to re-run it. Real-model validation lives in the
+# `workflow_dispatch` job from OP-21.
+
+name: e2e
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  journey:
+    name: full-stack journey
+    runs-on: ubuntu-latest
+    env:
+      OPENPOSTURE_POSE_BACKEND: fake
+      # The spec asserts 32°, which is this preset's trunk inclination. Changing it here without
+      # changing the spec is a deliberate failure rather than a silent one.
+      OPENPOSTURE_POSE_BACKEND_PRESET: hunchback
+      OPENPOSTURE_ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build images
+        uses: docker/bake-action@37816e747588cb137173af99ab33873600c46ea8 # v6.9.0
+        with:
+          files: docker-compose.yml
+          load: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 240
+
+      - name: Install the Playwright browser
+        working-directory: apps/web
+        # Chromium only, and only after the stack is up — the download is the slow part and there
+        # is no reason to pay for it before knowing the stack starts.
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the journey
+        working-directory: apps/web
+        run: npm run test:e2e:stack
+
+      - name: Capture service logs
+        # On failure only. A green run's logs are noise; a red run without them is undebuggable.
+        if: failure()
+        run: docker compose logs --no-color > /tmp/compose-logs.txt 2>&1 || true
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-diagnostics
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+            /tmp/compose-logs.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Shut down cleanly
+        # `always()` so a failed assertion still tears down, and `-v` so an uploaded image from
+        # this run cannot be mistaken for a fresh one in the next.
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  e2e-ok:
+    name: e2e-ok
+    if: always()
+    needs: [journey]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "journey ${{ needs.journey.result }}"
+
+      - name: Fail if the journey did not succeed
+        # Skipped counts as failure: nothing path-filters this workflow, so a skip means something
+        # went wrong rather than "not relevant to this change".
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1

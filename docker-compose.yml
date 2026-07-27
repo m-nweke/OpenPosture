@@ -100,6 +100,26 @@ services:
         # Not merely `started`. Without this the frontend can come up while the API is still
         # loading its model, and the first upload fails for a reason that looks like a bug.
         condition: service_healthy
+    healthcheck:
+      # Without this, `docker compose up --wait` treats the container as ready the moment the
+      # process starts — which is before Vite has bound its port. Anything that navigates
+      # immediately afterwards races the dev server, and the symptom is an intermittent
+      # connection refused in a job that otherwise looks correct.
+      #
+      # `node -e` rather than curl or wget: this image is `node:22-bookworm-slim`, which ships
+      # neither. Node is the one thing guaranteed to be present, and its global `fetch` makes the
+      # check a one-liner.
+      test:
+        - CMD
+        - node
+        - -e
+        # Quoted: the ternary contains a colon-space, which YAML would otherwise read as a
+        # mapping key rather than as part of the command.
+        - "fetch('http://127.0.0.1:5173/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
 
 volumes:
   api-storage:
