@@ -1,7 +1,36 @@
 # OpenPosture v2 — Rebuild as a Portfolio-Grade Full-Stack AI Application
 
-> **Status:** approved 2026-07-25 · **Tracking:** Jira project `OP` (import pending)
+> **Status:** approved 2026-07-25, in execution · **Tracking:** Jira project `OP`
 > **Companion doc:** [`FINDINGS.md`](./FINDINGS.md) — the full audit of the inherited codebase this plan replaces.
+
+> **⚠️ The ticket numbers below are the pre-import draft numbers and are not the Jira keys.**
+> The import assigned `OP-1`–`OP-8` to the epics themselves and renumbered the stories
+> contiguously beneath them, so the plan's `OP-1` (write the plan and findings docs) is Jira
+> `OP-9`, its `OP-20` (the MediaPipe spike) is `OP-16`, and its `OP-30` (`geometry.py`) is
+> `OP-23`. Code comments, commit messages and branch names cite the **Jira** keys; only this
+> document uses the draft numbering, and it is left as written rather than renumbered because it
+> is the record of what was planned before any of it was built. The mapping:
+>
+> | Epic | Jira epic | Plan stories | Jira stories |
+> | --- | --- | --- | --- |
+> | A — Foundation | `OP-1` | OP-1…7 | `OP-9`…`OP-15` |
+> | B — Pose backend | `OP-4` | OP-20…26 | `OP-16`…`OP-22` |
+> | C — Rules engine | `OP-2` | OP-30…45 | `OP-23`…`OP-38` |
+> | D — Walking skeleton | `OP-3` | OP-50…59 | `OP-39`…`OP-48` |
+> | E — Persistence + auth | `OP-5` | OP-60…70 | `OP-49`…`OP-59` |
+> | F — LLM coaching | `OP-6` | OP-80…88 | — |
+> | G — Live mode | `OP-7` | OP-100…104 | — |
+> | H — Polish and proof | `OP-8` | OP-110…116 | `OP-60`, `OP-61` |
+>
+> Epics F, G and H are held as the plan text below until their stories are cut; the two H stories
+> that do exist (`OP-60` threshold recalibration, `OP-61` the `overall_score` design) were raised
+> during Epic C rather than planned here.
+>
+> **Progress against the plan:** Epics A and B are merged. Epic C is merged through the shared
+> spec, the report CLI and `scientific-validation.yml`; its remaining stories are the extended
+> scientific property suite and the evaluation-data contract. Epic D onward has not started.
+> Plan story OP-26 / Jira `OP-22`, the ONNX MoveNet fallback, was **cancelled**: the spike passed
+> on both architectures, so the contingency was never needed.
 
 ## Context
 

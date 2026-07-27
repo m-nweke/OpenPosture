@@ -58,6 +58,13 @@ them individually would make merging depend on how GitHub treats skipped checks.
 aggregator also means a job can be renamed or split without silently dropping protection. See the
 header comment in [`.github/workflows/pr.yml`](workflows/pr.yml).
 
+**`scientific-ok` is not required yet.** `scientific-validation.yml` arrived with the shared
+threshold spec and runs its own aggregator on every pull request, but the ruleset has not been
+updated to require it, so a red scientific gate does not currently block a merge. Adding it is a
+ruleset change, not a workflow change. Until then, treat a `scientific-ok` failure as blocking by
+convention: it means a metric moved, which is exactly the class of change that should never merge
+unreviewed.
+
 ## Two rules from the OP-15 ticket that are deliberately absent
 
 **Linear history.** The ticket asked for it. Not applied: pull requests #10 through #13 all merged

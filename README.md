@@ -2,12 +2,13 @@
 
 [![PR](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/pr.yml)
 
-> **⚠️ This README describes the original v1 capstone and is being replaced.**
-> The project is mid-rewrite. Sections below still describe the Vue frontend and the
-> TensorFlow/Keras OpenPose model, both of which have been removed. See
+> **⚠️ The narrative sections below describe the original v1 capstone and are being replaced.**
+> The project is mid-rewrite. Overview, Model Architecture and Technologies Used still describe
+> the Vue frontend and the TensorFlow/Keras OpenPose model, both of which have been removed. See
 > [`docs/V2-PLAN.md`](docs/V2-PLAN.md) for what is being built and
 > [`docs/FINDINGS.md`](docs/FINDINGS.md) for the audit of what was here before.
-> A full rewrite lands in OP-113.
+> [Development (v2)](#development-v2) is current. A rewritten README ships with the walking
+> skeleton (OP-48).
 
 ### [Run Guide (archived)](docs/archive/RUNNING.md)
 ### [Model Download Link (archived)](docs/archive/ModelReadME.md)
@@ -71,6 +72,26 @@ gates. [`docs/adr/`](docs/adr/) records why the stack is what it is — start wi
 [ADR-0005](docs/adr/0005-scale-invariant-metrics.md) (how the original's central correctness defect
 is fixed).
 
+### Where the rewrite is
+
+Epics are tracked in Jira project `OP`; the plan they came from is
+[`docs/V2-PLAN.md`](docs/V2-PLAN.md).
+
+- **A — Foundation** · done. Workspace, tooling, CI, ADRs, archive.
+- **B — Pose backend** · done. MediaPipe adapter, fake backend, checksum-pinned weights, landmark
+  CLI.
+- **C — Rules engine** · nearly done. Seven metrics, the report, the shared threshold spec and the
+  property/boundary/golden suites are merged. Outstanding: the extended scientific property suite
+  (mirror consistency, physical domains, confidence monotonicity) and the evaluation-data
+  contract.
+- **D — Walking skeleton** · not started. `apps/api` is a stub with no routes, and the React
+  dashboard still renders placeholder results behind a `setTimeout`.
+- **E–H** · not started.
+
+The MediaPipe portability spike passed on both `linux/amd64` and `linux/arm64`, so the ONNX
+MoveNet fallback the plan held in reserve was cancelled rather than built
+([ADR-0002](docs/adr/0002-mediapipe-pose.md)).
+
 Python packaging is a [`uv`](https://docs.astral.sh/uv/) workspace — one lockfile, editable
 local packages, no `requirements.txt`.
 
@@ -94,6 +115,45 @@ uv run ruff format .             # format
 uv run mypy packages apps        # strict type check
 uv run pytest -m "not model"     # tests, skipping those needing real model weights
 ```
+
+The rules-engine and adapter suites — 516 tests — run in about a second and a half, with no model
+download, no container and no database.
+
+### Seeing it work
+
+There is no web stack yet, but the engine is demoable from the command line. The fake backend
+needs nothing installed beyond the workspace:
+
+```bash
+uv run python -m pose_backends.cli --backend fake --preset hunchback --report
+```
+
+```
+score          70/100
+assessed       7 of 7 metrics
+
+Findings
+  [major] Your torso is leaning 32° forward. Try bringing your hips back into the chair so your
+          back is supported.
+          confidence 0.95  (trunk_inclination_deg)
+  ...
+```
+
+`--preset` takes `straight`, `hunchback`, `reclined`, `kneeling` or `partial_occlusion`. Drop
+`--report` for the raw landmark table, add `--json` for machine-readable output, and note that
+`partial_occlusion` reports honest *gaps* rather than a verdict — the behaviour the original
+engine got wrong.
+
+For a real photograph you need the weights and the inference stack:
+
+```bash
+make fetch-model                                       # pinned SHA256, writes to models/
+uv pip install "mediapipe==0.10.18"                    # optional extra, ~857 MB
+uv run python -m pose_backends.cli fixtures/images/desk_hunch.jpeg --report
+```
+
+Exit codes are distinct on purpose: `0` a report was printed, `1` no pose was detected in the
+image, `2` the backend could not run.
 
 ### Frontend
 
@@ -153,21 +213,44 @@ Path filtering is per job, never at the workflow level: a workflow that never ru
 so a required check would sit pending forever and a docs-only pull request could not merge.
 Changes to `pr.yml` or the composite action run *everything*, and so does every push to `main`.
 
+Two further workflows exist.
+
+**`scientific-validation.yml`** runs on pull requests, pushes to `main` and on demand, in three
+jobs aggregated by `scientific-ok`: the invariance and degradation properties, boundary behaviour
+at every threshold, the golden report corpus (regenerated and diffed, so stale snapshots cannot
+ride along), and a drift check that `rules.json` and the engine's `Thresholds` still describe the
+same numbers. `pr.yml` asks *did this change break the software*; this asks *is the engine still
+measuring the same thing*. They fail for different reasons, which is why they are separate
+workflows with separate aggregators. `scientific-ok` is **not** currently in the `main` ruleset's
+required checks — only `ci-ok` is.
+
+**`model-validation.yml`** runs on `workflow_dispatch` only. It verifies the pinned SHA256, then
+runs the real MediaPipe weights over the fixture images and uploads landmark and latency
+diagnostics. Deliberately unscheduled, so required CI never downloads a model.
+
 ### Layout
 
 ```
 packages/posture-core    pure rules engine — numpy only, no I/O, no globals, no frameworks
+packages/posture-spec    rules.json — every threshold as data, plus the loader that parses it
 packages/pose-backends   inference adapters behind a Protocol (the heavy, fragile dependency)
-apps/api                 FastAPI service — depends on both
+apps/api                 FastAPI service — a stub until Epic D
 apps/web                 React + TypeScript frontend (own npm toolchain, not in the uv workspace)
+docs/adr                 architecture decision records
 docs/archive             the original capstone, preserved as audit evidence
 fixtures/images          8 curated test images
+models                   downloaded weights (gitignored); only checksums.txt is version controlled
 ```
 
-The dependency direction is one-way — `posture-core` ← `pose-backends` ← `apps/api` — and
-nothing depends on `apps/api`. That is what lets the rules-engine suite run in well under a
-second with no model, no Docker and no database. It is enforced by
+The dependency direction is one-way — `posture-core` ← `posture-spec` ← `pose-backends` ←
+`apps/api` — and nothing depends on `apps/api`. That is what lets the rules-engine suite run in
+well under a second with no model, no Docker and no database. It is enforced by
 `packages/posture-core/tests/test_dependency_isolation.py`, not just by convention.
+
+`posture-spec` exists because reading a file is I/O and `posture-core` is not allowed to do any.
+It also carries the drift test: a threshold that exists in `rules.json` but not in the engine's
+`Thresholds` dataclass, or vice versa, is a red build rather than a discovery six weeks later
+when the TypeScript mirror (Epic G) turns out to be using a stale default.
 
 ## License
 
