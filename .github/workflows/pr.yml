@@ -175,6 +175,19 @@ jobs:
           --cov-fail-under=95
           -m "not model"
 
+      - name: Test apps/api (85% coverage floor)
+        # Lower than posture-core's 95% and deliberately so: this layer owns I/O, and a handful
+        # of branches here are only reachable with a real network or a real container. It is
+        # still high enough that an untested route cannot merge. Added with the API's first code
+        # in OP-39 — the delivery rule is that a capability and its gate ship together.
+        run: >
+          uv run --python ${{ matrix.python-version }}
+          pytest apps/api
+          --cov=openposture_api
+          --cov-report=term-missing
+          --cov-fail-under=85
+          -m "not model"
+
       - name: Test workspace
         # `-m "not model"` deselects real-model tests. They need weights this job deliberately
         # never downloads, and run on demand in model-validation.yml (created in OP-21).

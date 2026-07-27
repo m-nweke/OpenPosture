@@ -75,10 +75,13 @@ npm run test:coverage
 npm run test:e2e
 ```
 
-Two coverage floors, chosen rather than defaulted:
+Three coverage floors, chosen rather than defaulted:
 
 - **`posture-core` — 95%.** No I/O, no model, no database, so there is no honest excuse for an
   unexercised branch.
+- **`apps/api` — 85%.** Lower deliberately: this layer owns I/O, and some branches are only
+  reachable with a real network or a real container. High enough that an untested route cannot
+  merge.
 - **`apps/web` — 70%.** Applies to branches and functions as well as lines, because a lines-only
   gate is easy to clear while leaving whole branches untested.
 
