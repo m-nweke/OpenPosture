@@ -25,10 +25,12 @@ uv tool install pre-commit && pre-commit install
 ## The architectural rule
 
 ```
-posture-core  <--  posture-spec  <--  pose-backends  <--  apps/api
+posture-core  <--  posture-spec  <--  pose-backends  <--  apps/api  <--  apps/web
 ```
 
-One direction, no cycles, and nothing depends on `apps/api`.
+One direction, no cycles, and nothing depends on `apps/web`. The frontend's arrow is dashed in
+practice — it depends on the API's *OpenAPI document* rather than on its code, via types
+generated in `apps/web/src/api/schema.d.ts`.
 
 `posture-spec` sits where it does for one reason: it parses `rules.json`, and parsing JSON is I/O.
 The package that owns the numbers is therefore one level *out* from the engine that uses them,
@@ -57,10 +59,19 @@ Depth goes in the pull request, not duplicated into git.
 
 ## Quality gates
 
-Everything below runs in CI as [`pr.yml`](.github/workflows/pr.yml); `ci-ok` is the single
-required check. [`scientific-validation.yml`](.github/workflows/scientific-validation.yml) runs
-alongside it, aggregated by `scientific-ok`, and asks a different question — see
-[below](#the-scientific-gates).
+Five workflows run against a pull request, each answering a different question. Only `ci-ok`
+is a required check; see [`.github/main-ruleset.md`](.github/main-ruleset.md) for why, and for
+what it would take to require the others.
+
+| Workflow | Aggregator | Question |
+| --- | --- | --- |
+| [`pr.yml`](.github/workflows/pr.yml) | `ci-ok` | Did this change break the software? |
+| [`scientific-validation.yml`](.github/workflows/scientific-validation.yml) | `scientific-ok` | Is the engine still measuring the same thing? |
+| [`containers.yml`](.github/workflows/containers.yml) | `containers-ok` | Does the stack build, start and answer? |
+| [`e2e.yml`](.github/workflows/e2e.yml) | `e2e-ok` | Can a person actually use it? |
+| [`model-validation.yml`](.github/workflows/model-validation.yml) | — | Manual only: real weights, real photos. |
+
+What `pr.yml` runs, reproduced locally:
 
 ```bash
 # Python
@@ -72,7 +83,19 @@ uv run pytest -m "not model"
 cd apps/web
 npm run lint && npm run format:check && npm run typecheck
 npm run test:coverage
-npm run test:e2e
+npm run test:e2e          # against a production build, no API needed
+
+# The API contract. Run this after changing anything the API returns, or the
+# `contract` job fails on committed drift.
+npm run codegen && git diff --exit-code -- src/api/
+```
+
+The full-stack journey needs a running stack, so it is separate:
+
+```bash
+OPENPOSTURE_POSE_BACKEND=fake OPENPOSTURE_POSE_BACKEND_PRESET=hunchback \
+  docker compose up -d --wait
+cd apps/web && npm run test:e2e:stack
 ```
 
 Three coverage floors, chosen rather than defaulted:
@@ -138,9 +161,9 @@ confidences across the corpus; anything it moves that you did not expect is the 
 the same script and fails if it produces a diff, so stale snapshots cannot ride along in someone
 else's pull request.
 
-`scientific-ok` is not yet in the `main` ruleset's required checks — only `ci-ok` is — so treat a
-failure here as blocking by convention rather than relying on GitHub to stop you
-([`.github/main-ruleset.md`](.github/main-ruleset.md)).
+`scientific-ok`, `containers-ok` and `e2e-ok` are not yet in the `main` ruleset's required checks
+— only `ci-ok` is — so treat a failure in any of them as blocking by convention rather than
+relying on GitHub to stop you ([`.github/main-ruleset.md`](.github/main-ruleset.md)).
 
 ## Conventions worth knowing
 
@@ -163,6 +186,18 @@ values do not round-trip — so drift is a red build rather than a surprise late
 behaviour in the original was reporting "Straight back position" whenever assessment failed —
 a diagnostic tool defaulting to "you're fine" when it cannot see you. Absence of evidence must
 stay distinguishable from evidence of absence.
+
+**The API contract is generated, not written.** `apps/web/src/api/schema.d.ts` and
+`openapi.json` are produced by `npm run codegen` from the FastAPI app object, and the
+`contract` job fails if the committed files do not match a fresh regeneration. Do not hand-edit
+them, and do not add a response shape to the frontend by hand — add it to
+`apps/api/src/openposture_api/schemas.py` and regenerate. Both files are in `.prettierignore`
+so formatting cannot cause a false drift alarm.
+
+**Storage keys are generated, never supplied.** `StorageBackend.put()` deliberately has no
+`key` parameter: the caller hands over bytes and a media type and receives the key that was
+chosen. The legacy `/upload` used the client's own filename as a blob key (FINDINGS §5.1), and
+this shape makes that unrepresentable rather than merely rejected.
 
 **`docs/archive/` is immutable.** FINDINGS cites it by line number, so it is excluded from every
 formatter and linter. Do not tidy it.

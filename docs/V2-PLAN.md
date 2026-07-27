@@ -26,9 +26,18 @@
 > that do exist (`OP-60` threshold recalibration, `OP-61` the `overall_score` design) were raised
 > during Epic C rather than planned here.
 >
-> **Progress against the plan:** Epics A and B are merged. Epic C is merged through the shared
-> spec, the report CLI and `scientific-validation.yml`; its remaining stories are the extended
-> scientific property suite and the evaluation-data contract. Epic D onward has not started.
+> **Progress against the plan:** Epics A, B and D are merged. Epic C is merged through the
+> shared spec, the report CLI and `scientific-validation.yml`; its remaining stories are the
+> extended scientific property suite and the evaluation-data contract. Epic E onward has not
+> started.
+>
+> Epic D shipped as planned: the walking skeleton works end to end, a real photograph produces
+> a real analysis in a browser, and `containers.yml` and `e2e.yml` arrived with the capabilities
+> they check. Two deviations worth recording. The upload response carries **landmarks**, which
+> the plan did not anticipate — D8's canvas overlay needs coordinates and the report only
+> carried statuses. And D7 required **Pydantic response models** before type generation was
+> worth anything: a route annotated `-> dict[str, Any]` produces a schema that says "an
+> object".
 > Plan story OP-26 / Jira `OP-22`, the ONNX MoveNet fallback, was **cancelled**: the spike passed
 > on both architectures, so the contingency was never needed.
 

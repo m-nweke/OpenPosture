@@ -5,10 +5,12 @@
 #   * `make fetch-model`     — verifies a download before moving it into place
 #   * `make verify-model`    — verifies whatever is already on disk
 #   * `model-validation.yml` — verifies the hash before running anything
-#   * the API image build    — `ADD --checksum=sha256:<the full hash below>` (planned, OP-43)
+#   * the API image build    — `ADD --checksum=sha256:<the full hash below>` in apps/api/Dockerfile
 #
-# The image build does not exist yet; it is named so that when it arrives it references this file
-# rather than pasting a hash of its own.
+# The Dockerfile cannot read this file at build time, so the hash for the `full` variant is
+# duplicated into that `ADD` line. Duplicated constants drift, so the `compose config` job in
+# containers.yml greps both and fails if they disagree — changing a hash here without changing
+# the Dockerfile is a red build rather than an image that quietly fetches different weights.
 #
 # Format is exactly what `shasum -a 256` emits: `<hash>  <filename>`, one per line, `#` comments
 # ignored. Familiar and trivially greppable.
