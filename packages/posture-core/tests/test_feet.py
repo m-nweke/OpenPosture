@@ -216,3 +216,90 @@ def test_a_slightly_tipped_foot_inside_the_tolerance_is_still_flat() -> None:
         DEFAULT_THRESHOLDS,
     )
     assert "flat and supported" in metric.detail
+
+
+def _one_sided_frame(
+    *,
+    left_rise_m: float | None,
+    right_rise_m: float | None,
+    left_world: bool = True,
+    right_world: bool = True,
+) -> PoseFrame:
+    """A figure whose two feet differ — in height, in whether they carry world coordinates, or both.
+
+    `frame_with_foot` moves both feet together, which is all the single-foot tests need. Selection
+    between two feet cannot be tested that way, because it only shows itself when the sides
+    disagree.
+    """
+    original = frame()
+    landmarks = dict(original.landmarks)
+    sides = (
+        (K.LEFT_HEEL, K.LEFT_FOOT_INDEX, left_rise_m, left_world),
+        (K.RIGHT_HEEL, K.RIGHT_FOOT_INDEX, right_rise_m, right_world),
+    )
+    for heel_name, toe_name, rise, has_world in sides:
+        toe = landmarks[toe_name]
+        assert toe.y_world is not None
+        for name in (heel_name, toe_name):
+            existing = landmarks[name]
+            y_world = toe.y_world - rise if name is heel_name and rise is not None else toe.y_world
+            landmarks[name] = Landmark(
+                x=existing.x,
+                y=existing.y,
+                visibility=existing.visibility,
+                presence=existing.presence,
+                x_world=existing.x_world if has_world else None,
+                y_world=y_world if has_world else None,
+                z_world=existing.z_world if has_world else None,
+            )
+    return PoseFrame(
+        landmarks=landmarks,
+        image_width=original.image_width,
+        image_height=original.image_height,
+        backend="synthetic",
+        inference_ms=0.0,
+    )
+
+
+def test_a_flat_foot_beats_a_tipped_back_one_even_though_its_rise_is_zero() -> None:
+    """0.0 is a real measurement, and it is the larger of the two here.
+
+    The regression this guards: ranking the sides with `_rise(...) or -inf` treats a flat foot as
+    unmeasurable, because 0.0 is falsy. The tipped-back foot's -0.10 is truthy, so it wins a
+    comparison it should lose, and the report describes a foot tipped back when the other one is
+    flat on the floor.
+    """
+    metric = heel(
+        KeypointResolver(_one_sided_frame(left_rise_m=-0.10, right_rise_m=0.0), DEFAULT_THRESHOLDS),
+        DEFAULT_THRESHOLDS,
+    )
+    assert metric.value == pytest.approx(0.0, abs=1e-9)
+    assert "right foot is flat" in metric.detail
+
+
+def test_a_measurable_foot_is_used_rather_than_one_without_world_coordinates() -> None:
+    """The costlier half of the same bug: abstaining on a foot the backend could read.
+
+    With the left foot carrying no world coordinates and the right foot flat, ranking both at -inf
+    made the choice arbitrary — and the left foot won on insertion order, so the metric abstained
+    with a 3D-backend complaint while a perfectly measurable right foot sat next to it.
+    """
+    metric = heel(
+        KeypointResolver(
+            _one_sided_frame(left_rise_m=None, right_rise_m=0.0, left_world=False),
+            DEFAULT_THRESHOLDS,
+        ),
+        DEFAULT_THRESHOLDS,
+    )
+    assert metric.value == pytest.approx(0.0, abs=1e-9)
+    assert "right foot is flat" in metric.detail
+
+
+def test_two_feet_at_the_same_height_report_the_same_side_every_run() -> None:
+    """Ties have to be settled deterministically or the golden reports flicker."""
+    frames = [_one_sided_frame(left_rise_m=0.0, right_rise_m=0.0) for _ in range(5)]
+    details = {
+        heel(KeypointResolver(f, DEFAULT_THRESHOLDS), DEFAULT_THRESHOLDS).detail for f in frames
+    }
+    assert len(details) == 1
+    assert "left" in details.pop()

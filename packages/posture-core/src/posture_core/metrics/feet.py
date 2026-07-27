@@ -70,9 +70,25 @@ def heel_contact_m(resolver: KeypointResolver, thresholds: Thresholds) -> Metric
         for name, keys in SIDES.items()
         if isinstance(candidate := resolver.require(*keys), Resolved)
     }
-    side, resolution = max(
-        usable.items(), key=lambda item: _rise(item[0], item[1]) or float("-inf")
-    )
+    # Rank only the sides that actually produced a number. `_rise` returns None for a foot with no
+    # world coordinates, and None must not compete: folding it into the ranking as -inf would also
+    # sink a *flat* foot, whose rise is 0.0 and therefore falsy. Two ways that goes wrong — a flat
+    # foot losing to a tipped-back one whose rise is negative but truthy, and a measurable foot
+    # tying with an unmeasurable one and then abstaining the whole metric on the coin toss.
+    measurable = {
+        name: rise
+        for name, candidate in usable.items()
+        if (rise := _rise(name, candidate)) is not None
+    }
+    if measurable:
+        # `max` keeps the first of equal values, and SIDES is ordered left then right, so two feet
+        # at the same height always report the left one rather than varying run to run.
+        side = max(measurable, key=lambda name: measurable[name])
+        resolution = usable[side]
+    else:
+        # No side has world coordinates at all. Carry on with the confidence-picked side so the
+        # abstention below is the ordinary 2D-backend one rather than a special case here.
+        side, resolution = resolved
 
     points = world_points(HEEL_CONTACT, "m", resolution)
     if isinstance(points, Metric):
