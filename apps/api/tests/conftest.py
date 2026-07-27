@@ -23,8 +23,18 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def settings() -> Settings:
-    """Settings for a test run: quiet, structured, and explicitly not production."""
-    return Settings(environment="test", log_level="warning", json_logs=True)
+    """Settings for a test run: quiet, structured, and explicitly not production.
+
+    `pose_backend="fake"` rather than disabling the backend entirely. The suite then exercises
+    the real lifespan — construct, warm, register the probe, close — and still touches no model
+    file, which is what keeps required CI free of a download.
+    """
+    return Settings(
+        environment="test",
+        log_level="warning",
+        json_logs=True,
+        pose_backend="fake",
+    )
 
 
 @pytest.fixture
