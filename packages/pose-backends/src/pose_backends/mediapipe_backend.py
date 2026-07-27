@@ -207,10 +207,19 @@ class MediaPipeBackend:
         )
 
     def warmup(self) -> None:
-        """Pay initialisation once, at startup, on a synthetic frame nobody is waiting for.
+        """Run one throwaway inference at startup, on a frame nobody is waiting for.
 
-        MediaPipe builds its inference graph lazily on first use, so without this the first real
-        request absorbs it. Called from the API lifespan hook where the latency is invisible.
+        **Measured caveat, 2026-07-26** (Apple M5, ``pose_landmarker_full``, 1280x720): with
+        ``mediapipe==0.10.18`` in ``RunningMode.IMAGE`` this saves nothing measurable. The graph is
+        built eagerly inside ``create_from_options``, so construction costs ~31 ms and every
+        inference afterwards costs ~23 ms — the first one included. The plan assumed a lazily-built
+        graph. It is not one.
+
+        Kept anyway, and not as dead code. The guarantee the API needs is "no request ever pays an
+        initialisation cost", and that should not silently rest on an implementation detail of one
+        pinned library version. One synthetic frame at startup is a trivial price for a contract
+        that still holds if a future release defers work — and the ONNX escape hatch in ADR-0002
+        would genuinely need it.
         """
         self.detect(np.zeros((256, 256, 3), dtype=np.uint8))
 

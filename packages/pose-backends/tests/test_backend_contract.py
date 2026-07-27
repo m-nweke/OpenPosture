@@ -85,7 +85,7 @@ def _mediapipe_case() -> Case:
     return Case(
         with_person=backend,
         without_person=backend,
-        image_with_person=photo,
+        image_with_person=np.asarray(photo, dtype=np.uint8),
         image_without_person=_blank(),
     )
 

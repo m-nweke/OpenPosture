@@ -52,28 +52,65 @@ def load(name: str) -> NDArray[np.uint8]:
     image = cv2.imread(str(FIXTURES / name))
     if image is None:
         pytest.skip(f"fixture {name} could not be decoded")
-    return image  # type: ignore[no-any-return]
+    # `asarray` rather than a cast: cv2 ships type stubs, so mypy's view of `imread`'s return
+    # type depends on whether the optional extra happens to be installed. Narrowing it here keeps
+    # the type check identical with and without mediapipe present.
+    return np.asarray(image, dtype=np.uint8)
 
 
-# The three seated side-view fixtures the whole project is calibrated against. Named explicitly
-# rather than globbed so that a fixture disappearing fails the test instead of shrinking it.
-SEATED_FIXTURES = ["hunchback_right.jpg", "reclined_right.jpg", "straight_armsfolded.jpg"]
+# The seated side-view fixtures, with the confident-landmark floor each one actually clears.
+# Named explicitly rather than globbed so that a fixture disappearing fails the test instead of
+# quietly shrinking it, and floored individually rather than uniformly because the differences are
+# real and worth recording. Measured 2026-07-26 against pose_landmarker_full at 1280x720.
+#
+# `straight_armsfolded` sits lower on purpose: the subject's arms are folded, so both wrists and
+# all six hand points are genuinely occluded. A uniform floor would either fail this fixture for
+# being *correctly* uncertain, or be loosened to the point of proving nothing about the others.
+SEATED_FIXTURES: list[tuple[str, int]] = [
+    ("hunchback_right.jpg", 25),
+    ("reclined_right.jpg", 25),
+    ("desk_hunch.jpeg", 25),
+    ("kneeling_right.jpg", 25),
+    ("straight_armsfolded.jpg", 20),
+]
+
+PRIMARY_FIXTURE = SEATED_FIXTURES[0][0]
 
 
-@pytest.mark.parametrize("fixture", SEATED_FIXTURES)
+@pytest.mark.parametrize(("fixture", "minimum"), SEATED_FIXTURES)
 def test_detects_a_confident_skeleton_on_real_photographs(
-    backend: MediaPipeBackend, fixture: str
+    backend: MediaPipeBackend, fixture: str, minimum: int
 ) -> None:
-    """25 of 34 landmarks above the visibility threshold, on a real seated subject.
+    """Enough landmarks above the visibility threshold to actually assess a seated subject.
 
-    The number is a floor, not a target: a side-on seated pose legitimately occludes one arm and
-    part of one leg. What it rules out is the failure mode where the model returns a full skeleton
-    of low-confidence guesses, which would look like success to any test that only counted keys.
+    A floor, not a target: a side-on pose legitimately occludes the far arm and part of the far
+    leg. What it rules out is the failure mode where the model returns a full 34-point skeleton of
+    low-confidence guesses — which looks like success to any test that only counts keys, and is
+    precisely how a system starts reporting posture it never measured.
     """
     frame = backend.detect(load(fixture))
     assert frame is not None, f"no pose detected in {fixture}"
     confident = [lm for lm in frame.landmarks.values() if lm.visibility >= VISIBILITY_THRESHOLD]
-    assert len(confident) >= 25, f"{fixture}: only {len(confident)} confident landmarks"
+    assert len(confident) >= minimum, f"{fixture}: only {len(confident)} confident landmarks"
+
+
+@pytest.mark.parametrize(("fixture", "_minimum"), SEATED_FIXTURES)
+def test_presence_and_visibility_carry_different_information(
+    backend: MediaPipeBackend, fixture: str, _minimum: int
+) -> None:
+    """The claim ADR-0002 rests on, checked against the real model rather than assumed.
+
+    On every fixture all 34 points are confidently *present* while only 20-28 are confidently
+    *visible*. The gap is the occluded set — the far arm, the folded wrists — and it exists only
+    because the two signals are independent. Collapse them into one score, as MoveNet does, and
+    "I can see your wrist" becomes indistinguishable from "your wrist is in this photograph".
+    """
+    frame = backend.detect(load(fixture))
+    assert frame is not None
+    present = sum(1 for lm in frame.landmarks.values() if lm.presence >= VISIBILITY_THRESHOLD)
+    visible = sum(1 for lm in frame.landmarks.values() if lm.visibility >= VISIBILITY_THRESHOLD)
+    assert present == len(frame)
+    assert visible < present
 
 
 def test_real_frames_carry_world_landmarks(backend: MediaPipeBackend) -> None:
@@ -83,13 +120,13 @@ def test_real_frames_carry_world_landmarks(backend: MediaPipeBackend) -> None:
     normalisation — the problem the model switch was meant to dissolve. Worth asserting against
     the real runtime, because no stub can tell you the runtime still populates this array.
     """
-    frame = backend.detect(load(SEATED_FIXTURES[0]))
+    frame = backend.detect(load(PRIMARY_FIXTURE))
     assert frame is not None
     assert frame.has_world_landmarks is True
 
 
 def test_neck_is_derived_on_real_output(backend: MediaPipeBackend) -> None:
-    frame = backend.detect(load(SEATED_FIXTURES[0]))
+    frame = backend.detect(load(PRIMARY_FIXTURE))
     assert frame is not None
     assert KeypointName.NECK in frame
 
@@ -100,24 +137,49 @@ def test_returns_none_on_an_image_with_no_person(backend: MediaPipeBackend) -> N
     assert backend.detect(blank) is None
 
 
-def test_warmup_makes_the_first_real_inference_materially_faster(
+def test_no_initialisation_cost_is_deferred_past_construction(
     backend: MediaPipeBackend,
 ) -> None:
-    """Proves `warmup()` does what it claims, which is the only way to know it is worth calling.
+    """The property that actually matters, which is not the one warmup was written to provide.
 
-    MediaPipe builds its inference graph lazily, so the first `detect()` on a cold backend pays
-    for it. A fresh backend is constructed here rather than reusing the module-scoped one, which
-    other tests have already warmed.
+    The plan predicted a lazily-built inference graph, so that a cold backend's first `detect()`
+    would be much slower than its second and `warmup()` would be what closed the gap. Measured on
+    2026-07-26 (Apple M5, `pose_landmarker_full`, 1280x720), that is **not what MediaPipe 0.10.18
+    does** in `RunningMode.IMAGE`: construction costs ~31 ms and every inference thereafter costs
+    ~23 ms, first one included. There is nothing left to warm.
 
-    Asserted as a ratio against the *cold* call rather than an absolute millisecond budget:
-    absolute latency varies by an order of magnitude between a laptop and a CI runner, and a
-    threshold that survives both would be too loose to mean anything.
+    So this asserts the real guarantee — a cold backend's first inference is already at steady
+    state, meaning no request ever pays an initialisation cost — rather than a speedup that does
+    not exist. `warmup()` stays in the Protocol regardless: it costs one synthetic frame at
+    startup, it is what a lazier backend would need, and a contract that only holds for the
+    current library version is not a contract.
+
+    A fresh backend is constructed rather than reusing the module-scoped one, which other tests
+    have already exercised. Compared as a ratio because absolute latency varies by an order of
+    magnitude between a laptop and a CI runner.
     """
+    image = load(PRIMARY_FIXTURE)
     cold = MediaPipeBackend(model_path())
-    first = _timed(cold, load(SEATED_FIXTURES[0]))
-    cold.warmup()
-    warmed = min(_timed(cold, load(SEATED_FIXTURES[0])) for _ in range(3))
-    assert warmed < first * 0.8, f"cold {first:.1f} ms vs warmed {warmed:.1f} ms"
+    first = _timed(cold, image)
+    steady = min(_timed(cold, image) for _ in range(3))
+    assert first < steady * 2.0, f"first inference {first:.1f} ms vs steady {steady:.1f} ms"
+
+
+def test_warmup_does_not_disturb_subsequent_detection(backend: MediaPipeBackend) -> None:
+    """Whatever warmup does or does not save, it must not change results.
+
+    It runs an inference on a synthetic frame of a different size, and a backend that carried
+    state between calls could return something different afterwards. OP-40 calls this at startup
+    on the same instance that then serves every request.
+    """
+    image = load(PRIMARY_FIXTURE)
+    before = backend.detect(image)
+    backend.warmup()
+    after = backend.detect(image)
+    assert before is not None and after is not None
+    assert set(before.landmarks) == set(after.landmarks)
+    for name, landmark in before.landmarks.items():
+        assert landmark.x == pytest.approx(after.landmarks[name].x, abs=1e-9), name
 
 
 def _timed(backend: MediaPipeBackend, image: NDArray[np.uint8]) -> float:
