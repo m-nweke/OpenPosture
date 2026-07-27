@@ -199,6 +199,7 @@ def make_pose(
     shank_deg: float = 0.0,
     upper_arm_deg: float = 0.0,
     forearm_deg: float = 0.0,
+    forearm_cross_deg: float = 0.0,
     facing: Facing = Facing.RIGHT,
     view: View = View.LATERAL,
     image_width: int = 640,
@@ -219,6 +220,12 @@ def make_pose(
     ``180 - |thigh_deg - shank_deg|``. That is deliberate: it means the figure is always
     physically consistent, whereas taking flexion as an input would let a caller specify a knee
     angle and a shin direction that contradict each other.
+
+    ``forearm_cross_deg`` rotates each forearm out of the sagittal plane and **toward the
+    opposite side of the body**, which is how a folded-arms figure is built. At 0 the arms hang in
+    their own sagittal planes; at around 60 the wrists pass the midline and each ends up near the
+    opposite elbow. Added for the ``arms_crossed`` metric (OP-28), which cannot be tested without
+    a figure whose arms are actually crossed.
 
     :param confidence: per-keypoint ``(visibility, presence)`` overrides. The two are independent
         signals — low visibility with high presence is *occluded*, low presence is *out of frame*
@@ -289,7 +296,8 @@ def make_pose(
 
     # --- arms -------------------------------------------------------------------------------
     upper_arm = _scale(axes.from_vertical_down(upper_arm_deg), body.upper_arm)
-    forearm = _scale(axes.from_vertical_down(forearm_deg), body.forearm)
+    forearm_sagittal = axes.from_vertical_down(forearm_deg)
+    cross = math.radians(forearm_cross_deg)
     for side, elbow_name, wrist_name, hand_names in (
         (
             1,
@@ -306,11 +314,20 @@ def make_pose(
     ):
         shoulder = _add(shoulder_mid, _scale(half_shoulder, side))
         elbow = _add(shoulder, upper_arm)
+        # The forearm direction stays a unit vector: `from_vertical_down` lies in the sagittal
+        # plane and `left` is perpendicular to it, so a cos/sin blend of the two is orthonormal.
+        # `-side` sends each forearm toward the *opposite* half of the body, which is what folding
+        # the arms does.
+        forearm_direction = _add(
+            _scale(forearm_sagittal, math.cos(cross)),
+            _scale(axes.left, -side * math.sin(cross)),
+        )
+        forearm = _scale(forearm_direction, body.forearm)
         wrist = _add(elbow, forearm)
         place(elbow_name, elbow)
         place(wrist_name, wrist)
         pinky, index, thumb = hand_names
-        hand_direction = _scale(axes.from_vertical_down(forearm_deg), body.hand)
+        hand_direction = _scale(forearm_direction, body.hand)
         place(pinky, _add(wrist, hand_direction, _scale(axes.left, side * 0.02)))
         place(index, _add(wrist, hand_direction, _scale(axes.left, -side * 0.02)))
         place(thumb, _add(wrist, _scale(hand_direction, 0.6), _scale(face, 0.03)))
