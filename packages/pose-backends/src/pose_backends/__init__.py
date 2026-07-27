@@ -23,10 +23,13 @@ from pose_backends.errors import (
     ModelNotFoundError,
     PoseBackendError,
 )
+from pose_backends.fake import FakePoseBackend, PosePreset
 from pose_backends.mediapipe_backend import MediaPipeBackend
+from pose_backends.registry import create_backend, default_model_path
 
 __all__ = [
     "BackendUnavailableError",
+    "FakePoseBackend",
     "ImageBGR",
     "InvalidImageError",
     "MediaPipeBackend",
@@ -34,7 +37,10 @@ __all__ = [
     "ModelNotFoundError",
     "PoseBackend",
     "PoseBackendError",
+    "PosePreset",
     "__version__",
+    "create_backend",
+    "default_model_path",
 ]
 
 __version__ = "0.1.0"
