@@ -2,8 +2,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import logo from '../assets/openPose.png'
 import styles from './HomeView.module.css'
-
-const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ')
+import { cx } from '../ui/cx'
 
 /**
  * The landing page.

@@ -16,8 +16,7 @@ import { ApiError, analysePosture } from '../api/client'
 import type { AnalysisResponse } from '../api/types'
 import PostureResult from './PostureResult'
 import styles from './Dashboard.module.css'
-
-const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ')
+import { cx } from '../ui/cx'
 
 type Status = 'idle' | 'uploading' | 'done' | 'error'
 

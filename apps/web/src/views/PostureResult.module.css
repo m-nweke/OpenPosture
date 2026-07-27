@@ -158,7 +158,7 @@
 
 .metricRow {
   display: grid;
-  grid-template-columns: minmax(9rem, 14rem) auto 1fr;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
   align-items: baseline;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-5);
@@ -175,9 +175,20 @@
   font-size: 0.9375rem;
 }
 
+/* A real box, laid out with its own flex row.
+ *
+ * This was `display: contents`, which is a documented accessibility footgun: several
+ * browser and screen-reader combinations drop such an element from the accessibility tree
+ * entirely, so the `<dd>` would stop being announced as the definition of its `<dt>` and the
+ * list would read as loose text. The visual result is identical either way; the semantics are
+ * not. */
 .metricRow dd {
   margin: 0;
-  display: contents;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  min-width: 0;
 }
 
 /* Tabular figures so the column of numbers lines up on the decimal rather than wandering. */
@@ -211,11 +222,7 @@
 
 @media (max-width: 40rem) {
   .metricRow {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
     row-gap: var(--space-1);
-  }
-
-  .metricDetail {
-    grid-column: 1 / -1;
   }
 }

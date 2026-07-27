@@ -7,14 +7,7 @@ import Login from './views/auth/Login'
 import Registration from './views/auth/Registration'
 import logo from './assets/openPose.png'
 import styles from './App.module.css'
-
-/** Joins class names, dropping anything absent.
- *
- * CSS Modules are typed as possibly-undefined lookups, and this project runs
- * `exactOptionalPropertyTypes`, under which `className={styles.thing}` is a type error rather
- * than a silent `undefined` in the DOM. One helper beats `?? ''` at every call site.
- */
-const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ')
+import { cx } from './ui/cx'
 
 export default function App() {
   const navigate = useNavigate()
