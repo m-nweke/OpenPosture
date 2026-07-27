@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AnalysisResponse": {
+        "additionalProperties": false,
         "description": "What `POST /api/v1/analyses` returns on success.",
         "properties": {
           "image": {
@@ -53,6 +54,7 @@
         "type": "object"
       },
       "Finding": {
+        "additionalProperties": false,
         "description": "Something the engine noticed, already worded for a person.",
         "properties": {
           "code": {
@@ -98,6 +100,7 @@
         "type": "object"
       },
       "Gap": {
+        "additionalProperties": false,
         "description": "A metric that could not be assessed, and what stopped it.",
         "properties": {
           "detail": {
@@ -175,6 +178,7 @@
         "type": "object"
       },
       "ImageSize": {
+        "additionalProperties": false,
         "properties": {
           "height": {
             "title": "Height",
@@ -193,6 +197,7 @@
         "type": "object"
       },
       "Metric": {
+        "additionalProperties": false,
         "description": "One measurement, or an honest absence of one.",
         "properties": {
           "confidence": {
@@ -248,6 +253,7 @@
         "type": "object"
       },
       "PostureReportModel": {
+        "additionalProperties": false,
         "description": "One assessment of one photograph. Mirrors `PostureReport.to_dict()` exactly.",
         "properties": {
           "backend": {
@@ -314,6 +320,7 @@
         "type": "object"
       },
       "Quality": {
+        "additionalProperties": false,
         "description": "How much of the body the engine could actually see.",
         "properties": {
           "assessed": {
