@@ -80,3 +80,25 @@ def test_model_path_environment_override_wins(monkeypatch: pytest.MonkeyPatch) -
     """So a lite or heavy model variant can be swapped in without rebuilding the image (OP-20)."""
     monkeypatch.setenv("MODEL_PATH", "/models/pose_landmarker_heavy.task")
     assert default_model_path() == Path("/models/pose_landmarker_heavy.task")
+
+
+def test_a_whitespace_model_path_is_treated_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stray space in a Compose env file must not become a path.
+
+    Unstripped, this yields `Path("   ")` and then a "model not found" error naming a path that
+    is invisible in the message — which is a genuinely hard thing to diagnose from a container log.
+    """
+    monkeypatch.setenv("MODEL_PATH", "   ")
+    assert default_model_path() == DEFAULT_MODEL_PATH
+
+
+def test_an_empty_model_path_is_treated_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MODEL_PATH", "")
+    assert default_model_path() == DEFAULT_MODEL_PATH
+
+
+def test_a_model_path_with_surrounding_whitespace_is_stripped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MODEL_PATH", "  /models/pose_landmarker_lite.task  ")
+    assert default_model_path() == Path("/models/pose_landmarker_lite.task")

@@ -243,3 +243,30 @@ def test_a_path_given_to_the_fake_backend_is_still_checked(
     code, _, err = run(capsys, str(tmp_path / "absent.jpg"), "--backend", "fake")
     assert code == EXIT_ERROR
     assert "no such image" in err
+
+
+def test_json_always_carries_every_canonical_keypoint(capsys: pytest.CaptureFixture[str]) -> None:
+    """A stable key set, whatever the backend reported.
+
+    A key set that varied with detection makes two captures of the same image diff noisily, and
+    makes "this backend stopped reporting a left heel" indistinguishable from "this key was never
+    in the format". The table already renders all 34 rows; the machine-readable form is the one
+    Epic H compares against a legacy baseline that cannot be regenerated, so it should not be the
+    weaker of the two.
+    """
+    _, out, _ = run(capsys, "--backend", "fake", "--preset", "partial_occlusion", "--json")
+    payload = json.loads(out)
+    assert set(payload["landmarks"]) == {name.value for name in KeypointName}
+    assert payload["landmark_count"] == 26
+    assert payload["canonical_count"] == 34
+
+
+def test_unreported_keypoints_are_null_filled_and_labelled(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`not_reported` is distinct from every status a returned landmark can carry."""
+    _, out, _ = run(capsys, "--backend", "fake", "--preset", "partial_occlusion", "--json")
+    knee = json.loads(out)["landmarks"]["left_knee"]
+    assert knee["status"] == "not_reported"
+    assert knee["x"] is None
+    assert knee["visibility"] is None
