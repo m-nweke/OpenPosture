@@ -17,6 +17,7 @@ from posture_core.metrics.feet import heel_contact_m
 from posture_core.metrics.head import craniovertebral_angle_deg
 from posture_core.metrics.knees import knee_flexion_deg
 from posture_core.metrics.trunk import trunk_inclination_deg
+from posture_core.metrics.view import view_confidence, view_confidence_factor
 
 __all__ = [
     "arms_crossed",
@@ -25,4 +26,6 @@ __all__ = [
     "heel_contact_m",
     "knee_flexion_deg",
     "trunk_inclination_deg",
+    "view_confidence",
+    "view_confidence_factor",
 ]
