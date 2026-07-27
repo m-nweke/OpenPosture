@@ -8,6 +8,7 @@ this project's story — an all-gaps report is a 201, not an error.
 from __future__ import annotations
 
 import io
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -65,6 +66,7 @@ def storage(tmp_path: Path) -> LocalDiskStorage:
     return LocalDiskStorage(tmp_path / "objects")
 
 
+@contextmanager
 def build_client(
     settings: Settings,
     storage: LocalDiskStorage,
@@ -76,6 +78,10 @@ def build_client(
 
     `load_backend=False` plus two dependency overrides means this test touches no model file and
     writes nowhere but a temporary directory — which is the whole point of both seams.
+
+    A context manager rather than a bare generator. Called as `next(build_client(...))` the
+    generator is never closed, so the `with TestClient(...)` block below never exits: lifespan
+    shutdown does not run and the transport is left to the garbage collector.
     """
     app: FastAPI = create_app(settings, load_backend=False)
     app.dependency_overrides[get_pose_backend] = lambda: backend or FakePoseBackend(preset)
@@ -86,7 +92,8 @@ def build_client(
 
 @pytest.fixture
 def client(settings: Settings, storage: LocalDiskStorage) -> Iterator[TestClient]:
-    yield from build_client(settings, storage)
+    with build_client(settings, storage) as test_client:
+        yield test_client
 
 
 def upload(client: TestClient, data: bytes, *, filename: str = "photo.jpg") -> Any:
@@ -166,9 +173,9 @@ class TestExifOrientation:
         # landscape and the displayed image is portrait.
         rotated = make_image(width=640, height=480, orientation=6)
 
-        client = next(build_client(settings, LocalDiskStorage(tmp_path / "a")))
-        upright_body = upload(client, upright).json()
-        rotated_body = upload(client, rotated).json()
+        with build_client(settings, LocalDiskStorage(tmp_path / "a")) as client:
+            upright_body = upload(client, upright).json()
+            rotated_body = upload(client, rotated).json()
 
         assert rotated_body["image"] == upright_body["image"]
         assert rotated_body["image"] == {"width": 480, "height": 640}
@@ -177,11 +184,10 @@ class TestExifOrientation:
 class TestAbstention:
     def test_no_person_is_a_201_not_an_error(self, settings: Settings, tmp_path: Path) -> None:
         """The user photographed their desk. The request succeeded; the answer is "nobody here"."""
-        client = next(
-            build_client(settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.NO_PERSON)
-        )
-
-        response = upload(client, make_image())
+        with build_client(
+            settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.NO_PERSON
+        ) as client:
+            response = upload(client, make_image())
 
         assert response.status_code == 201
         body = response.json()
@@ -195,31 +201,25 @@ class TestAbstention:
     ) -> None:
         """Gaps are the output C3 exists to produce. A 4xx here would throw them away and put the
         frontend into a generic error state — the original's silent-default defect in reverse."""
-        client = next(
-            build_client(
-                settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.PARTIAL_OCCLUSION
-            )
-        )
+        with build_client(
+            settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.PARTIAL_OCCLUSION
+        ) as client:
+            response = upload(client, make_image())
 
-        response = upload(client, make_image())
-
-        assert response.status_code == 201
-        quality = response.json()["report"]["quality"]
-        assert quality["gaps"]
-        assert quality["assessed"] < quality["total"]
+            assert response.status_code == 201
+            quality = response.json()["report"]["quality"]
+            assert quality["gaps"]
+            assert quality["assessed"] < quality["total"]
 
     def test_gaps_name_the_metric_and_why(self, settings: Settings, tmp_path: Path) -> None:
         """ "Couldn't assess your knees, try a wider shot" needs both halves."""
-        client = next(
-            build_client(
-                settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.PARTIAL_OCCLUSION
-            )
-        )
+        with build_client(
+            settings, LocalDiskStorage(tmp_path / "a"), preset=PosePreset.PARTIAL_OCCLUSION
+        ) as client:
+            gaps = upload(client, make_image()).json()["report"]["quality"]["gaps"]
 
-        gaps = upload(client, make_image()).json()["report"]["quality"]["gaps"]
-
-        assert all(gap["metric"] for gap in gaps)
-        assert all(gap["status"] for gap in gaps)
+            assert all(gap["metric"] for gap in gaps)
+            assert all(gap["status"] for gap in gaps)
 
 
 class TestRejections:
@@ -298,9 +298,8 @@ class TestBackendFailure:
             def warmup(self) -> None:
                 return
 
-        client = next(build_client(settings, LocalDiskStorage(tmp_path / "a"), backend=_Broken()))
-
-        response = upload(client, make_image())
+        with build_client(settings, LocalDiskStorage(tmp_path / "a"), backend=_Broken()) as client:
+            response = upload(client, make_image())
 
         assert response.status_code == 502
         assert response.json()["type"].endswith("/pose-backend-failed")
@@ -317,9 +316,8 @@ class TestBackendFailure:
             def warmup(self) -> None:
                 return
 
-        client = next(build_client(settings, LocalDiskStorage(tmp_path / "a"), backend=_Broken()))
-
-        response = upload(client, make_image())
+        with build_client(settings, LocalDiskStorage(tmp_path / "a"), backend=_Broken()) as client:
+            response = upload(client, make_image())
 
         assert "/srv/secrets" not in response.text
 

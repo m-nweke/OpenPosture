@@ -25,6 +25,7 @@ import io
 from typing import TYPE_CHECKING, Final
 
 import numpy as np
+import structlog
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from openposture_api.storage import CONTENT_TYPE_SUFFIXES
@@ -41,6 +42,8 @@ __all__ = [
     "UnsupportedImageTypeError",
     "decode_upload",
 ]
+
+_LOGGER = structlog.get_logger(__name__)
 
 MAX_IMAGE_BYTES: Final = 10 * 1024 * 1024
 """10 MB, matching the plan. Comfortably above a phone photograph and far below anything that
@@ -155,7 +158,11 @@ def decode_upload(data: bytes) -> DecodedImage:
                     actual=pixels,
                 )
 
-            # Before any conversion, so the rotation applies to the image as stored.
+            # Applied to the array handed to the model, and *only* to that array. The bytes
+            # persisted by the storage layer are `DecodedImage.data` — the original upload,
+            # rotation flag intact — because the stored object should be the file the user
+            # actually sent. Re-encoding it here would make the evidence differ from the
+            # submission the moment a result is disputed.
             upright = ImageOps.exif_transpose(image) or image
             # `convert` after the transpose and before the array: RGBA and greyscale and palette
             # images all reach the backend as three channels, which is what it expects, and a
@@ -167,7 +174,15 @@ def decode_upload(data: bytes) -> DecodedImage:
     except OSError as exc:
         # Pillow raises OSError for truncated files, which are a genuine and common upload
         # failure rather than a server fault.
-        raise InvalidImageError(f"the uploaded image could not be read: {exc}") from exc
+        #
+        # Pillow's own message is deliberately not forwarded. This string reaches the client
+        # verbatim through the problem document, and decoder messages carry file paths and
+        # library internals that a user can do nothing with. The cause is logged with its
+        # traceback by the unhandled-exception path instead.
+        _LOGGER.info("image_decode_failed", error_type=type(exc).__name__, error=str(exc))
+        raise InvalidImageError(
+            "the uploaded image could not be read — it may be truncated or corrupt"
+        ) from exc
 
     # RGB -> BGR. The backend Protocol documents BGR, matching cv2's decode order, and getting it
     # wrong does not crash — it silently degrades detection in a way no assertion would catch.
