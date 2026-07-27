@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 __all__ = [
     "AnalysisResponse",
+    "DetectedLandmark",
     "Finding",
     "Gap",
     "ImageSize",
@@ -100,6 +101,32 @@ class PostureReportModel(BaseModel):
     quality: Quality
 
 
+class DetectedLandmark(BaseModel):
+    """One measured point, in the form a client needs to draw it.
+
+    **Normalised to the image, not in pixels.** The frontend renders the photo at whatever size
+    the viewport allows, so a pixel coordinate would be wrong the moment the layout changed. `x`
+    and `y` are fractions of width and height, which stay correct under any scale — the same
+    reasoning as the world-space metrics, applied to presentation.
+
+    World coordinates are deliberately absent: they are metres from the hip and mean nothing on
+    a 2D canvas.
+    """
+
+    name: str
+    x: float = Field(description="Fraction of image width. May fall outside [0, 1].")
+    y: float = Field(description="Fraction of image height, origin top-left.")
+    status: KeypointStatus = Field(
+        description=(
+            "How usable this point is. A client must render anything other than `ok` distinctly "
+            "or not at all — drawing a guessed position as though it were measured is the "
+            "confident-wrong-answer failure this project exists to remove."
+        )
+    )
+    visibility: float = Field(description="[0, 1] — confidence the point is not occluded.")
+    presence: float = Field(description="[0, 1] — confidence the point is in frame at all.")
+
+
 class AnalysisResponse(BaseModel):
     """What `POST /api/v1/analyses` returns on success."""
 
@@ -112,5 +139,17 @@ class AnalysisResponse(BaseModel):
     pose_detected: bool
     report: PostureReportModel | None = Field(
         description="`null` exactly when `pose_detected` is false."
+    )
+    # Required rather than defaulted. A field with a default is *optional* in the OpenAPI
+    # document, so the generated TypeScript types it `| undefined` and every consumer has to
+    # narrow a case the server never produces. Always sending it — empty when there is no pose —
+    # is both the simpler contract and the more honest one.
+    landmarks: list[DetectedLandmark] = Field(
+        description=(
+            "Every landmark the backend returned, for drawing a skeleton over the photo. Empty "
+            "when no pose was detected. The overlay is drawn client-side from these — the server "
+            "never writes an annotated image, which would cost a round trip, storage for a "
+            "derived artifact, and a cache-invalidation question every time the rules change."
+        ),
     )
     image: ImageSize

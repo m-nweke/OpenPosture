@@ -172,7 +172,11 @@ export default function Dashboard() {
       )}
 
       {status === 'done' && analysis?.report && (
-        <PostureResult report={analysis.report} imageUrl={imageUrl} />
+        <PostureResult
+          report={analysis.report}
+          imageUrl={imageUrl}
+          landmarks={analysis.landmarks}
+        />
       )}
     </div>
   )
