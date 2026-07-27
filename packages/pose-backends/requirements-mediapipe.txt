@@ -1,0 +1,72 @@
+# Fully-resolved runtime set for the MediaPipe pose backend, for `pip install --no-deps`.
+#
+# WHY THIS FILE EXISTS INSTEAD OF A pyproject EXTRA
+# -------------------------------------------------
+# mediapipe 0.10.18 hard-depends on `opencv-contrib-python` — the NON-headless OpenCV build,
+# which needs libGL.so.1 and libglib2.0 present in the image. Declaring `opencv-python-headless`
+# alongside it does NOT swap the two: they are separate distributions that both install into the
+# same `cv2` namespace, so you get both, and the contrib build wins the import. Verified failing
+# on linux/arm64 AND linux/amd64 by the OP-16 spike.
+#
+# The only way to get a genuinely headless cv2 is to bypass mediapipe's dependency resolution
+# entirely with `--no-deps` and name every runtime import ourselves — which is what this file is.
+# `--no-deps` cannot be expressed in pyproject.toml, hence a separate pinned file.
+#
+# Consumed by the API image build (Epic D):
+#     pip install --no-deps --only-binary=:all: -r requirements-mediapipe.txt
+#
+# WHAT IS DELIBERATELY ABSENT
+# ---------------------------
+# jax, jaxlib and scipy. mediapipe declares them but pose inference never imports them, and they
+# are the bulk of the 857 MB default install. Dropping them yields 324 MB (arm64) / 414 MB
+# (amd64) of site-packages. See docs/adr/0002-mediapipe-pose.md.
+#
+# WHAT LOOKS DROPPABLE BUT IS NOT
+# -------------------------------
+# matplotlib and its entire dependency chain. `import mediapipe` reaches
+# mediapipe/python/solutions/drawing_utils.py, which imports `matplotlib.pyplot` at module scope
+# alongside cv2. Omitting it fails at import with `ModuleNotFoundError: No module named 'PIL'`.
+# Nothing in OpenPosture draws with it; it is an unavoidable import-time cost of the package.
+#
+# MAINTENANCE
+# -----------
+# Every version here is pinned exactly because `--no-deps` means pip does no consistency checking
+# whatsoever — a silently-resolved incompatible transitive dep would surface as an ImportError at
+# container start, not at install time. Regenerate by installing this set and running `pip freeze`,
+# then re-verify BOTH architectures. Do not bump mediapipe: 0.10.18 is the last release publishing
+# a linux aarch64 wheel (Dependabot is configured to ignore it).
+#
+# Verified 2026-07-26 on python:3.12-slim, linux/arm64 and linux/amd64: `import mediapipe` and
+# `from mediapipe.tasks.python.vision import PoseLandmarker` both succeed with no system packages
+# installed beyond the base image.
+
+mediapipe==0.10.18
+
+# Transitive ceilings mediapipe imposes on the whole workspace. Mirrored in posture-core's
+# `numpy>=1.26,<2` and in the Dependabot ignore list.
+numpy==1.26.4
+protobuf==4.25.9
+
+# Headless OpenCV — the entire point of the --no-deps route.
+opencv-python-headless==4.13.0.92
+
+# mediapipe's own direct imports.
+absl-py==2.5.0
+attrs==26.1.0
+flatbuffers==25.12.19
+sentencepiece==0.2.2
+sounddevice==0.5.5
+cffi==2.1.0
+pycparser==3.0
+
+# Pulled in only because drawing_utils imports matplotlib.pyplot at module scope (see above).
+matplotlib==3.11.1
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.63.0
+kiwisolver==1.5.0
+pillow==12.3.0
+pyparsing==3.3.2
+packaging==26.2
+python-dateutil==2.9.0.post0
+six==1.17.0

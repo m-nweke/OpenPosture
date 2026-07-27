@@ -13,13 +13,21 @@ dependencies = ["posture-core"]
 # used — without pulling a 300 MB inference stack. CI installs the base package only.
 #
 # mediapipe is pinned to 0.10.18: it is the LAST release publishing a PyPI linux aarch64 wheel.
-# 0.10.19+ ship manylinux x86_64 only, which would kill the local Docker demo on Apple Silicon.
-# Verified on linux/arm64 and linux/amd64 under python:3.12-slim by the OP-16 spike. See ADR-0002.
+# 0.10.20+ ship manylinux x86_64 only (there is no 0.10.19), which would kill the local Docker
+# demo on Apple Silicon. Verified against the PyPI index and by installing on both linux/arm64
+# and linux/amd64 under python:3.12-slim — OP-16 spike, see ADR-0002.
+#
+# NOTE: this extra installs mediapipe's own dependency closure, which includes
+# `opencv-contrib-python` — the NON-headless OpenCV build. It therefore requires libgl1 and
+# libglib2.0-0 to be present, and weighs ~857 MB (arm64) / ~959 MB (amd64) of site-packages.
+# That is acceptable for local development and CI, where a few apt packages cost nothing.
+#
+# It is NOT what the API image should install. Adding `opencv-python-headless` here does not
+# help: it is a separate distribution sharing the `cv2` namespace, so both builds land and the
+# non-headless one wins the import — the exact failure OP-16 reproduced on both architectures.
+# For the image, use the --no-deps route in `requirements-mediapipe.txt` instead.
 mediapipe = [
     "mediapipe==0.10.18",
-    # headless: mediapipe pulls opencv-contrib-python (non-headless) by default, which needs
-    # libgl1 present in the image. Headless avoids that system dependency entirely.
-    "opencv-python-headless>=4.10,<5",
 ]
 
 [build-system]
