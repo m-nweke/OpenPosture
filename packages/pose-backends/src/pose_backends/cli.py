@@ -31,13 +31,14 @@ from pose_backends.fake import BACKEND_NAME as FAKE_NAME
 from pose_backends.fake import PosePreset
 from pose_backends.mediapipe_backend import BACKEND_NAME as MEDIAPIPE_NAME
 from pose_backends.registry import create_backend
-from posture_core import KeypointName
+from posture_core import KeypointName, build_report
+from posture_spec import load_thresholds
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from pose_backends.base import ImageBGR
-    from posture_core import Landmark, PoseFrame
+    from posture_core import Landmark, PoseFrame, PostureReport
 
 __all__ = ["OUTPUT_SCHEMA_VERSION", "main"]
 
@@ -104,6 +105,7 @@ class _Options:
     preset: str
     model_path: Path | None
     as_json: bool
+    as_report: bool
 
 
 def _parse_args(argv: Sequence[str] | None) -> _Options:
@@ -140,6 +142,11 @@ def _parse_args(argv: Sequence[str] | None) -> _Options:
         help="override the model location. Falls back to $MODEL_PATH, then models/.",
     )
     parser.add_argument(
+        "--report",
+        action="store_true",
+        help="run the rules engine and print the full posture report instead of raw landmarks.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="as_json",
@@ -153,6 +160,7 @@ def _parse_args(argv: Sequence[str] | None) -> _Options:
         preset=parsed.preset,
         model_path=parsed.model_path,
         as_json=parsed.as_json,
+        as_report=parsed.report,
     )
 
 
@@ -344,11 +352,58 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"No pose detected in {source}.", file=sys.stderr)
         return EXIT_NO_POSE
 
-    if options.as_json:
+    if options.as_report:
+        # The demoable milestone: image in, full posture assessment out, with no web stack, no
+        # database and no frontend. `posture_spec` supplies the thresholds so the CLI and the API
+        # are tuned by the same file rather than by two copies of the same defaults.
+        report = build_report(frame, load_thresholds())
+        print(json.dumps(report.to_dict(), indent=2) if options.as_json else _format_report(report))
+    elif options.as_json:
         print(json.dumps(_as_dict(frame), indent=2))
     else:
         print(_format_table(frame))
     return EXIT_OK
+
+
+def _format_report(report: PostureReport) -> str:
+    """The report as a person would want to read it.
+
+    Findings first, then what could not be assessed. Both, always — a report that listed only its
+    findings would be the inherited engine's output shape wearing better wording.
+    """
+    score = "not scored" if report.overall_score is None else f"{report.overall_score:.0f}/100"
+    lines = [
+        f"score          {score}",
+        f"assessed       {report.quality.assessed} of {report.quality.total} metrics",
+        "",
+    ]
+
+    if report.findings:
+        lines.append("Findings")
+        for finding in report.findings:
+            lines.append(f"  [{finding.severity.value:>5}] {finding.message}")
+            lines.append(f"          confidence {finding.confidence:.2f}  ({finding.metric})")
+    else:
+        lines.append("No findings — nothing measured fell outside its configured band.")
+
+    if report.quality.gaps:
+        lines.extend(["", "Not assessed"])
+        for gap in report.quality.gaps:
+            lines.append(f"  {gap.metric}: {gap.detail}")
+
+    lines.extend(["", "Measurements"])
+    for name, metric in sorted(report.metrics.items()):
+        value = "—" if metric.value is None else f"{metric.value:.2f} {metric.unit}"
+        lines.append(f"  {name:26s} {value:>14s}  {metric.detail}")
+
+    lines.extend(
+        [
+            "",
+            f"backend        {report.backend}",
+            f"schema         {report.schema_version}   rules {report.rules_version}",
+        ]
+    )
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

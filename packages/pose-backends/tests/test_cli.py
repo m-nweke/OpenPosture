@@ -245,6 +245,47 @@ def test_a_path_given_to_the_fake_backend_is_still_checked(
     assert "no such image" in err
 
 
+def test_the_report_flag_prints_a_full_assessment(capsys: pytest.CaptureFixture[str]) -> None:
+    """The demoable milestone: a pose in, a posture assessment out, with no web stack at all."""
+    code, out, _ = run(capsys, "--backend", "fake", "--preset", "hunchback", "--report")
+    assert code == EXIT_OK
+    assert "Findings" in out
+    assert "Measurements" in out
+    assert "trunk_inclination_deg" in out
+
+
+def test_the_report_names_what_it_could_not_assess(capsys: pytest.CaptureFixture[str]) -> None:
+    """Findings and gaps, both. A report listing only its findings would be the inherited
+    engine's output shape wearing better wording."""
+    _, out, _ = run(capsys, "--backend", "fake", "--preset", "partial_occlusion", "--report")
+    assert "Not assessed" in out
+    assert "knee_flexion_deg" in out
+
+
+def test_the_report_is_tuned_by_the_shared_spec_file(capsys: pytest.CaptureFixture[str]) -> None:
+    """The CLI and the API load the same rules.json, so neither carries its own copy of the
+    defaults — which is what stops the two from drifting."""
+    from posture_spec import load_thresholds
+
+    _, out, _ = run(capsys, "--backend", "fake", "--report")
+    assert f"rules {load_thresholds().version}" in out
+
+
+def test_the_report_is_available_as_json(capsys: pytest.CaptureFixture[str]) -> None:
+    code, out, _ = run(capsys, "--backend", "fake", "--preset", "hunchback", "--report", "--json")
+    assert code == EXIT_OK
+    payload = json.loads(out)
+    assert payload["schema_version"]
+    assert payload["findings"]
+    assert "quality" in payload
+
+
+def test_a_report_for_no_pose_still_exits_one(capsys: pytest.CaptureFixture[str]) -> None:
+    code, _, err = run(capsys, "--backend", "fake", "--preset", "no_person", "--report")
+    assert code == EXIT_NO_POSE
+    assert "No pose detected" in err
+
+
 def test_json_always_carries_every_canonical_keypoint(capsys: pytest.CaptureFixture[str]) -> None:
     """A stable key set, whatever the backend reported.
 

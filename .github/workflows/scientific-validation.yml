@@ -1,0 +1,125 @@
+# The correctness argument for the rules engine, as a check.
+#
+# WHY THIS IS SEPARATE FROM pr.yml
+# --------------------------------
+# pr.yml answers "does this code work?" — lint, types, unit tests, coverage floors. This answers a
+# different question: "is the engine still measuring what it claims to measure?" The two fail for
+# different reasons and are read by different people at different times, and a property that
+# disappeared into a list of forty other jobs would stop being the argument it is meant to be.
+#
+# It runs on every pull request that touches the engine, because the properties are cheap: no
+# model, no container, no network. Hypothesis explores a few thousand poses in seconds.
+#
+# WHAT IT CHECKS
+# --------------
+# 1. The scale, translation and frame-size invariance properties (OP-34). These are the proof that
+#    the redesign fixed the inherited engine's central defect, and they would fail catastrophically
+#    against `posture_image.py`.
+# 2. The golden report corpus (OP-35). A change to any verdict, any wording or any confidence has
+#    to arrive as a visible diff in a committed file.
+# 3. Threshold/spec drift (OP-36). `rules.json` and `Thresholds` describe the same numbers twice;
+#    this is what stops them diverging.
+# 4. Boundary behaviour at every threshold.
+#
+# From Epic G this workflow also runs the golden corpus through the TypeScript mirror and fails if
+# the two engines disagree on any fixture. That is the whole reason the corpus is language-neutral
+# data rather than inline assertions.
+
+name: scientific-validation
+
+on:
+  pull_request:
+    paths:
+      - "packages/posture-core/**"
+      - "packages/posture-spec/**"
+      - ".github/workflows/scientific-validation.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  properties:
+    name: invariance properties
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-project
+        with:
+          python: ${{ env.PYTHON_VERSION }}
+
+      # More examples than the local default: the properties are the load-bearing claim of the
+      # project, and CI has the seconds to spare that a developer's inner loop does not.
+      #
+      # The `ci` profile (registered in tests/conftest.py) runs 1000 examples per property and
+      # derandomises, so a CI failure reproduces from the same command locally. A property test
+      # that fails once and cannot be reproduced teaches nobody anything.
+      - name: Scale, translation and degradation properties
+        run: >
+          uv run pytest packages/posture-core/tests/test_properties.py
+          -v --hypothesis-profile=ci
+
+      - name: Boundary behaviour at every threshold
+        run: uv run pytest packages/posture-core/tests/test_boundaries.py -v
+
+  golden:
+    name: golden report corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-project
+        with:
+          python: ${{ env.PYTHON_VERSION }}
+
+      - name: Snapshots match
+        run: uv run pytest packages/posture-core/tests/test_golden.py -v
+
+      # Belt and braces: regenerate and diff. The test above compares in memory; this catches the
+      # case where the snapshots were regenerated on a machine whose formatting differs, which
+      # would otherwise surface as an unexplained diff in somebody else's unrelated pull request.
+      - name: Regeneration is a no-op
+        run: |
+          uv run python packages/posture-core/tests/regenerate_golden.py
+          git diff --exit-code -- packages/posture-core/tests/golden \
+            || { echo "::error::golden snapshots are stale — regenerate and commit them"; exit 1; }
+
+  spec:
+    name: threshold spec drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-project
+        with:
+          python: ${{ env.PYTHON_VERSION }}
+
+      # rules.json and posture_core.Thresholds describe the same numbers twice. This is the check
+      # that stops the TypeScript mirror, once it exists, from quietly running stale defaults.
+      - name: rules.json matches the engine
+        run: uv run pytest packages/posture-spec -v
+
+  scientific-ok:
+    name: scientific-ok
+    if: always()
+    needs: [properties, golden, spec]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "properties: ${{ needs.properties.result }}"
+          echo "golden:     ${{ needs.golden.result }}"
+          echo "spec:       ${{ needs.spec.result }}"
+
+      - name: Fail if any job did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::the scientific validation suite did not pass."
+          exit 1

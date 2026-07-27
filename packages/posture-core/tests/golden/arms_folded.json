@@ -1,0 +1,79 @@
+{
+  "backend": "synthetic",
+  "findings": [
+    {
+      "code": "arms_folded",
+      "confidence": 0.95,
+      "message": "Your arms are folded across your chest. That is not a fault in itself, but it often accompanies a rounded upper back.",
+      "metric": "arms_crossed",
+      "severity": "info",
+      "value": 0.4437
+    }
+  ],
+  "image": {
+    "height": 480,
+    "width": 640
+  },
+  "inference_ms": 0.0,
+  "metrics": {
+    "arms_crossed": {
+      "confidence": 0.95,
+      "detail": "arms are folded across your chest",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.4437
+    },
+    "craniovertebral_angle_deg": {
+      "confidence": 0.95,
+      "detail": "head is balanced over your shoulders (craniovertebral angle 74°)",
+      "status": "ok",
+      "unit": "deg",
+      "value": 74.0
+    },
+    "elbow_flexion_deg": {
+      "confidence": 0.95,
+      "detail": "your left elbow is bent to 104°",
+      "status": "ok",
+      "unit": "deg",
+      "value": 104.0285
+    },
+    "heel_contact_m": {
+      "confidence": 0.95,
+      "detail": "your left foot is flat and supported",
+      "status": "ok",
+      "unit": "m",
+      "value": 0.0
+    },
+    "knee_flexion_deg": {
+      "confidence": 0.95,
+      "detail": "your left knee is at a comfortable seated angle (100°)",
+      "status": "ok",
+      "unit": "deg",
+      "value": 100.0
+    },
+    "trunk_inclination_deg": {
+      "confidence": 0.95,
+      "detail": "upright, within 8° of vertical",
+      "status": "ok",
+      "unit": "deg",
+      "value": 8.0
+    },
+    "view_confidence": {
+      "confidence": 0.95,
+      "detail": "photographed from the side, which is the best angle for this assessment",
+      "status": "ok",
+      "unit": "ratio",
+      "value": 0.0
+    }
+  },
+  "overall_score": 100.0,
+  "quality": {
+    "assessed": 7,
+    "coverage": 1.0,
+    "gaps": [],
+    "keypoints": {},
+    "total": 7
+  },
+  "rules_version": "1.0.0",
+  "schema_version": "1.0"
+}
