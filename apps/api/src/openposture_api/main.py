@@ -23,6 +23,7 @@ import structlog
 from fastapi import FastAPI
 
 from openposture_api import __version__
+from openposture_api.analyses import build_analyses_router, register_analysis_error_handlers
 from openposture_api.config import Settings, get_settings
 from openposture_api.errors import register_error_handlers
 from openposture_api.health import ReadinessCheck, build_health_router
@@ -126,6 +127,7 @@ def create_app(
 
     register_error_handlers(app)
     app.add_exception_handler(PoseBackendUnavailableError, handle_pose_backend_unavailable)
+    register_analysis_error_handlers(app)
 
     # The probe reads `app.state` when it runs, not when it is registered, so binding it here —
     # before lifespan has produced a state — reports the real thing at request time.
@@ -138,6 +140,7 @@ def create_app(
     app.include_router(
         build_health_router(version=__version__, probes=probes),
     )
+    app.include_router(build_analyses_router())
 
     _LOGGER.info(
         "app_created",

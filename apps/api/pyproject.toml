@@ -22,6 +22,8 @@ dependencies = [
     # (FINDINGS §3), so the replacement emits machine-parseable events with a request ID.
     "structlog>=24.4",
     "boto3>=1.35",
+    "pillow>=11.0",
+    "python-multipart>=0.0.18",
 ]
 
 [project.optional-dependencies]
