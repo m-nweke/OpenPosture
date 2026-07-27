@@ -1401,6 +1401,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+inference = [
+    { name = "pose-backends", extra = ["mediapipe"] },
+]
 serve = [
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1417,13 +1420,14 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "pillow", specifier = ">=11.0" },
     { name = "pose-backends", editable = "packages/pose-backends" },
+    { name = "pose-backends", extras = ["mediapipe"], marker = "extra == 'inference'", editable = "packages/pose-backends" },
     { name = "posture-core", editable = "packages/posture-core" },
     { name = "pydantic-settings", specifier = ">=2.7" },
     { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "structlog", specifier = ">=24.4" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'serve'", specifier = ">=0.34" },
 ]
-provides-extras = ["serve"]
+provides-extras = ["serve", "inference"]
 
 [package.metadata.requires-dev]
 dev = [
