@@ -35,8 +35,19 @@ trap cleanup EXIT
 git fetch origin --prune --quiet
 
 # A dirty tree turns a clean merge into a confusing one, so refuse rather than guess.
+#
+# Untracked files count. `git diff-index` does not see them, but `git checkout` does: it aborts
+# with "would be overwritten by checkout" the moment an untracked path collides with a file on the
+# branch being visited. Halfway through a loop that walks every open branch, that leaves the stack
+# partly synced and the tree parked somewhere unexpected.
 if ! git diff-index --quiet HEAD -- 2>/dev/null; then
   echo "error: working tree has uncommitted changes. Commit or stash them first." >&2
+  exit 1
+fi
+
+if [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+  echo "error: working tree has untracked files. Commit, stash (git stash -u) or remove them:" >&2
+  git ls-files --others --exclude-standard | sed 's/^/  /' >&2
   exit 1
 fi
 
@@ -72,8 +83,11 @@ while read -r number branch; do
     continue
   fi
 
-  git checkout -q "$branch"
-  git reset -q --hard "origin/$branch"
+  # `-B` rather than a plain checkout followed by a reset: it creates the local branch when it is
+  # absent and repoints it when it is not, in one step. A plain `git checkout "$branch"` fails on
+  # a fresh clone, or after the branch was pruned locally, and `set -e` would abort the whole
+  # sweep on the first such branch — leaving every branch after it unsynced.
+  git checkout -q -B "$branch" "origin/$branch"
   if git merge --no-edit origin/main >/dev/null 2>&1; then
     git push -q origin "$branch"
     printf '  #%-4s %-30s merged and pushed\n' "$number" "$branch"
