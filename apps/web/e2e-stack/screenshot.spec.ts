@@ -34,7 +34,7 @@ test('capture a real result for the README', async ({ page }) => {
   await page.getByLabel('Name:').fill('Ada')
   await page.getByLabel('Email:').fill('ada@example.com')
   await page.getByLabel('Password:').fill('correct-horse-battery')
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: 'Create account' }).click()
   await expect(page.getByRole('heading', { name: 'Hello, Ada' })).toBeVisible()
 
   await page.getByLabel(/Input an image of you sitting/).setInputFiles(FIXTURE)
@@ -46,7 +46,7 @@ test('capture a real result for the README', async ({ page }) => {
     page.waitForResponse(
       (r) => r.url().includes(ANALYSES_ENDPOINT) && r.request().method() === 'POST',
     ),
-    page.getByRole('button', { name: 'Submit' }).click(),
+    page.getByRole('button', { name: 'Analyse my posture' }).click(),
   ])
 
   await expect(page.getByRole('heading', { name: 'Your results' })).toBeVisible()

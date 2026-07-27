@@ -63,13 +63,9 @@ export default defineConfig({
         'src/setupTests.ts',
         'src/test/**',
         '**/*.test.{ts,tsx}',
-        // Presentational leftovers from the Vite starter template: static SVG paths and the
-        // welcome blurbs. Slated for deletion when the real UI lands in Epic D, and writing
-        // snapshot tests for markup that is about to be removed is waste.
-        'src/components/icons/**',
-        'src/components/TheWelcome.tsx',
-        'src/components/WelcomeItem.tsx',
-        'src/views/AboutView.tsx',
+        // The Vite starter template's leftovers used to be excluded here — the icon set, the
+        // welcome panels, a placeholder About page. They were deleted rather than excluded when
+        // the real UI landed, so there is nothing left to list.
       ],
       // The floor from OP-13. Applies to every metric, not just lines — a lines-only gate is
       // easy to clear while leaving whole branches unexercised.

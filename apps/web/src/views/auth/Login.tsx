@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AuthError, useAuth, type AuthErrorCode } from '../../auth'
 import styles from './AuthForm.module.css'
 
@@ -28,6 +28,7 @@ export default function Login() {
   // between the two frameworks for form code.
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
@@ -75,14 +76,25 @@ export default function Login() {
         </div>
         <div className={styles.formGroup}>
           <label htmlFor="password">Password:</label>
-          <input
-            type="password"
-            id="password"
-            autoComplete="current-password"
-            placeholder="Enter your password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className={styles.passwordField}>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              id="password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className={styles.passwordToggle}
+              onClick={() => setShowPassword((shown) => !shown)}
+              aria-pressed={showPassword}
+              aria-controls="password"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
         {/* role="alert" so the error is announced when it appears, not just drawn. */}
         {errMsg !== '' && (
@@ -90,14 +102,13 @@ export default function Login() {
             {errMsg}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{ backgroundColor: 'orange', color: '#ffffff' }}
-        >
+        <button type="submit" className="button buttonPrimary" disabled={submitting}>
           {submitting ? 'Logging in…' : 'Log in'}
         </button>
       </form>
+      <p className={styles.signInHere}>
+        New here? <Link to="/register">Create an account</Link>.
+      </p>
     </div>
   )
 }

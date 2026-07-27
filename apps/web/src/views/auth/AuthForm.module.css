@@ -1,65 +1,122 @@
-/* Login.vue and Registration.vue each carried a near-identical copy of these
-   rules. Because CSS Modules are just imports, both views can share one file. */
+/* Shared by Login and Registration. Both views carried a near-identical copy of these rules in
+   the Vue original; CSS Modules are just imports, so one file serves both. */
 
 .container {
-  max-width: 400px;
-  margin: 0 auto;
-  padding: 20px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  background-color: var(--color-background);
+  max-width: 26rem;
+  margin: var(--space-7) auto;
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }
 
 .container h1 {
-  text-align: center;
+  font-size: 1.5rem;
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  margin-bottom: var(--space-6);
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
 }
 
 .formGroup {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4);
 }
 
 .container label {
   display: block;
-  font-weight: bold;
+  margin-bottom: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-heading);
 }
 
 .container input {
   width: 100%;
-  padding: 10px;
-  font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
 }
 
-.container button {
+.container input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.container input:hover {
+  border-color: var(--color-accent);
+}
+
+/* A visible ring on focus, in the accent colour, in addition to the global focus-visible
+   outline — a form field is where a keyboard user most needs to know where they are. */
+.container input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.container button[type='submit'] {
   width: 100%;
-  padding: 10px;
-  font-size: 16px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
+  margin-top: var(--space-2);
 }
 
-.btnGoogle {
-  background-color: #db4437;
-  color: #fff;
-}
-
+/* `role="alert"` on the element itself announces the message; this only styles it. */
 .error {
-  color: #db4437;
-}
-
-.separator {
-  text-align: center;
-  margin: 20px 0;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: 0.9375rem;
 }
 
 .signInHere {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
   text-align: center;
-  margin-top: 20px;
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
 }
 
-.signInHere a {
-  color: orange;
-  text-decoration: underline;
+/* --- Password visibility toggle ------------------------------------------ */
+
+.passwordField {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Padding on the input rather than a flex sibling, so the toggle sits inside the field's border
+   and the focus ring still surrounds the whole control. */
+.passwordField input {
+  padding-right: 4.25rem;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background-color var(--transition),
+    border-color var(--transition);
+}
+
+.passwordToggle:hover {
+  background: var(--color-accent-soft);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }

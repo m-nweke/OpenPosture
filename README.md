@@ -10,13 +10,13 @@ honest account of what could not be measured.**
 
 ![The dashboard showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it, a score of 70, two findings about trunk lean and forward head, six measurements, and one metric the engine could not assess](docs/images/dashboard-result.png)
 
-Everything in that screenshot is computed. The skeleton comes from MediaPipe Pose Landmarker, the
-angles from a pure rules engine, and the sentence about the arms — *"left elbow and left wrist were
-unclear"* — is the engine declining to answer rather than guessing.
+Everything in that screenshot is computed. The skeleton comes from MediaPipe Pose Landmarker and
+the angles from a pure rules engine, measured in world space so your distance from the camera
+does not change the answer.
 
-That last part is the point of the project. This is a rewrite of a 2024 university capstone whose
-posture logic reported **"Straight back position" whenever assessment failed** — a diagnostic tool
-that defaulted to *you're fine* when it could not see you.
+The line about the arms, *"left elbow and left wrist were unclear"*, is the part worth noticing:
+the engine declines to answer rather than guessing. A measurement it cannot make is reported as a
+gap with the reason, never as a reassuring default.
 
 ---
 
@@ -31,7 +31,7 @@ docker compose up
 ```
 
 Then open <http://localhost:5173>, register any email and password, and upload a photo of yourself
-sitting — **taken from the side**.
+sitting, **taken from the side**.
 
 The API image carries the pose model, fetched at build time with its SHA256 pinned, so the first
 `docker compose up` produces real analysis with no extra steps. Working on the frontend and don't
@@ -55,11 +55,48 @@ Seven metrics, in world space rather than pixels:
 Any of them can return a **gap** instead of a number, naming the keypoints that were unclear. A
 report made entirely of gaps is a successful request with an honest answer, not an error.
 
-## What changed, and why it matters
+## How it is built
 
-The original is preserved under [`docs/archive/`](docs/archive/) and audited line-by-line in
-[`docs/FINDINGS.md`](docs/FINDINGS.md). Three of its defects are worth showing next to their
-replacements, because each one is a category rather than a typo.
+```
+apps/web        React + TypeScript. Types generated from the API's OpenAPI schema.
+apps/api        FastAPI. Uploads, storage, errors, structured logging.
+packages/pose-backends    MediaPipe adapter behind a Protocol, plus a fake for tests.
+packages/posture-spec     rules.json: every threshold, as data.
+packages/posture-core     The rules engine. numpy and the standard library, nothing else.
+```
+
+The dependency direction runs one way, right to left, and nothing depends on `apps/web`. That is
+what lets the rules engine's 364 tests run in about a second with no model, no container and no
+network, which in turn is why there are 364 of them. It is enforced by a test, not by convention.
+
+Three properties the design is built around:
+
+**Angles are measured in world space.** MediaPipe returns landmarks in metres with the hip as
+origin, so a person twice as far from the camera produces the same numbers. This is verified as a
+property rather than asserted: Hypothesis generates poses, scales them between 0.3x and 3x, and
+requires every angular metric to agree to within 1e-6.
+
+```python
+# packages/posture-core/tests/test_properties.py
+def test_every_angular_metric_is_invariant_to_body_size(pose, scale):
+```
+
+**A metric that cannot be computed returns a gap, never a guess.** Every keypoint carries a status
+of `ok`, `low_confidence`, `not_detected` or `out_of_frame`, and a metric states which joints it
+needs. If they are not usable it abstains and says which ones failed, all the way through to the
+UI. Absence of evidence stays distinguishable from evidence of absence.
+
+**Thresholds are data, not literals.** Every tunable lives in
+[`rules.json`](packages/posture-spec/src/posture_spec/rules.json) and is loaded into a frozen
+dataclass the engine takes as an argument. Retuning is a configuration change, and a test fails if
+the file and the dataclass ever disagree.
+
+## Where it came from
+
+This is a rewrite of a 2024 university capstone. The original is preserved under
+[`docs/archive/`](docs/archive/) and audited line by line in
+[`docs/FINDINGS.md`](docs/FINDINGS.md); three of its defects are worth showing next to their
+replacements, because each is a category rather than a typo.
 
 ### 1. Thresholds were raw pixels
 
@@ -73,22 +110,8 @@ if (distance < (armdist + 100) and distance > (armdist - 100)):
 The comment is the original author's. A person standing twice as far from the camera produced half
 the pixel separation and the opposite verdict.
 
-**Replacement:** every angle is computed from MediaPipe's world landmarks — metres, hip-origin —
-and every ratio is normalised by a body dimension. The tunable values live in
-[`packages/posture-spec/src/posture_spec/rules.json`](packages/posture-spec/src/posture_spec/rules.json),
-loaded by the engine rather than typed into it.
-
-**The proof is a property test, not an assertion:**
-
-```python
-# packages/posture-core/tests/test_properties.py
-def test_every_angular_metric_is_invariant_to_body_size(pose, scale):
-    """The defect the whole rebuild exists to fix, stated over the entire input space."""
-```
-
-Hypothesis generates poses and scales them between 0.3× and 3×; every angular metric must agree to
-within 1e-6. That property fails catastrophically against the original engine. It runs on every
-pull request in
+**Replacement:** the world-space measurement and the invariance property described above. That
+property fails catastrophically against the original engine, and runs on every pull request in
 [`scientific-validation.yml`](.github/workflows/scientific-validation.yml).
 
 ### 2. Failure was reported as good posture
@@ -103,7 +126,7 @@ else:                print("Straight back position")   # ← None lands here
 **Replacement:** a metric that cannot be computed has `value = None`, a status saying which
 keypoints failed, and produces a `Gap`. The API returns it as a `201` with `quality.gaps`
 populated, and the UI renders it as *"we could not assess this, try a wider shot"*. There is no
-code path that turns absence of evidence into evidence of absence — that is enforced by
+code path that turns absence of evidence into evidence of absence. That is enforced by
 [boundary and degradation tests](packages/posture-core/tests/test_boundaries.py) that drop each
 keypoint in turn and assert nothing raises and nothing is invented.
 
@@ -115,7 +138,7 @@ const POSTURE_DETECTION_RESULT = 'Our posture detection model detected you sitti
 setTimeout(() => { setShowResults(true) }, 5000)
 ```
 
-Both frontends faked it. Nothing was uploaded and the model was never invoked — `API/app.py` never
+Both frontends faked it. Nothing was uploaded and the model was never invoked. `API/app.py` never
 imported it, because the legacy `process()` functions referenced module globals assigned under a
 `__main__` guard and raised `NameError` on import.
 
@@ -151,7 +174,7 @@ The original capstone was built by:
 3. [Parisha Rathod](https://github.com/parisha8994)
 
 **Ally and Parisha contributed to v1 only.** Their work is preserved in the git history and in
-`docs/archive/`, and their copyright stands, but they are not involved in the v2 rewrite — it is
+`docs/archive/`, and their copyright stands, but they are not involved in the v2 rewrite. It is
 maintained solely by Michael Nweke. Please do not direct v2 issues, questions, or review requests
 to them.
 
@@ -160,7 +183,7 @@ to them.
 ## Development (v2)
 
 New here? [`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup, the architectural rule and the quality
-gates. [`docs/adr/`](docs/adr/) records why the stack is what it is — start with
+gates. [`docs/adr/`](docs/adr/) records why the stack is what it is. Start with
 [ADR-0002](docs/adr/0002-mediapipe-pose.md) (the pose backend) and
 [ADR-0005](docs/adr/0005-scale-invariant-metrics.md) (how the original's central correctness defect
 is fixed).
@@ -170,25 +193,25 @@ is fixed).
 Epics are tracked in Jira project `OP`; the plan they came from is
 [`docs/V2-PLAN.md`](docs/V2-PLAN.md).
 
-- **A — Foundation** · done. Workspace, tooling, CI, ADRs, archive.
-- **B — Pose backend** · done. MediaPipe adapter, fake backend, checksum-pinned weights, landmark
+- **A, Foundation** · done. Workspace, tooling, CI, ADRs, archive.
+- **B, Pose backend** · done. MediaPipe adapter, fake backend, checksum-pinned weights, landmark
   CLI.
-- **C — Rules engine** · nearly done. Seven metrics, the report, the shared threshold spec and the
+- **C, Rules engine** · nearly done. Seven metrics, the report, the shared threshold spec and the
   property/boundary/golden suites are merged. Outstanding: the extended scientific property suite
   (mirror consistency, physical domains, confidence monotonicity) and the evaluation-data
   contract.
-- **D — Walking skeleton** · done, and tagged `v0.1.0`. FastAPI app factory, lifespan-loaded pose
+- **D, Walking skeleton** · done, and tagged `v0.1.0`. FastAPI app factory, lifespan-loaded pose
   backend, storage behind a Protocol, `POST /api/v1/analyses`, Compose with a Vite proxy, the
   rewritten dashboard, generated API types, the canvas overlay and a full-stack Playwright journey.
-- **E — Persistence and auth** · not started. This is the next epic: Postgres, MinIO, Alembic and
+- **E, Persistence and auth** · not started. This is the next epic: Postgres, MinIO, Alembic and
   self-hosted JWT.
-- **F–H** · not started.
+- **F to H** · not started.
 
 The MediaPipe portability spike passed on both `linux/amd64` and `linux/arm64`, so the ONNX
 MoveNet fallback the plan held in reserve was cancelled rather than built
 ([ADR-0002](docs/adr/0002-mediapipe-pose.md)).
 
-Python packaging is a [`uv`](https://docs.astral.sh/uv/) workspace — one lockfile, editable
+Python packaging is a [`uv`](https://docs.astral.sh/uv/) workspace, one lockfile, editable
 local packages, no `requirements.txt`.
 
 ```bash
@@ -212,7 +235,7 @@ uv run mypy packages apps        # strict type check
 uv run pytest -m "not model"     # tests, skipping those needing real model weights
 ```
 
-The rules-engine and adapter suites — 516 tests — run in about a second and a half, with no model
+The rules-engine and adapter suites (527 tests) run in about a second and a half, with no model
 download, no container and no database.
 
 ### Seeing it work
@@ -237,7 +260,7 @@ Findings
 
 `--preset` takes `straight`, `hunchback`, `reclined`, `kneeling` or `partial_occlusion`. Drop
 `--report` for the raw landmark table, add `--json` for machine-readable output, and note that
-`partial_occlusion` reports honest *gaps* rather than a verdict — the behaviour the original
+`partial_occlusion` reports honest *gaps* rather than a verdict, the behaviour the original
 engine got wrong.
 
 For a real photograph you need the weights and the inference stack:
@@ -253,7 +276,7 @@ image, `2` the backend could not run.
 
 ### Frontend
 
-The React app lives in `apps/web` and has its own npm toolchain — it is not part of the uv
+The React app lives in `apps/web` and has its own npm toolchain, it is not part of the uv
 workspace.
 
 ```bash
@@ -302,7 +325,7 @@ for this repo cannot drift apart on versions or cache keys.
 | **`ci-ok`**                    | **Aggregates all of the above**                   |
 
 **`ci-ok` is the only check the `main` ruleset should require** (OP-15). The jobs above it skip
-routinely — a Python-only change skips all five `web-*` jobs, and vice versa — and a ruleset
+routinely (a Python-only change skips all five `web-*` jobs, and vice versa) and a ruleset
 naming them individually would depend on how GitHub treats skipped checks. Requiring the
 aggregator also means a job can be renamed or split without silently dropping protection.
 
@@ -321,15 +344,15 @@ measuring the same thing*. They fail for different reasons, which is why they ar
 workflows with separate aggregators.
 
 `scientific-ok`, `containers-ok` and `e2e-ok` are **not** currently in the `main` ruleset's
-required checks — only `ci-ok` is. See [`.github/main-ruleset.md`](.github/main-ruleset.md) for
+required checks, only `ci-ok` is. See [`.github/main-ruleset.md`](.github/main-ruleset.md) for
 why, and for the command that adds them.
 
 **`containers.yml`** and **`e2e.yml`** both run on every pull request, aggregated by
 `containers-ok` and `e2e-ok`. The first builds both images, validates Compose, starts the stack,
 waits for readiness and smoke-tests it; the second drives a real browser through the whole
 application and asserts an exact measured value on screen. Both use the fake pose backend at
-runtime — the image still contains the real inference stack, since testing a differently-built
-image would prove nothing about the one that ships — so their failures are about wiring rather
+runtime, the image still contains the real inference stack, since testing a differently-built
+image would prove nothing about the one that ships, so their failures are about wiring rather
 than about inference.
 
 **`model-validation.yml`** runs on `workflow_dispatch` only. It verifies the pinned SHA256, then
@@ -339,10 +362,10 @@ diagnostics. Deliberately unscheduled, so required CI never downloads a model.
 ### Layout
 
 ```
-packages/posture-core    pure rules engine — numpy only, no I/O, no globals, no frameworks
-packages/posture-spec    rules.json — every threshold as data, plus the loader that parses it
+packages/posture-core    pure rules engine, numpy only, no I/O, no globals, no frameworks
+packages/posture-spec    rules.json, every threshold as data, plus the loader that parses it
 packages/pose-backends   inference adapters behind a Protocol (the heavy, fragile dependency)
-apps/api                 FastAPI service — a stub until Epic D
+apps/api                 FastAPI service, a stub until Epic D
 apps/web                 React + TypeScript frontend (own npm toolchain, not in the uv workspace)
 docs/adr                 architecture decision records
 docs/archive             the original capstone, preserved as audit evidence
@@ -350,8 +373,8 @@ fixtures/images          8 curated test images
 models                   downloaded weights (gitignored); only checksums.txt is version controlled
 ```
 
-The dependency direction is one-way — `posture-core` ← `posture-spec` ← `pose-backends` ←
-`apps/api` — and nothing depends on `apps/api`. That is what lets the rules-engine suite run in
+The dependency direction is one-way, `posture-core` ← `posture-spec` ← `pose-backends` ←
+`apps/api`, and nothing depends on `apps/api`. That is what lets the rules-engine suite run in
 well under a second with no model, no Docker and no database. It is enforced by
 `packages/posture-core/tests/test_dependency_isolation.py`, not just by convention.
 
@@ -367,6 +390,6 @@ hold copyright for their v1 contributions; v2 is authored by Michael Nweke ([Con
 
 `docs/archive/legacy-openpose/` vendors a third-party Keras implementation of CMU OpenPose under its
 own MIT licence (© 2020 Vinay Varma), preserved as audit evidence and imported by nothing. The Keras
-weights that code depended on are **not** redistributed here — they were a bare Dropbox link with no
+weights that code depended on are **not** redistributed here, they were a bare Dropbox link with no
 licence or checksum, which is part of why v2 uses MediaPipe instead
 ([ADR-0002](docs/adr/0002-mediapipe-pose.md)).

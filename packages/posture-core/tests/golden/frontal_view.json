@@ -20,7 +20,7 @@
     {
       "code": "frontal_view",
       "confidence": 0.95,
-      "message": "This photo looks like it was taken from the front. The measurements below still work, but they rest on a depth estimate that is weakest along the camera's own axis — a side-on photo would give a firmer answer.",
+      "message": "This photo looks like it was taken from the front. The measurements below still work, but they rest on a depth estimate that is weakest along the camera's own axis. A side-on photo would give a firmer answer.",
       "metric": "view_confidence",
       "severity": "info",
       "value": 0.8776
@@ -69,14 +69,14 @@
     },
     "trunk_inclination_deg": {
       "confidence": 0.95,
-      "detail": "leaning 30° forward — a pronounced slouch",
+      "detail": "leaning 30° forward, a pronounced slouch",
       "status": "ok",
       "unit": "deg",
       "value": 30.0
     },
     "view_confidence": {
       "confidence": 0.95,
-      "detail": "photographed from the front — forward lean is measurable but less reliable here, so a side-on photo would give a firmer answer",
+      "detail": "photographed from the front, so forward lean is measurable but less reliable here. A side-on photo would give a firmer answer",
       "status": "ok",
       "unit": "ratio",
       "value": 0.8776

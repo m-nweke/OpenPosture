@@ -1,14 +1,13 @@
-import { Link, Route, Routes, useNavigate } from 'react-router-dom'
+import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth'
-import HelloWorld from './components/HelloWorld'
 import ProtectedRoute from './components/ProtectedRoute'
 import HomeView from './views/HomeView'
-import AboutView from './views/AboutView'
 import Dashboard from './views/Dashboard'
 import Login from './views/auth/Login'
 import Registration from './views/auth/Registration'
 import logo from './assets/openPose.png'
 import styles from './App.module.css'
+import { cx } from './ui/cx'
 
 export default function App() {
   const navigate = useNavigate()
@@ -23,53 +22,82 @@ export default function App() {
     void signOut().then(() => navigate('/'))
   }
 
+  // `NavLink` rather than `Link`: it sets `aria-current="page"` on the active route, which is
+  // both the accessible signal and what the underline below hangs off. Doing it with a manual
+  // `useLocation` comparison is the same work, done less reliably.
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    isActive ? cx(styles.navLink, styles.navLinkActive) : cx(styles.navLink)
+
   return (
     <>
-      <header className={styles.header}>
-        <img alt="OpenPose logo" className={styles.logo} src={logo} width={200} height={200} />
+      {/* Visible only on keyboard focus. Without it, every keyboard user tabs through the whole
+          nav on every page before reaching the content. */}
+      <a className={cx(styles.skipLink)} href="#main">
+        Skip to content
+      </a>
 
-        <div className={styles.wrapper}>
-          <HelloWorld msg="OpenPosture" />
+      <header className={cx(styles.header)}>
+        <div className={cx(styles.headerInner)}>
+          <NavLink to="/" className={cx(styles.brand)}>
+            <img
+              alt=""
+              aria-hidden="true"
+              className={cx(styles.logo)}
+              src={logo}
+              width={36}
+              height={36}
+            />
+            <span className={cx(styles.brandName)}>OpenPosture</span>
+          </NavLink>
 
-          <nav className={styles.nav}>
-            <Link className={styles.navLink} to="/">
+          <nav className={cx(styles.nav)} aria-label="Main">
+            <NavLink className={navLinkClass} to="/">
               Home
-            </Link>
-            <Link className={styles.navLink} to="/dashboard">
+            </NavLink>
+            <NavLink className={navLinkClass} to="/dashboard">
               Dashboard
-            </Link>
-            <Link className={styles.navLink} to="/register">
-              Register
-            </Link>
-            <Link className={styles.navLink} to="/login">
-              Login
-            </Link>
-            {/* Vue: v-if="isLoggedIn"  →  React: {cond && <jsx/>} */}
-            {isLoggedIn && (
-              <button className={styles.btnSignout} onClick={handleSignOut}>
+            </NavLink>
+            {isLoggedIn ? (
+              <button
+                className={cx('button', 'buttonSecondary', styles.navButton)}
+                onClick={handleSignOut}
+              >
                 Sign out
               </button>
+            ) : (
+              <>
+                <NavLink className={navLinkClass} to="/login">
+                  Login
+                </NavLink>
+                <NavLink className={cx('button', 'buttonPrimary', styles.navButton)} to="/register">
+                  Register
+                </NavLink>
+              </>
             )}
           </nav>
         </div>
       </header>
 
-      {/* Vue: <RouterView /> renders whatever the router config matched.
-          React: routes are declared inline, as JSX, right where they render. */}
-      <Routes>
-        <Route path="/" element={<HomeView />} />
-        <Route path="/about" element={<AboutView />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Registration />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <main id="main" className="page">
+        {/* Routes are declared inline, as JSX, right where they render. */}
+        <Routes>
+          <Route path="/" element={<HomeView />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Registration />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </main>
+
+      <footer className={cx(styles.footer)}>
+        <p>OpenPosture measures angles and reports what it measured. It is not a medical device.</p>
+      </footer>
     </>
   )
 }

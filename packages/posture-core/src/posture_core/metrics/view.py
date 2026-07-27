@@ -101,8 +101,8 @@ def _describe(value: float, thresholds: Thresholds) -> str:
         return "photographed from the side, which is the best angle for this assessment"
     if value >= thresholds.frontal_view_min_ratio:
         return (
-            "photographed from the front — forward lean is measurable but less reliable here, "
-            "so a side-on photo would give a firmer answer"
+            "photographed from the front, so forward lean is measurable but less reliable here. "
+            "A side-on photo would give a firmer answer"
         )
     return "photographed at an angle between side-on and front-on"
 

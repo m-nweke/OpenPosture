@@ -16,6 +16,7 @@ import { ApiError, analysePosture } from '../api/client'
 import type { AnalysisResponse } from '../api/types'
 import PostureResult from './PostureResult'
 import styles from './Dashboard.module.css'
+import { cx } from '../ui/cx'
 
 type Status = 'idle' | 'uploading' | 'done' | 'error'
 
@@ -33,6 +34,10 @@ export default function Dashboard() {
   const [error, setError] = useState<ApiError | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
+  // The input element itself, because clearing React state does not clear it. A file input
+  // keeps its value until the element is reset, so the filename stays on screen and
+  // re-picking the *same* file fires no change event — the form looks stuck.
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
   // An in-flight upload outlives the component otherwise, and its state update on return would
   // warn about updating an unmounted component — the same class of leak the old `setTimeout`
@@ -109,6 +114,7 @@ export default function Dashboard() {
 
   const clear = () => {
     abortRef.current?.abort()
+    if (inputRef.current) inputRef.current.value = ''
     setFile(null)
     setAnalysis(null)
     setError(null)
@@ -128,22 +134,25 @@ export default function Dashboard() {
           angle.
         </label>
         <input
+          ref={inputRef}
           type="file"
           id="posture-image"
           accept="image/jpeg,image/png,image/webp"
           onChange={handleFileChange}
           className={styles.fileInput}
         />
-        <button
-          className={styles.submitButton}
-          onClick={submit}
-          disabled={!file || status === 'uploading'}
-        >
-          {status === 'uploading' ? 'Analysing…' : 'Submit'}
-        </button>
-        <button className={styles.clearButton} onClick={clear} disabled={!file}>
-          Clear
-        </button>
+        <div className={styles.actions}>
+          <button
+            className={cx('button', 'buttonPrimary')}
+            onClick={submit}
+            disabled={!file || status === 'uploading'}
+          >
+            {status === 'uploading' ? 'Analysing…' : 'Analyse my posture'}
+          </button>
+          <button className={cx('button', 'buttonDanger')} onClick={clear} disabled={!file}>
+            Clear
+          </button>
+        </div>
       </div>
 
       {status === 'uploading' && (

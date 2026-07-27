@@ -1,129 +1,178 @@
+/* The upload flow. */
+
 .container {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 20px;
-  text-align: center;
+  max-width: 52rem;
+}
+
+.container > h1 {
+  margin-bottom: var(--space-5);
 }
 
 .card {
-  background-color: orange;
-  border-radius: 10px;
-  padding: 20px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .instructions {
-  /* This is a <label> now, not a <p>. Labels are inline by default, and vertical margins do not
-     apply to inline boxes — without this the 20px gap below the text silently disappears. */
   display: block;
-  margin-bottom: 20px;
-  color: black;
+  margin-bottom: var(--space-4);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
 }
 
+/* The native control, restyled through its ::file-selector-button rather than hidden behind a
+   label. A hidden input with a fake button loses keyboard focus, drag-and-drop and the
+   browser's own filename display unless every one is reimplemented. */
 .fileInput {
-  margin-bottom: 20px;
-}
-
-.submitButton,
-.clearButton {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-.submitButton {
-  background-color: limegreen;
-  color: white;
-}
-
-.submitButton:hover {
-  background-color: darkgreen;
-}
-
-.clearButton {
-  background-color: red;
-  color: white;
-}
-
-.clearButton:hover {
-  background-color: darkred;
-}
-
-.results {
-  margin-top: 40px;
-  text-align: left;
-}
-
-.results h2 {
-  text-align: center;
-}
-
-.loadingSpinner {
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid #3498db;
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  animation: spin 2s linear infinite;
-  margin: 20px auto;
-}
-
-.uploadedImage {
+  display: block;
   width: 100%;
-  height: auto;
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  background: var(--color-surface-sunken);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    background-color var(--transition);
 }
 
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+.fileInput:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
-/* --- Upload progress (OP-44) ------------------------------------------- */
+.fileInput::file-selector-button {
+  margin-right: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.fileInput::file-selector-button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* --- Upload progress ------------------------------------------------------ */
 
 .uploading {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
 }
 
+.uploading label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* A real <progress>, styled. The element carries its own semantics, so assistive technology
+   announces the value without any ARIA. */
 .uploading progress {
   flex: 1;
-  height: 0.75rem;
+  height: 0.5rem;
+  appearance: none;
+  border: none;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: var(--color-surface-sunken);
 }
 
-/* --- Terminal states --------------------------------------------------- */
+.uploading progress::-webkit-progress-bar {
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-full);
+}
+
+.uploading progress::-webkit-progress-value {
+  background: var(--color-accent);
+  border-radius: var(--radius-full);
+  transition: width var(--transition);
+}
+
+.uploading progress::-moz-progress-bar {
+  background: var(--color-accent);
+  border-radius: var(--radius-full);
+}
+
+.uploading span {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+}
+
+/* --- Terminal states ------------------------------------------------------ */
 
 .error,
 .noPerson {
-  margin-top: 1.5rem;
-  padding: 1rem 1.25rem;
-  border-radius: 8px;
-  border-left: 4px solid;
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
 }
 
 .error {
-  border-color: #b3261e;
-  background: rgba(179, 38, 30, 0.08);
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+  background: var(--color-danger-soft);
 }
 
 .noPerson {
-  border-color: #6b6b6b;
-  background: rgba(107, 107, 107, 0.08);
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
 }
 
 .error h2,
 .noPerson h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.1rem;
+  margin-bottom: var(--space-2);
+  font-size: 1.125rem;
+}
+
+.error h2 {
+  color: var(--color-danger);
+}
+
+.error p,
+.noPerson p {
+  color: var(--color-text);
+  font-size: 0.9375rem;
 }
 
 .requestId {
-  font-size: 0.85rem;
-  opacity: 0.75;
+  margin-top: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.requestId code {
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
 }

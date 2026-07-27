@@ -33,7 +33,7 @@ function fileInput(): HTMLInputElement {
 async function upload() {
   const user = userEvent.setup()
   await user.upload(fileInput(), pngFile())
-  await user.click(screen.getByRole('button', { name: 'Submit' }))
+  await user.click(screen.getByRole('button', { name: 'Analyse my posture' }))
   return user
 }
 
@@ -117,7 +117,7 @@ describe('Dashboard', () => {
       signedInAs('Ada')
       renderWithProviders(<Dashboard />)
 
-      expect(await screen.findByRole('button', { name: 'Submit' })).toBeDisabled()
+      expect(await screen.findByRole('button', { name: 'Analyse my posture' })).toBeDisabled()
     })
   })
 
@@ -318,7 +318,7 @@ describe('Dashboard', () => {
         ),
       )
       await user.upload(fileInput(), pngFile())
-      await user.click(screen.getByRole('button', { name: 'Submit' }))
+      await user.click(screen.getByRole('button', { name: 'Analyse my posture' }))
 
       await screen.findByRole('alert')
       expect(screen.queryByRole('heading', { name: 'Your results' })).not.toBeInTheDocument()
@@ -378,6 +378,25 @@ describe('Dashboard', () => {
   })
 
   describe('clearing', () => {
+    it('empties the file input, so the same photo can be chosen again', async () => {
+      // Clearing React state leaves the native input holding its value: the filename stays on
+      // screen, and re-picking the *same* file fires no change event at all, so the form looks
+      // stuck. The element has to be reset too.
+      signedInAs('Ada')
+      respondWith(analysisOf(hunchbackReport()))
+      renderWithProviders(<Dashboard />)
+      const user = await upload()
+      await screen.findByRole('heading', { name: 'Your results' })
+
+      await user.click(screen.getByRole('button', { name: 'Clear' }))
+
+      expect(fileInput().value).toBe('')
+
+      // And the same file can be chosen again, which is the behaviour that was broken.
+      await user.upload(fileInput(), pngFile())
+      expect(screen.getByRole('button', { name: 'Analyse my posture' })).toBeEnabled()
+    })
+
     it('removes the result and re-disables submit', async () => {
       signedInAs('Ada')
       respondWith(analysisOf(hunchbackReport()))
@@ -388,7 +407,7 @@ describe('Dashboard', () => {
       await user.click(screen.getByRole('button', { name: 'Clear' }))
 
       expect(screen.queryByRole('heading', { name: 'Your results' })).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Analyse my posture' })).toBeDisabled()
     })
   })
 })

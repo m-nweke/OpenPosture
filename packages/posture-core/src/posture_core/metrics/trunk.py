@@ -94,9 +94,9 @@ def trunk_inclination_deg(resolver: KeypointResolver, thresholds: Thresholds) ->
 
 def _describe(value: float, thresholds: Thresholds) -> str:
     if value >= thresholds.trunk_slouch_deg:
-        return f"leaning {value:.0f}° forward — a pronounced slouch"
+        return f"leaning {value:.0f}° forward, a pronounced slouch"
     if value > thresholds.trunk_upright_deg:
-        return f"leaning {value:.0f}° forward — slightly hunched"
+        return f"leaning {value:.0f}° forward, slightly hunched"
     if value <= thresholds.trunk_recline_deg:
         return f"leaning {abs(value):.0f}° back"
     return f"upright, within {abs(value):.0f}° of vertical"

@@ -59,7 +59,7 @@ def world_points(
                 name,
                 unit,
                 "this backend reports no world coordinates, and every metric here is measured "
-                "in metres — see ADR-0005",
+                "in metres (see ADR-0005)",
                 inputs=tuple(resolution.landmarks),
             )
         points[keypoint] = vector

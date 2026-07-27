@@ -4,7 +4,7 @@
     {
       "code": "kneeling",
       "confidence": 0.95,
-      "message": "You appear to be kneeling — your knee is folded to 30°.",
+      "message": "You appear to be kneeling: your knee is folded to 30°.",
       "metric": "knee_flexion_deg",
       "severity": "info",
       "value": 30.0
@@ -46,7 +46,7 @@
     },
     "knee_flexion_deg": {
       "confidence": 0.95,
-      "detail": "your left knee is folded to 30° — you appear to be kneeling",
+      "detail": "your left knee is folded to 30°, which looks like kneeling",
       "status": "ok",
       "unit": "deg",
       "value": 30.0

@@ -74,3 +74,8 @@ dist/
 # thing under version control.
 models/*.task
 models/*.task.download
+
+# A personal reading guide kept in the working tree, deliberately untracked. It is notes
+# for one person rather than project documentation, and `git add -A` would otherwise sweep
+# it into a commit.
+OpenPosture-guided-tour.md

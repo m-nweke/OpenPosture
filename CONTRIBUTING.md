@@ -52,6 +52,20 @@ One branch and one pull request per Jira ticket, named `op-<number>-<kebab-slug>
 When a ticket depends on unmerged work, branch from that branch rather than waiting — pull requests
 stack, and the base branch is noted in the body so the review order is obvious.
 
+**A pull request that changes the UI carries before and after screenshots.** A reviewer
+cannot evaluate a visual change from a CSS diff, and neither can you six months later. Capture
+both from the running application rather than mocking anything up:
+
+```bash
+docker compose up -d --wait          # on main, for the before
+cd apps/web && npm run screenshot    # and again on the branch, for the after
+```
+
+Commit them, reference them in the body by **commit SHA** rather than by branch
+(`raw.githubusercontent.com/<owner>/<repo>/<sha>/...`), then delete them in a follow-up commit
+on the same branch. The images keep rendering in the pull request forever because the blob is
+still in history, and `main` does not accumulate obsolete screenshots.
+
 **The pull request body is where the work is explained.** It is read to understand the code, not
 merely to approve it, so it should say why the approach was chosen and what was rejected. The
 commit message stays short: a subject line and, if genuinely non-obvious, a couple of lines of why.
