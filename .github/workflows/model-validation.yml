@@ -119,7 +119,7 @@ jobs:
       - name: Summary
         run: cat diagnostics/summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.1
         # Unconditional, unlike pr.yml's failure-only report. The point of this workflow is the
         # numbers; a green run whose diagnostics were discarded answered nothing.
         if: always()
