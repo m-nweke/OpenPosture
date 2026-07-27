@@ -125,6 +125,15 @@ exclude = ['^docs/archive/']
 module = ["mediapipe.*", "cv2.*"]
 ignore_missing_imports = true
 
+# boto3 and botocore ship no py.typed marker and no inline annotations (the `boto3-stubs`
+# package exists precisely because of this). Adding stubs would type one attribute — the S3
+# client — that is deliberately `Any` anyway, because `S3Storage` accepts a `client_factory`
+# so tests can pass a substitute. Everything crossing back into typed code does so through
+# `StoredObject` and `bytes`, which are checked normally.
+[[tool.mypy.overrides]]
+module = ["boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------------

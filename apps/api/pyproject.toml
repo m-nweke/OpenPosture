@@ -21,6 +21,7 @@ dependencies = [
     # Structured logging. The legacy engine's entire observability story was bare `print()`
     # (FINDINGS §3), so the replacement emits machine-parseable events with a request ID.
     "structlog>=24.4",
+    "boto3>=1.35",
 ]
 
 [project.optional-dependencies]
@@ -39,4 +40,5 @@ packages = ["src/openposture_api"]
 [dependency-groups]
 dev = [
     "httpx>=0.28",
+    "moto[s3]>=5.0",
 ]
