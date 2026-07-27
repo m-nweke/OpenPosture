@@ -69,10 +69,36 @@ def test_an_unclear_hip_abstains_as_low_confidence() -> None:
     assert metric_of(view, **unclear(K.LEFT_HIP)).status is MetricStatus.LOW_CONFIDENCE
 
 
-def test_a_zero_length_torso_abstains_rather_than_dividing_by_it() -> None:
-    metric = metric_of(view, body=Anthropometry(torso=0.0))
+@pytest.mark.parametrize("angle", [View.LATERAL, View.FRONTAL])
+@pytest.mark.parametrize("torso", [0.0, 1e-13, 1e-12])
+def test_a_degenerate_torso_abstains_rather_than_dividing_by_it(torso: float, angle: View) -> None:
+    """Near-zero, not just zero — the same guard `arms_crossed` needed for the same division.
+
+    `distance` is never negative, so a `<= 0.0` test catches only the exact case, and exact zero is
+    the one a real backend is least likely to produce.
+
+    Both views, because only the frontal one shows the damage. Side-on the shoulders coincide, so
+    the numerator is zero and a tiny torso still yields 0.0 — the right answer by luck. Face-on the
+    numerator is real and the ratio runs to ~3.8e10, which reads as "photographed from the front"
+    against any threshold. That does not stay local: the ratio feeds `view_confidence_factor`, so
+    one degenerate torso pins every sagittal finding in the report to the confidence floor.
+    """
+    metric = metric_of(view, body=Anthropometry(torso=torso), view=angle)
     assert metric.value is None
     assert metric.status is MetricStatus.UNDEFINED_GEOMETRY
+
+
+def test_the_guard_is_a_divide_by_zero_check_not_a_plausibility_floor() -> None:
+    """Worth stating outright, because the constant is named for metres and used here on pixels.
+
+    `MIN_LENGTH` is 1e-9, and this metric divides in *image* space, so the guard trips at about
+    1e-12 m of world torso rather than at anything a person would call short. A 5e-12 m torso is
+    physically absurd and still measures. That is the shared constant behaving as intended — it
+    exists to stop a division by nothing, not to judge whether a body is a plausible size — and it
+    is preferable to a second, pixel-scaled epsilon here that would drift from the one in
+    `arms_crossed` the first time either was retuned.
+    """
+    assert metric_of(view, body=Anthropometry(torso=5e-12)).status is MetricStatus.OK
 
 
 # ---------------------------------------------------------------------------------------------
