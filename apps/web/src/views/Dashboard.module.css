@@ -82,3 +82,48 @@
     transform: rotate(360deg);
   }
 }
+
+/* --- Upload progress (OP-44) ------------------------------------------- */
+
+.uploading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.uploading progress {
+  flex: 1;
+  height: 0.75rem;
+}
+
+/* --- Terminal states --------------------------------------------------- */
+
+.error,
+.noPerson {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  border-left: 4px solid;
+}
+
+.error {
+  border-color: #b3261e;
+  background: rgba(179, 38, 30, 0.08);
+}
+
+.noPerson {
+  border-color: #6b6b6b;
+  background: rgba(107, 107, 107, 0.08);
+}
+
+.error h2,
+.noPerson h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.requestId {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
