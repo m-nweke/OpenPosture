@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Final
 from posture_core.geometry import angle_between, midpoint
 from posture_core.keypoints import KeypointName
 from posture_core.metrics._support import abstain, measure, world_points
-from posture_core.resolver import Resolved
+from posture_core.resolver import FACING_INPUTS, Resolved
 from posture_core.status import Metric
 
 if TYPE_CHECKING:
@@ -74,7 +74,9 @@ def craniovertebral_angle_deg(resolver: KeypointResolver, thresholds: Thresholds
             UNIT,
             "could not tell which way you are facing, so head position relative to your "
             "shoulders cannot be measured",
-            inputs=REQUIRED,
+            # See the note in `trunk.py`: the ears and shoulders resolved fine, so blaming them
+            # would send the user to fix landmarks that are not the problem.
+            inputs=FACING_INPUTS,
         )
 
     c7 = midpoint(points[KeypointName.LEFT_SHOULDER], points[KeypointName.RIGHT_SHOULDER])

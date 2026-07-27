@@ -13,7 +13,7 @@ of the frame rather than a property of any one metric. See :meth:`KeypointResolv
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 import numpy as np
 
@@ -27,7 +27,16 @@ if TYPE_CHECKING:
     from posture_core.keypoints import Landmark, PoseFrame
     from posture_core.thresholds import Thresholds
 
-__all__ = ["KeypointResolver", "Resolution", "Resolved", "Unresolved"]
+__all__ = ["FACING_INPUTS", "KeypointResolver", "Resolution", "Resolved", "Unresolved"]
+
+FACING_INPUTS: Final = (KeypointName.NOSE, KeypointName.NECK)
+"""The landmarks :meth:`KeypointResolver.forward_axis` needs.
+
+Public, and defined once here rather than repeated in each metric that calls ``forward_axis``. A
+metric that abstains because the facing direction was unavailable has to name *these* keypoints in
+its gap — not the ones it would have measured — or the report blames landmarks that are perfectly
+fine and stays silent about the one that is missing.
+"""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -205,8 +214,7 @@ class KeypointResolver:
         ``None`` means the axis genuinely cannot be derived: no nose or no neck, no world
         coordinates, or a face pointing straight up or down so there is no horizontal component.
         """
-        nose = self._frame.get(KeypointName.NOSE)
-        neck = self._frame.get(KeypointName.NECK)
+        nose, neck = (self._frame.get(name) for name in FACING_INPUTS)
         if nose is None or neck is None:
             return None
 

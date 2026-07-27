@@ -167,7 +167,24 @@ def signed_angle_to_vertical(vector: Vector3, forward: Vector3) -> float:
     # directly. Components outside that plane — lateral sway — are deliberately ignored: this
     # measures forward/backward lean, and folding sideways lean into it would make a sideways
     # bend look like a slouch.
-    forward_unit = unit(np.asarray(forward, dtype=np.float64))
+    # The two axes have to be perpendicular for `atan2` to read an angle rather than a mixture.
+    # Callers pass a horizontal vector today, so this is a no-op on every real path — but nothing
+    # in the signature says "horizontal", and a forward axis tilted 3° out of level silently
+    # skewed the result by the same amount, reporting a plumb-vertical torso as leaning. Removing
+    # the UP component makes the function correct for any direction rather than only the ones it
+    # currently happens to be given.
+    forward_planar = np.asarray(forward, dtype=np.float64)
+    forward_planar = forward_planar - np.dot(forward_planar, UP) * UP
+    if norm(forward_planar) < MIN_LENGTH:
+        # Nothing left after removing the vertical: `forward` was parallel to UP, so there is no
+        # sagittal plane. Left unguarded, both projections below read the same axis and `atan2`
+        # returns 45° for every input — including a perfectly vertical vector, whose answer is 0°.
+        # A constant answer that ignores its argument is the worst shape a bug can take here.
+        raise DegenerateVectorError(
+            "`forward` is parallel to UP, so it defines no sagittal plane to measure in"
+        )
+
+    forward_unit = unit(forward_planar)
     along_up = float(np.dot(vector, UP))
     along_forward = float(np.dot(vector, forward_unit))
     if abs(along_up) < MIN_LENGTH and abs(along_forward) < MIN_LENGTH:
