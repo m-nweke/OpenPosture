@@ -6,11 +6,28 @@ requires-python = ">=3.11"
 
 # The top of the dependency graph. Depends on both packages; nothing depends on this.
 # Web/DB/LLM dependencies arrive with the tickets that introduce them (Epics D, E, F) rather
-# than being declared speculatively here.
+# than being declared speculatively here. Postgres, SQLAlchemy, MinIO and the Anthropic client
+# are therefore still absent — they land in OP-49 onward.
 dependencies = [
     "posture-core",
     "pose-backends",
+    # Lower bounds, not pins. The pins in this workspace exist where a version is load-bearing
+    # (mediapipe 0.10.18, numpy<2) and nowhere else; pinning by reflex makes Dependabot noise
+    # indistinguishable from a real constraint.
+    "fastapi>=0.115",
+    # Config as a typed, validated object rather than scattered os.environ lookups. Ships
+    # separately from pydantic itself, which fastapi already pulls in.
+    "pydantic-settings>=2.7",
+    # Structured logging. The legacy engine's entire observability story was bare `print()`
+    # (FINDINGS §3), so the replacement emits machine-parseable events with a request ID.
+    "structlog>=24.4",
 ]
+
+[project.optional-dependencies]
+# The ASGI server is only needed to *run* the app, not to import or test it: `TestClient` drives
+# the application through ASGI directly. Keeping it out of the base install means the test job
+# does not build a server it never starts.
+serve = ["uvicorn[standard]>=0.34"]
 
 [build-system]
 requires = ["hatchling"]
@@ -18,3 +35,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openposture_api"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+]
