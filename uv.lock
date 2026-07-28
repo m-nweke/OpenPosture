@@ -1432,7 +1432,7 @@ provides-extras = ["serve", "inference"]
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.28" },
-    { name = "moto", extras = ["s3"], specifier = ">=5.0" },
+    { name = "moto", extras = ["s3"], specifier = ">=5.2.2" },
 ]
 
 [[package]]
