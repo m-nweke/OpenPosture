@@ -30,8 +30,9 @@
 # matter: `dorny/paths-filter` is one compromised maintainer account away from running arbitrary
 # code with our token, and a moved tag would deliver it silently.
 #
-# If that trade is ever revisited, pin everything and add Dependabot to raise the patch PRs —
-# pinning without automated updates is how a workflow quietly rots on a vulnerable version.
+# There is no automated updater in this repository, so the SHA pins above are chased by hand.
+# Re-check them whenever a third-party action here has a security advisory; a pin left alone is a
+# vulnerability held in place, which is the cost this split accepts in exchange for the freeze.
 
 name: PR
 

@@ -34,7 +34,7 @@
 # whatsoever — a silently-resolved incompatible transitive dep would surface as an ImportError at
 # container start, not at install time. Regenerate by installing this set and running `pip freeze`,
 # then re-verify BOTH architectures. Do not bump mediapipe: 0.10.18 is the last release publishing
-# a linux aarch64 wheel (Dependabot is configured to ignore it).
+# a linux aarch64 wheel.
 #
 # Verified 2026-07-26 on python:3.12-slim, linux/arm64 and linux/amd64: `import mediapipe` and
 # `from mediapipe.tasks.python.vision import PoseLandmarker` both succeed with no system packages
@@ -43,7 +43,7 @@
 mediapipe==0.10.18
 
 # Transitive ceilings mediapipe imposes on the whole workspace. Mirrored in posture-core's
-# `numpy>=1.26,<2` and in the Dependabot ignore list.
+# `numpy>=1.26,<2`.
 numpy==1.26.4
 protobuf==4.25.9
 

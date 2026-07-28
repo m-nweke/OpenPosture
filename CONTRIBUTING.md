@@ -183,7 +183,8 @@ relying on GitHub to stop you ([`.github/main-ruleset.md`](.github/main-ruleset.
 
 **Pinned versions are usually load-bearing.** `mediapipe==0.10.18` is the last release publishing
 linux `aarch64` wheels, and `numpy<2` / `protobuf<5` are ceilings it imposes on the whole
-workspace. Dependabot is configured not to propose bumps to any of them. See
+workspace. Nothing automated guards them — dependency updates are manual, so a bump to any of the
+three has to be justified by rerunning the arm64 spike, not by a green build. See
 [`docs/adr/0002-mediapipe-pose.md`](docs/adr/0002-mediapipe-pose.md).
 
 **Thresholds are not literals in code.** They live in
