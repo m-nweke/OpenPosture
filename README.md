@@ -8,7 +8,7 @@
 **Upload a photograph of yourself sitting. Get back angles measured from your own body, and an
 honest account of what could not be measured.**
 
-![The dashboard showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it, a score of 70, two findings about trunk lean and forward head, six measurements, and one metric the engine could not assess](docs/images/dashboard-result.png)
+![The dashboard showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it, a score of 70, two findings about trunk lean and forward head, six measurements, and one metric the engine could not assess](docs/images/dashboard-result.jpg)
 
 Everything in that screenshot is computed. The skeleton comes from MediaPipe Pose Landmarker and
 the angles from a pure rules engine, measured in world space so your distance from the camera
@@ -32,6 +32,8 @@ docker compose up
 
 Then open <http://localhost:5173>, register any email and password, and upload a photo of yourself
 sitting, **taken from the side**.
+
+![The OpenPosture landing page: a heading reading "Find out what your posture is actually doing: measured, not guessed", a Get started button, and three numbered cards covering the side-on photo requirement, the seven measurements, and the engine's habit of naming what it could not measure](docs/images/landing.png)
 
 The API image carries the pose model, fetched at build time with its SHA256 pinned, so the first
 `docker compose up` produces real analysis with no extra steps. Working on the frontend and don't
