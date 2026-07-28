@@ -37,7 +37,7 @@ dev = [
     # Property-based testing (OP-34). The scale-invariance property is the proof that the redesign
     # fixed the original engine's central defect, and a handful of hand-picked examples would not
     # be proof of anything.
-    "hypothesis>=6.100",
+    "hypothesis>=6.161.8",
     "mypy>=1.14",
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
