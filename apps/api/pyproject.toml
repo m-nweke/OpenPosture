@@ -12,8 +12,8 @@ dependencies = [
     "posture-core",
     "pose-backends",
     # Lower bounds, not pins. The pins in this workspace exist where a version is load-bearing
-    # (mediapipe 0.10.18, numpy<2) and nowhere else; pinning by reflex makes Dependabot noise
-    # indistinguishable from a real constraint.
+    # (mediapipe 0.10.18, numpy<2) and nowhere else; pinning by reflex makes a real constraint
+    # indistinguishable from an arbitrary one.
     "fastapi>=0.115",
     # Config as a typed, validated object rather than scattered os.environ lookups. Ships
     # separately from pydantic itself, which fastapi already pulls in.
