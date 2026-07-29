@@ -18,7 +18,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import and_, delete as sql_delete, or_, select
+from sqlalchemy import and_, or_, select
+from sqlalchemy import delete as sql_delete
 from sqlalchemy.orm import selectinload
 
 from openposture_api.db.models import Analysis, Finding, Keypoint, Metric
