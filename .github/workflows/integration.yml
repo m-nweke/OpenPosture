@@ -143,6 +143,40 @@ jobs:
           print("stored:", key)
           PY
 
+      - name: The API's own engine reaches Postgres
+        # Through `create_engine(Settings())` rather than through psql, so what is exercised is
+        # the configured URL, the asyncpg driver and the pool the application will actually use.
+        # The step above proves Postgres is up; this proves the API can talk to it, which are
+        # different claims and fail for different reasons — a wrong driver prefix
+        # (`postgresql://` instead of `postgresql+asyncpg://`) passes the first and fails here.
+        #
+        # No schema yet: OP-51 adds Alembic, and this workflow gains the migration checks there.
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run python - <<'PY'
+          import asyncio
+
+          from sqlalchemy import text
+
+          from openposture_api.config import Settings
+          from openposture_api.db import close_engine, create_engine, create_session_factory
+
+
+          async def main() -> None:
+              engine = create_engine(Settings())
+              factory = create_session_factory(engine)
+              async with factory() as session:
+                  database = (await session.execute(text("select current_database()"))).scalar_one()
+                  server = (await session.execute(text("show server_version"))).scalar_one()
+              await close_engine(engine)
+              assert database == "openposture", database
+              print(f"connected to {database} on postgres {server}")
+
+
+          asyncio.run(main())
+          PY
+
       - name: The object is actually in the bucket
         # Asserted from MinIO's side, not from the API's response. A 201 carrying an object key
         # only says the application believes it wrote something.

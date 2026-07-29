@@ -67,7 +67,7 @@ report made entirely of gaps is a successful request with an honest answer, not 
 
 ```
 apps/web        React + TypeScript. Types generated from the API's OpenAPI schema.
-apps/api        FastAPI. Uploads, storage, errors, structured logging.
+apps/api        FastAPI. Uploads, storage, persistence, errors, structured logging.
 packages/pose-backends    MediaPipe adapter behind a Protocol, plus a fake for tests.
 packages/posture-spec     rules.json: every threshold, as data.
 packages/posture-core     The rules engine. numpy and the standard library, nothing else.
@@ -93,6 +93,13 @@ def test_every_angular_metric_is_invariant_to_body_size(pose, scale):
 of `ok`, `low_confidence`, `not_detected` or `out_of_frame`, and a metric states which joints it
 needs. If they are not usable it abstains and says which ones failed, all the way through to the
 UI. Absence of evidence stays distinguishable from evidence of absence.
+
+**Landmarks and metrics are rows, not documents.** The schema gives `keypoints` and `metrics`
+their own tables rather than a JSONB blob on the analysis, so "show me this user's trunk angle
+over six months" is a plain indexed `SELECT` instead of an application-side loop deserialising
+every document to read one field. Every analysis also stamps the pose backend, the rules version
+and the schema version, non-nullably — without those, retuning a threshold silently makes old and
+new results incomparable, and the only symptom is a cliff in a chart on the date of a deployment.
 
 **Thresholds are data, not literals.** Every tunable lives in
 [`rules.json`](packages/posture-spec/src/posture_spec/rules.json) and is loaded into a frozen
@@ -212,9 +219,11 @@ Epics are tracked in Jira project `OP`; the plan they came from is
   backend, storage behind a Protocol, `POST /api/v1/analyses`, Compose with a Vite proxy, the
   rewritten dashboard, generated API types, the canvas overlay and a full-stack Playwright journey.
 - **E, Persistence and auth** · in progress. Postgres, MinIO and the bucket bootstrap are in the
-  Compose stack with health gating, and the API can already store uploads as objects
-  (`OPENPOSTURE_STORAGE_BACKEND=s3`). Still to come: the schema and migrations, the repository
-  layer, and self-hosted JWT replacing the in-browser placeholder.
+  Compose stack with health gating; the API can already store uploads as objects
+  (`OPENPOSTURE_STORAGE_BACKEND=s3`); and the seven tables are declared as typed SQLAlchemy 2.0
+  models behind an async engine and a per-request session. Nothing writes a row yet. Still to
+  come: Alembic migrations, the repository layer, persistence of analyses, and self-hosted JWT
+  replacing the in-browser placeholder.
 - **F to H** · not started.
 
 The MediaPipe portability spike passed on both `linux/amd64` and `linux/arm64`, so the ONNX
@@ -362,9 +371,9 @@ ruleset's required checks, only `ci-ok` is. See
 Postgres, MinIO and the bucket bootstrap from a clean state and proves the things only a real
 service can prove: that the healthchecks gate their dependants, that Postgres answers over TCP
 rather than only on its unix socket, that the bucket exists, that bootstrapping twice is not an
-error, and that the API can put an object in MinIO — path-style addressing and all, which the
-moto-backed unit tests accept either way. It builds no application image, so it is the fast half
-of the container story.
+error, that the API can put an object in MinIO — path-style addressing and all, which the
+moto-backed unit tests accept either way — and that the API's own engine and driver reach
+Postgres. It builds no application image, so it is the fast half of the container story.
 
 **`containers.yml`** and **`e2e.yml`** both run on every pull request, aggregated by
 `containers-ok` and `e2e-ok`. The first builds both images, validates Compose, starts the stack,
