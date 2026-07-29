@@ -4,11 +4,12 @@
 [![containers](https://github.com/m-nweke/OpenPosture/actions/workflows/containers.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/containers.yml)
 [![scientific-validation](https://github.com/m-nweke/OpenPosture/actions/workflows/scientific-validation.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/scientific-validation.yml)
 [![e2e](https://github.com/m-nweke/OpenPosture/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/e2e.yml)
+[![integration](https://github.com/m-nweke/OpenPosture/actions/workflows/integration.yml/badge.svg?branch=main)](https://github.com/m-nweke/OpenPosture/actions/workflows/integration.yml)
 
 **Upload a photograph of yourself sitting. Get back angles measured from your own body, and an
 honest account of what could not be measured.**
 
-![The dashboard showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it, a score of 70, two findings about trunk lean and forward head, six measurements, and one metric the engine could not assess](docs/images/dashboard-result.png)
+![The dashboard showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it, a score of 70, two findings about trunk lean and forward head, six measurements, and one metric the engine could not assess](docs/images/dashboard-result.jpg)
 
 Everything in that screenshot is computed. The skeleton comes from MediaPipe Pose Landmarker and
 the angles from a pure rules engine, measured in world space so your distance from the camera
@@ -32,6 +33,13 @@ docker compose up
 
 Then open <http://localhost:5173>, register any email and password, and upload a photo of yourself
 sitting, **taken from the side**.
+
+![The OpenPosture landing page: a heading reading "Find out what your posture is actually doing: measured, not guessed", a Get started button, and three numbered cards covering the side-on photo requirement, the seven measurements, and the engine's habit of naming what it could not measure](docs/images/landing.png)
+
+The stack publishes `5432` (Postgres), `9000` and `9001` (MinIO and its console) alongside the app.
+If you already run Postgres locally, `docker compose up` fails with *"port is already allocated"* —
+put `POSTGRES_PORT=5433` in a `.env` file and nothing else changes, because the API reaches the
+database over the Compose network rather than through the published port.
 
 The API image carries the pose model, fetched at build time with its SHA256 pinned, so the first
 `docker compose up` produces real analysis with no extra steps. Working on the frontend and don't
@@ -59,7 +67,7 @@ report made entirely of gaps is a successful request with an honest answer, not 
 
 ```
 apps/web        React + TypeScript. Types generated from the API's OpenAPI schema.
-apps/api        FastAPI. Uploads, storage, errors, structured logging.
+apps/api        FastAPI. Uploads, storage, persistence, errors, structured logging.
 packages/pose-backends    MediaPipe adapter behind a Protocol, plus a fake for tests.
 packages/posture-spec     rules.json: every threshold, as data.
 packages/posture-core     The rules engine. numpy and the standard library, nothing else.
@@ -85,6 +93,13 @@ def test_every_angular_metric_is_invariant_to_body_size(pose, scale):
 of `ok`, `low_confidence`, `not_detected` or `out_of_frame`, and a metric states which joints it
 needs. If they are not usable it abstains and says which ones failed, all the way through to the
 UI. Absence of evidence stays distinguishable from evidence of absence.
+
+**Landmarks and metrics are rows, not documents.** The schema gives `keypoints` and `metrics`
+their own tables rather than a JSONB blob on the analysis, so "show me this user's trunk angle
+over six months" is a plain indexed `SELECT` instead of an application-side loop deserialising
+every document to read one field. Every analysis also stamps the pose backend, the rules version
+and the schema version, non-nullably — without those, retuning a threshold silently makes old and
+new results incomparable, and the only symptom is a cliff in a chart on the date of a deployment.
 
 **Thresholds are data, not literals.** Every tunable lives in
 [`rules.json`](packages/posture-spec/src/posture_spec/rules.json) and is loaded into a frozen
@@ -203,8 +218,12 @@ Epics are tracked in Jira project `OP`; the plan they came from is
 - **D, Walking skeleton** · done, and tagged `v0.1.0`. FastAPI app factory, lifespan-loaded pose
   backend, storage behind a Protocol, `POST /api/v1/analyses`, Compose with a Vite proxy, the
   rewritten dashboard, generated API types, the canvas overlay and a full-stack Playwright journey.
-- **E, Persistence and auth** · not started. This is the next epic: Postgres, MinIO, Alembic and
-  self-hosted JWT.
+- **E, Persistence and auth** · in progress. Postgres, MinIO and the bucket bootstrap are in the
+  Compose stack with health gating; the API can already store uploads as objects
+  (`OPENPOSTURE_STORAGE_BACKEND=s3`); and the seven tables are declared as typed SQLAlchemy 2.0
+  models behind an async engine and a per-request session. Nothing writes a row yet. Still to
+  come: Alembic migrations, the repository layer, persistence of analyses, and self-hosted JWT
+  replacing the in-browser placeholder.
 - **F to H** · not started.
 
 The MediaPipe portability spike passed on both `linux/amd64` and `linux/arm64`, so the ONNX
@@ -240,8 +259,9 @@ download, no container and no database.
 
 ### Seeing it work
 
-There is no web stack yet, but the engine is demoable from the command line. The fake backend
-needs nothing installed beyond the workspace:
+The web stack is the quickstart above. The engine is also demoable on its own from the command
+line, which is the faster loop when the change is in the rules rather than in the UI. The fake
+backend needs nothing installed beyond the workspace:
 
 ```bash
 uv run python -m pose_backends.cli --backend fake --preset hunchback --report
@@ -343,9 +363,17 @@ same numbers. `pr.yml` asks *did this change break the software*; this asks *is 
 measuring the same thing*. They fail for different reasons, which is why they are separate
 workflows with separate aggregators.
 
-`scientific-ok`, `containers-ok` and `e2e-ok` are **not** currently in the `main` ruleset's
-required checks, only `ci-ok` is. See [`.github/main-ruleset.md`](.github/main-ruleset.md) for
-why, and for the command that adds them.
+`scientific-ok`, `containers-ok`, `e2e-ok` and `integration-ok` are **not** currently in the `main`
+ruleset's required checks, only `ci-ok` is. See
+[`.github/main-ruleset.md`](.github/main-ruleset.md) for why, and for the command that adds them.
+
+**`integration.yml`** runs on every pull request, aggregated by `integration-ok`. It starts
+Postgres, MinIO and the bucket bootstrap from a clean state and proves the things only a real
+service can prove: that the healthchecks gate their dependants, that Postgres answers over TCP
+rather than only on its unix socket, that the bucket exists, that bootstrapping twice is not an
+error, that the API can put an object in MinIO — path-style addressing and all, which the
+moto-backed unit tests accept either way — and that the API's own engine and driver reach
+Postgres. It builds no application image, so it is the fast half of the container story.
 
 **`containers.yml`** and **`e2e.yml`** both run on every pull request, aggregated by
 `containers-ok` and `e2e-ok`. The first builds both images, validates Compose, starts the stack,
@@ -365,7 +393,7 @@ diagnostics. Deliberately unscheduled, so required CI never downloads a model.
 packages/posture-core    pure rules engine, numpy only, no I/O, no globals, no frameworks
 packages/posture-spec    rules.json, every threshold as data, plus the loader that parses it
 packages/pose-backends   inference adapters behind a Protocol (the heavy, fragile dependency)
-apps/api                 FastAPI service, a stub until Epic D
+apps/api                 FastAPI service: uploads, storage, analysis endpoint
 apps/web                 React + TypeScript frontend (own npm toolchain, not in the uv workspace)
 docs/adr                 architecture decision records
 docs/archive             the original capstone, preserved as audit evidence

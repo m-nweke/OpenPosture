@@ -20,10 +20,12 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e-stack',
-  // The screenshot spec is a tool for producing the README image, not a check. Excluded here
+  // The screenshot spec is a tool for producing the README images, not a check. Excluded here
   // so `npm run test:e2e:stack` and the e2e workflow never depend on it — and never rewrite a
-  // committed image as a side effect of running the suite. `npm run screenshot` names it
-  // explicitly, which overrides this.
+  // committed image as a side effect of running the suite. `npm run screenshot` sets
+  // `E2E_INCLUDE_SCREENSHOT` to opt back in; naming the file on the command line does not
+  // override `testIgnore`, so without the variable that script matched nothing and exited on
+  // "No tests found".
   testIgnore: process.env.E2E_INCLUDE_SCREENSHOT ? [] : ['**/screenshot.spec.ts'],
   fullyParallel: true,
   // A test that only passes on retry is flaky, and the ticket asks for ten consecutive green

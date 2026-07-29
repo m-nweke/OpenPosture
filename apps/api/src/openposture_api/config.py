@@ -162,6 +162,30 @@ class Settings(BaseSettings):
         ),
     )
 
+    database_url: str = Field(
+        default="postgresql+asyncpg://openposture:openposture-dev-only@db:5432/openposture",
+        description=(
+            "Async SQLAlchemy URL. The default is the Compose service, so the containerised "
+            "app needs no configuration; a host run needs the published port instead. Nothing "
+            "connects until the first query, so an unreachable database is not a startup failure."
+        ),
+    )
+
+    database_pool_size: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Connections held open per process. Postgres' own `max_connections` is the ceiling "
+            "this has to respect — pool_size + max_overflow, times the number of API processes."
+        ),
+    )
+
+    database_max_overflow: int = Field(
+        default=5,
+        ge=0,
+        description="Extra connections opened under burst and closed again afterwards.",
+    )
+
     s3_bucket: str = Field(
         default="openposture",
         description="Bucket name for `s3` storage.",

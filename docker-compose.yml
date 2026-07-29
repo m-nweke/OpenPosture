@@ -1,7 +1,33 @@
 # The development stack: `git clone && docker compose up`, and the app works.
 #
-# Two services for now. Postgres and MinIO arrive in Epic E; the production overlay arrives in
-# Epic H. Nothing here is a deployment — these are images built for reproducible local use.
+# Four services and a one-shot. The production overlay arrives in Epic H; nothing here is a
+# deployment — these are images built for reproducible local use.
+#
+# **Postgres and MinIO are the whole point of ADR-0004.** They were chosen over managed Firebase
+# services so the entire stack runs on one machine with no cloud account and nothing to sign up
+# for. That promise is only real if `docker compose up` genuinely works from nothing, which is
+# why the bucket bootstrap below is a service rather than a step in a README.
+#
+# **Compose-only variables**, overridable in `.env`, documented here rather than in
+# `.env.example` because of an asymmetry in pydantic-settings that is easy to read past:
+#
+#   * an unprefixed **process environment variable** is ignored by `Settings`, as `env_prefix`
+#     implies — `POSTGRES_PORT=5432 uv run uvicorn ...` is fine;
+#   * an unprefixed **key in the `.env` file** is not. The dotenv source loads the file whole and
+#     validates every key against the model, so under `extra="forbid"` an unrecognised one is a
+#     startup error: `postgres_port | Extra inputs are not permitted`.
+#
+# Compose reads the same `.env`, so putting these there breaks a host-run API for anyone who ran
+# `cp .env.example .env`. Hence: documented here, next to the services that consume them.
+#
+#   POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB   development database credentials
+#   MINIO_ROOT_USER / MINIO_ROOT_PASSWORD             development object-store credentials
+#   POSTGRES_PORT / MINIO_PORT / MINIO_CONSOLE_PORT   host ports, defaults 5432 / 9000 / 9001
+#
+# `POSTGRES_PORT=5433` is the one most people need: 5432 collides with a locally installed
+# Postgres, and the symptom — "Bind for 0.0.0.0:5432 failed: port is already allocated" — says
+# nothing about this project. Nothing in the stack depends on the published port; the API reaches
+# the database over the compose network.
 #
 # **The Vite proxy is the load-bearing piece.** The browser talks to one origin, `localhost:5173`,
 # and Vite forwards `/api` to `api:8000` over the compose network. That removes an entire
@@ -33,6 +59,19 @@ services:
       # Defaults to the named volume's mount point rather than to the image's own default,
       # so uploads survive a restart. Overridable for the same reason as the rest.
       OPENPOSTURE_STORAGE_ROOT: ${OPENPOSTURE_STORAGE_ROOT:-/app/var/storage}
+      # Passed unconditionally even though the default backend is `local`, so that flipping
+      # OPENPOSTURE_STORAGE_BACKEND=s3 is the only edit needed. `.env.example` promised these
+      # would be wired through when Epic E added the service; this is that change. They are
+      # inert while the backend is `local` — `S3Storage` is never constructed.
+      OPENPOSTURE_S3_ENDPOINT_URL: ${OPENPOSTURE_S3_ENDPOINT_URL:-http://minio:9000}
+      OPENPOSTURE_S3_BUCKET: ${OPENPOSTURE_S3_BUCKET:-openposture}
+      OPENPOSTURE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-openposture}
+      OPENPOSTURE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-openposture-dev-only}
+      # Built from the same variables the `db` service boots with, so changing a credential in
+      # one place cannot leave the API pointing at the old one. `db:5432` is the compose network,
+      # not the published port — POSTGRES_PORT only affects what the host can reach.
+      OPENPOSTURE_DATABASE_URL: >-
+        postgresql+asyncpg://${POSTGRES_USER:-openposture}:${POSTGRES_PASSWORD:-openposture-dev-only}@db:5432/${POSTGRES_DB:-openposture}
     volumes:
       # Bind-mounted so a code edit is picked up by `--reload` without a rebuild. Source only —
       # the virtualenv and the model stay in the image, which is why this does not shadow them.
@@ -58,6 +97,26 @@ services:
       - /app/apps/api/src
       - --reload-dir
       - /app/packages
+    depends_on:
+      # Waits for the bucket to exist, not merely for MinIO to be listening. With
+      # OPENPOSTURE_STORAGE_BACKEND=s3 the first upload targets that bucket, and a `NoSuchBucket`
+      # a second after startup is the kind of failure that reproduces once in five runs and
+      # never on the machine where it is being debugged.
+      #
+      # The wait happens even on the default `local` backend, where it is unnecessary. That is
+      # deliberate: `depends_on` is static, so the alternative is a stack whose ordering is
+      # correct only in the configuration nobody runs by default. The cost is the second or two
+      # `mc mb` takes.
+      minio-init:
+        condition: service_completed_successfully
+      db:
+        # Not merely `started`. `depends_on` alone waits for the container, not for Postgres to
+        # accept connections, and the gap is a few seconds — long enough to produce a failure
+        # that passes locally and fails in CI about one run in five.
+        #
+        # As of OP-50 the API builds its engine lazily and issues no query, so this wait is
+        # ordering laid down ahead of the first one in E5 rather than a current requirement.
+        condition: service_healthy
     healthcheck:
       # Readiness, not liveness — deliberately different from the image's own HEALTHCHECK.
       # Compose uses this to gate `depends_on`, and the question there is "can it serve", not
@@ -121,5 +180,105 @@ services:
       start_period: 30s
       retries: 10
 
+  db:
+    # Pinned to a minor line, not `16`, so a rebuild six months from now is the same database.
+    # Alpine because this is a development stack and the image is a third of the size; the
+    # production overlay in Epic H can make its own choice.
+    image: postgres:16.10-alpine
+    environment:
+      # Development credentials, and they are meant to be read. Nothing here is a secret: this
+      # database is reachable only from the compose network and from localhost, holds nothing
+      # but locally uploaded test data, and is recreated by `docker compose down -v`. Real
+      # deployment credentials arrive with the production overlay in Epic H and come from the
+      # environment, never from a committed file.
+      POSTGRES_USER: ${POSTGRES_USER:-openposture}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openposture-dev-only}
+      POSTGRES_DB: ${POSTGRES_DB:-openposture}
+      # Postgres re-runs its (expensive) collation setup on every initdb without this, and the
+      # C locale is both faster and deterministic across host machines.
+      POSTGRES_INITDB_ARGS: --locale-provider=icu --icu-locale=en-US
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      # Published so `psql` and a local (non-container) API run can reach it. The web app never
+      # touches this port.
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      # `pg_isready` against the *application* database and user, not the defaults. During
+      # initdb, Postgres starts a temporary server on a unix socket to run the bootstrap
+      # scripts, and a check that omits `-d`/`-U` can succeed against that temporary server —
+      # reporting healthy several seconds before the real one accepts TCP connections.
+      #
+      # `-h 127.0.0.1` forces the TCP path for the same reason: the socket is up first.
+      test:
+        - CMD-SHELL
+        - pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 3s
+      timeout: 3s
+      start_period: 20s
+      retries: 10
+
+  minio:
+    # Pinned to a dated release rather than `latest`. MinIO ships breaking changes on that tag —
+    # the embedded console was removed from the community image in a 2025 release — and a stack
+    # that silently changes shape on `docker compose pull` is not a reproducible one.
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      # Development credentials, same reasoning as the database above. MinIO refuses to start
+      # with a root password under 8 characters, which is why this is not simply `openposture`.
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-openposture}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-openposture-dev-only}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      # The browser console. Not used by the application; genuinely useful for seeing that an
+      # upload landed where the logs claim it did.
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      # `mc ready local`, not a curl of /minio/health/live. This image ships `mc` and ships
+      # neither curl nor wget, and `mc ready` additionally waits for the object layer to
+      # initialise rather than only for the HTTP listener to bind.
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
+
+  minio-init:
+    # A one-shot: it creates the bucket, prints what it did, and exits 0. Everything that needs
+    # the bucket depends on `service_completed_successfully`.
+    #
+    # **Why this is not done in application code.** Bucket creation is provisioning, not
+    # application logic. Doing it at API startup means every boot carries an idempotent side
+    # effect, and — the part that actually matters — it means the API's credentials must include
+    # bucket creation. In production that service account should hold exactly the object
+    # permissions it needs and nothing more, and an API that creates its own bucket can never be
+    # run that way.
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-openposture}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-openposture-dev-only}
+      OPENPOSTURE_S3_BUCKET: ${OPENPOSTURE_S3_BUCKET:-openposture}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      # `set -e` because `mc` failures are otherwise swallowed by the shell and the service
+      # exits 0, which `service_completed_successfully` would read as a successful bootstrap.
+      #
+      # `--ignore-existing` is what makes this idempotent: a second `docker compose up` against
+      # a populated volume is a no-op rather than a `BucketAlreadyOwnedByYou` failure that
+      # blocks the API from ever starting again.
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$$OPENPOSTURE_S3_BUCKET"
+        echo "bucket ready: $$OPENPOSTURE_S3_BUCKET"
+
 volumes:
   api-storage:
+  db-data:
+  minio-data:
