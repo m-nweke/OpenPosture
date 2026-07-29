@@ -15,6 +15,7 @@ these models fail loudly if it changes.
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -156,6 +157,13 @@ class DetectedLandmark(ContractModel):
 class AnalysisResponse(ContractModel):
     """What `POST /api/v1/analyses` returns on success."""
 
+    id: uuid.UUID = Field(
+        description=(
+            "The analysis's database ID. Use this to retrieve or delete the record later. "
+            "A UUID rather than an integer so that the presence of adjacent IDs is not leaked "
+            "— a sequential key at `/analyses/41` implies `/analyses/40` belongs to somebody."
+        )
+    )
     object_key: str = Field(
         description=(
             "Where the uploaded image was stored. A key, never a URL — a URL embeds a host and "
