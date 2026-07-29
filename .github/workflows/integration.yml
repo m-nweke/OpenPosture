@@ -260,6 +260,18 @@ jobs:
           uv run alembic -c apps/api/alembic.ini check
           echo "OK  no drift"
 
+      - name: Repository integration tests pass against a real Postgres
+        # testcontainers starts its own Postgres container on a random port, separate from the
+        # compose service. Docker is available on `ubuntu-latest` and is already in use by the
+        # compose steps above, so no extra setup is needed.
+        #
+        # These tests prove the repository layer's behaviour under real Postgres semantics:
+        # cursor pagination ordering, RETURNING on DELETE, and user_id scoping. They are
+        # deliberately not in `pr.yml` — the SQLite suite there cannot exercise any of these.
+        run: |
+          uv run pytest apps/api/tests/integration/ -v --no-header
+          echo "OK  repository integration tests passed"
+
       - name: The object is actually in the bucket
         # Asserted from MinIO's side, not from the API's response. A 201 carrying an object key
         # only says the application believes it wrote something.
