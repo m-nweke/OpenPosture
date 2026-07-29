@@ -174,8 +174,6 @@ jobs:
         # The step above proves Postgres is up; this proves the API can talk to it, which are
         # different claims and fail for different reasons — a wrong driver prefix
         # (`postgresql://` instead of `postgresql+asyncpg://`) passes the first and fails here.
-        #
-        # No schema yet: OP-51 adds Alembic, and this workflow gains the migration checks there.
         env:
           OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
         run: |
@@ -201,6 +199,66 @@ jobs:
 
           asyncio.run(main())
           PY
+
+      - name: Initial migration applies cleanly
+        # `alembic upgrade head` against a fresh database. This is the happy path: a clean schema
+        # the schema matches the models. The advisory lock is exercised by this step too (it is
+        # acquired on every run, released when the connection closes).
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini upgrade head
+          echo "OK  initial migration applied"
+
+      - name: Downgrade and re-upgrade both succeed
+        # The only real test that a downgrade path exists and works. Downgrades are written once,
+        # never exercised, and are broken more often than not — "it compiles" is not the same claim
+        # as "it runs against a real database".
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini downgrade base
+          echo "OK  downgraded to base"
+          uv run alembic -c apps/api/alembic.ini upgrade head
+          echo "OK  re-upgraded to head"
+
+      - name: Advisory lock serializes two concurrent migrators
+        # Proves the advisory lock actually works under the race it was written for. Both
+        # migrators start simultaneously against the same database after a downgrade — only one
+        # performs the migration, the other acquires the lock afterwards and finds nothing to do.
+        # Both must exit 0.
+        #
+        # `wait $pid1; code1=$?` captures each exit code independently. A bare `wait` reports the
+        # last job only, which would hide a failure by the first.
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini downgrade base
+          uv run alembic -c apps/api/alembic.ini upgrade head &
+          pid1=$!
+          uv run alembic -c apps/api/alembic.ini upgrade head &
+          pid2=$!
+          wait $pid1; code1=$?
+          wait $pid2; code2=$?
+          echo "migrator 1 exited ${code1}"
+          echo "migrator 2 exited ${code2}"
+          test "${code1}" = "0"
+          test "${code2}" = "0"
+          echo "OK  advisory lock serialized both migrators"
+
+      - name: No drift between models and the migrated schema
+        # `alembic check` compares the current database state against Base.metadata and exits
+        # non-zero if autogenerate would produce any operations. After `upgrade head`, an empty
+        # diff is the definition of "the migration reproduced the schema exactly".
+        #
+        # This is the same principle as D7's OpenAPI drift job: the danger is not writing the
+        # artifact, it is the artifact silently diverging from its source. A model field added
+        # without a migration is invisible until a query fails in production — this catches it.
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini check
+          echo "OK  no drift"
 
       - name: The object is actually in the bucket
         # Asserted from MinIO's side, not from the API's response. A 201 carrying an object key

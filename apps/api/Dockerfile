@@ -95,6 +95,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 RUN mkdir -p /app/var/storage && chown -R openposture:openposture /app/var
 
+# The entrypoint script must be executable before the USER directive drops privileges.
+RUN chmod +x /app/apps/api/scripts/entrypoint.sh
+
 USER openposture
 
 EXPOSE 8000
@@ -105,4 +108,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=40s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"
 
+# entrypoint.sh runs `alembic upgrade head` behind a Postgres advisory lock, then execs into
+# the CMD. A migration failure exits before uvicorn starts, so the container never reports
+# healthy against a schema mismatch.
+ENTRYPOINT ["/app/apps/api/scripts/entrypoint.sh"]
 CMD ["uvicorn", "openposture_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
