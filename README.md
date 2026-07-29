@@ -242,8 +242,9 @@ download, no container and no database.
 
 ### Seeing it work
 
-There is no web stack yet, but the engine is demoable from the command line. The fake backend
-needs nothing installed beyond the workspace:
+The web stack is the quickstart above. The engine is also demoable on its own from the command
+line, which is the faster loop when the change is in the rules rather than in the UI. The fake
+backend needs nothing installed beyond the workspace:
 
 ```bash
 uv run python -m pose_backends.cli --backend fake --preset hunchback --report
@@ -367,7 +368,7 @@ diagnostics. Deliberately unscheduled, so required CI never downloads a model.
 packages/posture-core    pure rules engine, numpy only, no I/O, no globals, no frameworks
 packages/posture-spec    rules.json, every threshold as data, plus the loader that parses it
 packages/pose-backends   inference adapters behind a Protocol (the heavy, fragile dependency)
-apps/api                 FastAPI service, a stub until Epic D
+apps/api                 FastAPI service: uploads, storage, analysis endpoint
 apps/web                 React + TypeScript frontend (own npm toolchain, not in the uv workspace)
 docs/adr                 architecture decision records
 docs/archive             the original capstone, preserved as audit evidence
