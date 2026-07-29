@@ -157,6 +157,9 @@ export function analysisOf(
   landmarks: Landmark[] = report ? landmarksWithGaps() : [],
 ): AnalysisResponse {
   return {
+    // Fixed rather than random: a fixture that changes between runs cannot be asserted against,
+    // and nothing in the UI derives meaning from the value beyond passing it back to the API.
+    id: '00000000-0000-4000-8000-000000000001',
     object_key: 'analyses/0123456789abcdef0123456789abcdef.jpg',
     pose_detected: report !== null,
     report,
