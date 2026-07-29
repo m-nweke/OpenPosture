@@ -73,13 +73,20 @@ jobs:
         run: docker compose up -d --wait --wait-timeout 180 db minio
 
       - name: The bucket bootstrap runs to completion
-        # `docker compose wait` blocks until the container exits and returns *its* exit code, so
-        # a failed `mc` fails this step. `up -d` alone would not: it returns as soon as the
-        # container is started, and a bootstrap that died on its first command would look
-        # identical to one that worked.
+        # `docker wait` on the container id, not `docker compose wait` on the service name.
+        #
+        # `up -d` alone proves nothing: it returns as soon as the container is *started*, so a
+        # bootstrap that died on its first command looks identical to one that worked. But
+        # `docker compose wait` is racy for a one-shot this fast — it attaches to running
+        # containers, and against a warm image the bootstrap has already exited by the time it
+        # looks, which reports `no containers for project` and fails a successful run.
+        # `docker wait` returns immediately with the recorded exit code of a container that has
+        # already finished, so it is correct whether the race is won or lost.
         run: |
           docker compose up -d minio-init
-          docker compose wait minio-init
+          code="$(docker wait "$(docker compose ps -aq minio-init)")"
+          echo "minio-init exited ${code}"
+          test "${code}" = "0"
 
       - name: Every service reached the state it should have
         # `--wait` succeeding is the real gate; this makes the states visible in the log so a
@@ -124,7 +131,9 @@ jobs:
         # `service_completed_successfully` is never satisfied.
         run: |
           docker compose up -d --force-recreate minio-init
-          docker compose wait minio-init
+          code="$(docker wait "$(docker compose ps -aq minio-init)")"
+          echo "minio-init exited ${code} on a populated volume"
+          test "${code}" = "0"
 
       - name: The API can store an object in MinIO
         # Run from the workspace rather than from the image, for the reason in the header. What
