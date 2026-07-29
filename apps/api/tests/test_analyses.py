@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import ValidationError
 
+from openposture_api.auth import get_current_user_id
 from openposture_api.config import Settings
 from openposture_api.db import get_session
 from openposture_api.images import MAX_IMAGE_BYTES
@@ -87,20 +88,28 @@ def storage(tmp_path: Path) -> LocalDiskStorage:
 async def _fake_session():
     """A mock database session for unit tests.
 
-    The route calls `session.add`, `session.flush`, and `session.commit`. All are mocked here so
-    these tests exercise the HTTP contract without a real database. Persistence correctness is
-    covered by the integration suite in `tests/integration/`.
+    Configured for both write paths (add/flush/commit) and read paths (execute). The execute
+    mock returns empty results by default — no rows, scalar_one_or_none returns None — which is
+    what the list, get, and delete routes see when no data exists.
 
-    The `Analysis` object returned by the repository carries an `id` assigned by Python's
-    `default=uuid.uuid4` at construction — the mock flush is enough to make the route build a
-    valid response including the `id` field.
+    The `Analysis` object returned by the repository on writes carries an `id` assigned by
+    Python's `default=uuid.uuid4` at construction, so the mock flush is enough to make the
+    create route build a valid response.
+
+    Persistence correctness is covered by the integration suite in `tests/integration/`.
     """
+    execute_result = MagicMock()
+    execute_result.scalar_one_or_none.return_value = None
+    execute_result.scalars.return_value.all.return_value = []
+
     mock = MagicMock()
     mock.add = MagicMock()
     mock.add_all = MagicMock()
+    mock.get = AsyncMock(return_value=None)
     mock.flush = AsyncMock()
     mock.commit = AsyncMock()
     mock.close = AsyncMock()
+    mock.execute = AsyncMock(return_value=execute_result)
     yield mock
 
 
@@ -421,3 +430,86 @@ class TestContractStrictness:
         model = PostureReportModel.model_validate(hunchback_report_dict(), strict=True)
 
         assert model.metrics["trunk_inclination_deg"].value == 32.0
+
+
+class TestReadAndDeleteEndpoints:
+    """E6: GET /analyses, GET /analyses/{id}, DELETE /analyses/{id}.
+
+    All three require authentication. The tests override `get_current_user_id` with a fixed UUID
+    and inject a mock session so no database is needed — behaviour correctness is in the
+    integration suite; these tests cover the HTTP contract.
+    """
+
+    _USER_ID = uuid.uuid4()
+
+    def _build_client(
+        self,
+        settings: Settings,
+        storage: LocalDiskStorage,
+        session_mock: object,
+    ) -> Iterator[TestClient]:
+        """Client with auth, storage, and session all substituted."""
+        app: FastAPI = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_pose_backend] = lambda: FakePoseBackend(PosePreset.STRAIGHT)
+        app.dependency_overrides[get_storage] = lambda: storage
+        app.dependency_overrides[get_session] = _fake_session
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+        return app
+
+    def test_list_requires_authentication(self, settings: Settings, tmp_path: Any) -> None:
+        """Without an auth override the placeholder raises 401."""
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/analyses")
+        assert response.status_code == 401
+
+    def test_get_requires_authentication(self, settings: Settings) -> None:
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get(f"/api/v1/analyses/{uuid.uuid4()}")
+        assert response.status_code == 401
+
+    def test_delete_requires_authentication(self, settings: Settings) -> None:
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.delete(f"/api/v1/analyses/{uuid.uuid4()}")
+        assert response.status_code == 401
+
+    def test_get_returns_404_for_unknown_id(self, settings: Settings) -> None:
+        """404 whether not found or not owned — existence is not leaked."""
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get(f"/api/v1/analyses/{uuid.uuid4()}")
+        assert response.status_code == 404
+
+    def test_delete_returns_404_for_unknown_id(self, settings: Settings) -> None:
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.delete(f"/api/v1/analyses/{uuid.uuid4()}")
+        assert response.status_code == 404
+
+    def test_list_returns_empty_page_for_new_user(self, settings: Settings) -> None:
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/analyses")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["items"] == []
+        assert body["next_cursor"] is None
+
+    def test_list_rejects_malformed_cursor(self, settings: Settings) -> None:
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/analyses?cursor=not-a-valid-cursor")
+        assert response.status_code == 400

@@ -16,11 +16,15 @@ these models fail loudly if it changes.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
+    "AnalysisDetail",
+    "AnalysisListItem",
+    "AnalysisPage",
     "AnalysisResponse",
     "ContractModel",
     "DetectedLandmark",
@@ -30,6 +34,8 @@ __all__ = [
     "Metric",
     "PostureReportModel",
     "Quality",
+    "StoredFinding",
+    "StoredMetric",
 ]
 
 
@@ -193,3 +199,72 @@ class AnalysisResponse(ContractModel):
             "`PostureReportModel.image` for why the two can differ."
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# E6: read and delete endpoints
+# ---------------------------------------------------------------------------
+
+
+class AnalysisListItem(ContractModel):
+    """One row in the history list — enough to render a thumbnail row, nothing more."""
+
+    id: uuid.UUID
+    created_at: datetime
+    object_key: str
+    pose_detected: bool
+    overall_score: float | None
+
+
+class AnalysisPage(ContractModel):
+    """One page of the analysis history list."""
+
+    items: list[AnalysisListItem]
+    next_cursor: str | None = Field(
+        description=(
+            "Opaque cursor to pass as `cursor` on the next request. "
+            "`null` when this is the last page."
+        )
+    )
+
+
+class StoredMetric(ContractModel):
+    """One metric row as it came out of the database."""
+
+    code: str
+    value: float | None
+    unit: str
+    status: MetricStatus
+    detail: str
+    confidence: float | None
+
+
+class StoredFinding(ContractModel):
+    """One finding row as it came out of the database."""
+
+    code: str
+    severity: Severity
+    message: str
+    metric: str
+    value: float
+    confidence: float
+
+
+class AnalysisDetail(ContractModel):
+    """Full analysis record, returned by `GET /api/v1/analyses/{id}`."""
+
+    id: uuid.UUID
+    created_at: datetime
+    object_key: str
+    pose_detected: bool
+    image: ImageSize
+    overall_score: float | None
+    assessed: int
+    total: int
+    inference_ms: float
+    pose_backend: str
+    rules_version: str
+    schema_version: str
+    keypoints: list[DetectedLandmark]
+    metrics: list[StoredMetric]
+    findings: list[StoredFinding]
