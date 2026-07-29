@@ -5,6 +5,12 @@
 # and shut down cleanly. Those fail for entirely different reasons — a missing system library, a
 # wrong bind mount, a service name the proxy cannot resolve — none of which a unit test can see.
 #
+# Since OP-49 the stack is five services rather than two: `db`, `minio` and the `minio-init`
+# one-shot came with Epic E. This workflow still owns the *built* images, and `integration.yml`
+# owns the backing services in depth — health gating, connectivity, bucket bootstrap and
+# idempotency — without paying for an image build. The overlap here is deliberate and cheap: the
+# assertion below is that the full stack, images included, reaches its expected state together.
+#
 # Required from the first Docker commit, per the delivery rule: a capability and its check ship
 # together, and Docker is not exempt.
 #
@@ -95,7 +101,23 @@ jobs:
             *.cache-to=type=gha,mode=max
 
       - name: Start the stack
-        run: docker compose up -d --wait --wait-timeout 180
+        # Unqualified, so this brings up all five services. `--wait` returns only once every
+        # long-running one is healthy and `minio-init` has exited 0, which is the assertion that
+        # the whole dependency graph — including `api` waiting on the bucket bootstrap —
+        # resolves rather than deadlocks.
+        run: docker compose up -d --wait --wait-timeout 240
+
+      - name: The whole stack reached its expected state
+        # Printed so a failure elsewhere in the job can be read without re-running locally, and
+        # asserted so a service that quietly failed to start cannot be missed. `minio-init` is
+        # checked for a clean *exit*: it is the one service that must not still be running.
+        run: |
+          docker compose ps -a --format 'table {{.Service}}\t{{.Status}}'
+          for service in api web db minio; do
+            docker compose ps --status running --services | grep -qx "$service" \
+              || { echo "::error::$service is not running"; exit 1; }
+          done
+          test "$(docker compose ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^minio-init ' | cut -d' ' -f2)" = "0"
 
       - name: API reports ready
         run: |

@@ -1,0 +1,225 @@
+# Backing-service integration.
+#
+# `pr.yml` proves the code is correct against fakes and in-memory doubles. `containers.yml` proves
+# both application images build and wire together. This proves the *backing services* — Postgres
+# and MinIO — come up, become genuinely ready, bootstrap themselves and can be talked to.
+#
+# They fail for reasons the other two workflows structurally cannot see. A healthcheck that
+# reports ready before Postgres accepts TCP connections, a bucket that never gets created, an
+# `mc` invocation that fails and exits 0 anyway: every one of those passes a unit test and passes
+# an image build, and then produces an intermittent failure roughly one run in five.
+#
+# **No application image is built here.** That is `containers.yml`'s job and it costs minutes,
+# because the API image carries the inference stack. This workflow starts three services that are
+# all pulled, not built, and runs the API from the uv workspace when it needs one — so it is the
+# fast check of the two, and its failures are unambiguously about the services rather than about
+# the Dockerfile.
+#
+# Created in OP-49 alongside the services themselves, per the delivery rule: a capability and its
+# check ship together.
+
+name: integration
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  # Named explicitly rather than relying on the Compose defaults. If a default in
+  # docker-compose.yml changes, this workflow keeps asserting against the value it was written
+  # for, and the mismatch is a failure here rather than a green run that proved nothing.
+  POSTGRES_USER: openposture
+  POSTGRES_PASSWORD: openposture-dev-only
+  POSTGRES_DB: openposture
+  MINIO_ROOT_USER: openposture
+  MINIO_ROOT_PASSWORD: openposture-dev-only
+  OPENPOSTURE_S3_BUCKET: openposture
+
+jobs:
+  services:
+    name: services come up and bootstrap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+        with:
+          python: "3.12"
+
+      - name: Start the backing services from a clean state
+        # `--wait` blocks until every long-running service is healthy *and* every one-shot has
+        # exited successfully, so this step failing is itself the healthcheck assertion. Only
+        # the three services are named: `api` and `web` need an image build.
+        #
+        # The timeout is generous because a cold `docker pull` of Postgres and MinIO is most of
+        # the wall clock here.
+        run: docker compose up -d --wait --wait-timeout 180 db minio minio-init
+
+      - name: Every service reached the state it should have
+        # `--wait` succeeding is the real gate; this makes the states visible in the log so a
+        # future failure can be read without re-running locally. `minio-init` must be *exited*,
+        # not running — a bootstrap that never terminates would leave anything depending on
+        # `service_completed_successfully` waiting forever.
+        run: |
+          docker compose ps -a --format 'table {{.Service}}\t{{.Status}}'
+          docker compose ps --status running --services | grep -qx db
+          docker compose ps --status running --services | grep -qx minio
+          test "$(docker compose ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^minio-init ' | cut -d' ' -f2)" = "0"
+
+      - name: Postgres accepts a real query over TCP
+        # Through the published port, from the runner rather than from inside the container.
+        # `docker compose exec psql` would go over the unix socket and prove less: the socket is
+        # accepting connections seconds before the TCP listener is, which is the exact race the
+        # healthcheck exists to close.
+        run: |
+          PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -p 5432 \
+            -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc 'select 1' | grep -qx 1
+          echo "OK  postgres answered over TCP"
+
+      - name: The bucket was bootstrapped
+        # The container runs `mc` and nothing else; the assertion happens on the runner. The
+        # `minio/mc` image is a scratch-style image with no `grep`, and an assertion written
+        # inside it fails with "grep: command not found" — which, at the end of a pipeline, is a
+        # step that exits 0 and proves nothing. Exactly the failure mode this workflow exists to
+        # catch, so it should not be reintroduced here.
+        run: |
+          docker compose run --rm --entrypoint sh minio-init -c '
+            set -e
+            mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+            mc ls local
+          ' > /tmp/buckets
+          cat /tmp/buckets
+          grep -q "${OPENPOSTURE_S3_BUCKET}/" /tmp/buckets
+
+      - name: Bootstrapping twice is not an error
+        # The property that matters for `docker compose up` on an existing checkout: the volume
+        # already has the bucket, and the one-shot must still exit 0. Without `--ignore-existing`
+        # this fails, and it fails in a way that blocks the API from ever starting again, because
+        # `service_completed_successfully` is never satisfied.
+        run: |
+          docker compose up minio-init
+          test "$(docker compose ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^minio-init ' | cut -d' ' -f2)" = "0"
+
+      - name: The API can store an object in MinIO
+        # Run from the workspace rather than from the image, for the reason in the header. What
+        # this catches that the moto-backed unit tests cannot: a wrong endpoint URL, credentials
+        # that do not match the ones MinIO booted with, a bucket name that differs between the
+        # bootstrap and the application, and path-style addressing — moto accepts virtual-host
+        # style, a real MinIO on an IP address does not.
+        env:
+          OPENPOSTURE_POSE_BACKEND: fake
+          OPENPOSTURE_POSE_BACKEND_PRESET: hunchback
+          OPENPOSTURE_STORAGE_BACKEND: s3
+          OPENPOSTURE_S3_ENDPOINT_URL: http://127.0.0.1:9000
+          OPENPOSTURE_S3_ACCESS_KEY: openposture
+          OPENPOSTURE_S3_SECRET_KEY: openposture-dev-only
+        run: |
+          uv run python - <<'PY'
+          from fastapi.testclient import TestClient
+
+          from openposture_api.config import Settings
+          from openposture_api.main import create_app
+
+          with TestClient(create_app(Settings())) as client:
+              with open("fixtures/images/desk_hunch.jpeg", "rb") as image:
+                  response = client.post(
+                      "/api/v1/analyses",
+                      files={"image": ("desk_hunch.jpeg", image, "image/jpeg")},
+                  )
+
+          assert response.status_code == 201, (response.status_code, response.text)
+          key = response.json()["object_key"]
+          assert key.startswith("analyses/"), key
+          print("stored:", key)
+          PY
+
+      - name: The API's own engine reaches Postgres
+        # Through `create_engine(Settings())` rather than through psql, so what is exercised is
+        # the configured URL, the asyncpg driver and the pool the application will actually use.
+        # The step above proves Postgres is up; this proves the API can talk to it, which are
+        # different claims and fail for different reasons — a wrong driver prefix
+        # (`postgresql://` instead of `postgresql+asyncpg://`) passes the first and fails here.
+        #
+        # No schema yet: OP-51 adds Alembic, and this workflow gains the migration checks there.
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run python - <<'PY'
+          import asyncio
+
+          from sqlalchemy import text
+
+          from openposture_api.config import Settings
+          from openposture_api.db import close_engine, create_engine, create_session_factory
+
+
+          async def main() -> None:
+              engine = create_engine(Settings())
+              factory = create_session_factory(engine)
+              async with factory() as session:
+                  database = (await session.execute(text("select current_database()"))).scalar_one()
+                  server = (await session.execute(text("show server_version"))).scalar_one()
+              await close_engine(engine)
+              assert database == "openposture", database
+              print(f"connected to {database} on postgres {server}")
+
+
+          asyncio.run(main())
+          PY
+
+      - name: The object is actually in the bucket
+        # Asserted from MinIO's side, not from the API's response. A 201 carrying an object key
+        # only says the application believes it wrote something.
+        run: |
+          docker compose run --rm --entrypoint sh minio-init -c '
+            set -e
+            mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+            mc ls --recursive "local/$OPENPOSTURE_S3_BUCKET"
+          ' > /tmp/objects
+          cat /tmp/objects
+          grep -q "analyses/" /tmp/objects
+
+      - name: Capture logs
+        if: failure()
+        run: docker compose logs --no-color > /tmp/integration-logs.txt 2>&1 || true
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-logs
+          path: /tmp/integration-logs.txt
+          retention-days: 7
+
+      - name: Tear down cleanly
+        # `-v` matters here more than anywhere else: the whole point of the idempotency step
+        # above is that it ran against a *populated* volume, so leaving that volume behind would
+        # make the next run's "clean state" a lie.
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  integration-ok:
+    name: integration-ok
+    if: always()
+    needs: [services]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "services: ${{ needs.services.result }}"
+
+      - name: Fail if any job did not succeed
+        # Skipped counts as failure, as in containers.yml: nothing path-filters this workflow, so
+        # a skipped job means something went wrong rather than "not relevant to this change".
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1

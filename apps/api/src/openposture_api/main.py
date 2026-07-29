@@ -25,6 +25,7 @@ from fastapi import FastAPI
 from openposture_api import __version__
 from openposture_api.analyses import build_analyses_router, register_analysis_error_handlers
 from openposture_api.config import Settings, get_settings
+from openposture_api.db import close_engine, create_engine, create_session_factory
 from openposture_api.errors import register_error_handlers
 from openposture_api.health import ReadinessCheck, build_health_router
 from openposture_api.logging import configure_logging, request_id_middleware
@@ -99,10 +100,25 @@ def create_app(
         # `s3` builds a boto3 client — both side effects, and the factory promises none.
         app.state.storage = create_storage(resolved)
         _LOGGER.info("storage_ready", backend=app.state.storage.name)
+
+        # The engine opens no connection here: `create_async_engine` fills its pool lazily, on
+        # the first query. That is deliberate and load-bearing — as of OP-50 no route touches
+        # the database, so a stack running without Postgres starts exactly as it did before, and
+        # E5 turns the first query on without changing startup at all.
+        #
+        # It also means an unreachable database is *not* a startup failure. When the database
+        # becomes load-bearing in E5, `/health/ready` should gain a probe for it, so an instance
+        # that cannot reach Postgres is taken out of rotation rather than serving 500s. Adding
+        # that probe now would fail readiness for the whole current stack, which does not use it.
+        app.state.db_engine = create_engine(resolved)
+        app.state.session_factory = create_session_factory(app.state.db_engine)
+        _LOGGER.info("database_configured", pool_size=resolved.database_pool_size)
+
         try:
             yield
         finally:
             close_pose_backend(state)
+            await close_engine(app.state.db_engine)
 
     app = FastAPI(
         title="OpenPosture API",
