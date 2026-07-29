@@ -6,8 +6,8 @@ requires-python = ">=3.11"
 
 # The top of the dependency graph. Depends on both packages; nothing depends on this.
 # Web/DB/LLM dependencies arrive with the tickets that introduce them (Epics D, E, F) rather
-# than being declared speculatively here. Postgres, SQLAlchemy, MinIO and the Anthropic client
-# are therefore still absent — they land in OP-49 onward.
+# than being declared speculatively here. The Anthropic client is therefore still absent — it
+# lands in Epic F.
 dependencies = [
     "posture-core",
     "pose-backends",
@@ -24,6 +24,13 @@ dependencies = [
     "boto3>=1.35",
     "pillow>=11.0",
     "python-multipart>=0.0.18",
+    # 2.0 for the typed `Mapped[]` declarative style — the reason `mypy --strict` can see the
+    # models at all. The `asyncio` extra pulls greenlet, which SQLAlchemy needs to run its
+    # synchronous internals under an event loop.
+    "sqlalchemy[asyncio]>=2.0.36",
+    # The async Postgres driver. Not psycopg: the API is async end to end, and a synchronous
+    # driver blocks the event loop for the duration of every query.
+    "asyncpg>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -48,4 +55,10 @@ packages = ["src/openposture_api"]
 dev = [
     "httpx>=0.28",
     "moto[s3]>=5.2.2",
+    # Lets the model and session tests run in-process, with no container and no Postgres. The
+    # models are deliberately dialect-neutral — `Uuid`, `JSON` and `native_enum=False` all map
+    # onto SQLite — so these tests exercise the real mappings, real constraints and the real
+    # session dependency. What they cannot exercise is Postgres-specific behaviour; that is
+    # E4's `testcontainers` suite, which is a different ticket for a reason.
+    "aiosqlite>=0.20",
 ]

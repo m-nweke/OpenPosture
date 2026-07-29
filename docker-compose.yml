@@ -59,6 +59,11 @@ services:
       OPENPOSTURE_S3_BUCKET: ${OPENPOSTURE_S3_BUCKET:-openposture}
       OPENPOSTURE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-openposture}
       OPENPOSTURE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-openposture-dev-only}
+      # Built from the same variables the `db` service boots with, so changing a credential in
+      # one place cannot leave the API pointing at the old one. `db:5432` is the compose network,
+      # not the published port — POSTGRES_PORT only affects what the host can reach.
+      OPENPOSTURE_DATABASE_URL: >-
+        postgresql+asyncpg://${POSTGRES_USER:-openposture}:${POSTGRES_PASSWORD:-openposture-dev-only}@db:5432/${POSTGRES_DB:-openposture}
     volumes:
       # Bind-mounted so a code edit is picked up by `--reload` without a rebuild. Source only —
       # the virtualenv and the model stay in the image, which is why this does not shadow them.
@@ -96,6 +101,14 @@ services:
       # `mc mb` takes.
       minio-init:
         condition: service_completed_successfully
+      db:
+        # Not merely `started`. `depends_on` alone waits for the container, not for Postgres to
+        # accept connections, and the gap is a few seconds — long enough to produce a failure
+        # that passes locally and fails in CI about one run in five.
+        #
+        # As of OP-50 the API builds its engine lazily and issues no query, so this wait is
+        # ordering laid down ahead of the first one in E5 rather than a current requirement.
+        condition: service_healthy
     healthcheck:
       # Readiness, not liveness — deliberately different from the image's own HEALTHCHECK.
       # Compose uses this to gate `depends_on`, and the question there is "can it serve", not
