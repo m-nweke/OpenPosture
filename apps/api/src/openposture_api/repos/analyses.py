@@ -1,0 +1,242 @@
+"""Repository for the analysis aggregate.
+
+The analysis aggregate is the core multi-tenant resource. Every read method requires a
+`user_id` — there is no method that returns an analysis without one. That is not a convention;
+it is why a route that calls this repo cannot accidentally serve one user's analysis to another.
+The 404-not-403 rule in E8 is a consequence of this: the repo returns None for "not found" and
+for "found but wrong owner", so the route sees exactly one signal and renders it once.
+
+**No unscoped reads.** A test in the integration suite enumerates every method whose name
+starts with `get` or `list` and asserts that `user_id` appears in its signature. Adding a
+method without it will fail that test before the branch is merged.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import and_, delete as sql_delete, or_, select
+from sqlalchemy.orm import selectinload
+
+from openposture_api.db.models import Analysis, Finding, Keypoint, Metric
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+__all__ = ["AnalysisRepository", "FindingRecord", "KeypointRecord", "MetricRecord"]
+
+
+@dataclasses.dataclass(frozen=True)
+class KeypointRecord:
+    """One landmark's data, ready to be inserted as a `Keypoint` row."""
+
+    name: str
+    x: float
+    y: float
+    status: str
+    visibility: float
+    presence: float
+
+
+@dataclasses.dataclass(frozen=True)
+class MetricRecord:
+    """One metric's data, ready to be inserted as a `Metric` row."""
+
+    code: str
+    value: float | None
+    unit: str
+    status: str
+    detail: str
+    confidence: float | None
+
+
+@dataclasses.dataclass(frozen=True)
+class FindingRecord:
+    """One finding's data, ready to be inserted as a `Finding` row."""
+
+    code: str
+    severity: str
+    message: str
+    metric: str
+    value: float
+    confidence: float
+
+
+class AnalysisRepository:
+    """Read and write operations on the analysis aggregate.
+
+    One instance per request, constructed with the request's session. The session is
+    not owned here — the caller created it and the caller will commit or roll back.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(
+        self,
+        *,
+        object_key: str,
+        pose_detected: bool,
+        image_width: int,
+        image_height: int,
+        overall_score: float | None,
+        assessed: int,
+        total: int,
+        inference_ms: float,
+        pose_backend: str,
+        rules_version: str,
+        schema_version: str,
+        user_id: uuid.UUID | None = None,
+        keypoints: list[KeypointRecord] | None = None,
+        metrics: list[MetricRecord] | None = None,
+        findings: list[FindingRecord] | None = None,
+    ) -> Analysis:
+        """Persist a complete analysis with all its child rows.
+
+        Flushes the analysis first so child rows have a valid `analysis_id`, then
+        flushes the children. Does not commit — the caller controls the transaction.
+        """
+        analysis = Analysis(
+            user_id=user_id,
+            object_key=object_key,
+            pose_detected=pose_detected,
+            image_width=image_width,
+            image_height=image_height,
+            overall_score=overall_score,
+            assessed=assessed,
+            total=total,
+            inference_ms=inference_ms,
+            pose_backend=pose_backend,
+            rules_version=rules_version,
+            schema_version=schema_version,
+        )
+        self._session.add(analysis)
+        await self._session.flush()
+
+        if keypoints:
+            self._session.add_all(
+                Keypoint(
+                    analysis_id=analysis.id,
+                    name=kp.name,
+                    x=kp.x,
+                    y=kp.y,
+                    status=kp.status,
+                    visibility=kp.visibility,
+                    presence=kp.presence,
+                )
+                for kp in keypoints
+            )
+
+        if metrics:
+            self._session.add_all(
+                Metric(
+                    analysis_id=analysis.id,
+                    code=m.code,
+                    value=m.value,
+                    unit=m.unit,
+                    status=m.status,
+                    detail=m.detail,
+                    confidence=m.confidence,
+                )
+                for m in metrics
+            )
+
+        if findings:
+            self._session.add_all(
+                Finding(
+                    analysis_id=analysis.id,
+                    code=f.code,
+                    severity=f.severity,
+                    message=f.message,
+                    metric=f.metric,
+                    value=f.value,
+                    confidence=f.confidence,
+                )
+                for f in findings
+            )
+
+        if keypoints or metrics or findings:
+            await self._session.flush()
+
+        return analysis
+
+    async def get(
+        self,
+        user_id: uuid.UUID,
+        analysis_id: uuid.UUID,
+    ) -> Analysis | None:
+        """Fetch one analysis with its children, scoped to user_id.
+
+        Returns None both when the analysis does not exist and when it belongs to a
+        different user. The caller sees only 404 — existence is not leaked to the requester.
+        """
+        stmt = (
+            select(Analysis)
+            .where(Analysis.id == analysis_id, Analysis.user_id == user_id)
+            .options(
+                selectinload(Analysis.keypoints),
+                selectinload(Analysis.metrics),
+                selectinload(Analysis.findings),
+            )
+        )
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def list_page(
+        self,
+        user_id: uuid.UUID,
+        *,
+        cursor_created_at: datetime | None = None,
+        cursor_id: uuid.UUID | None = None,
+        limit: int = 20,
+    ) -> list[Analysis]:
+        """Return one page of analyses for a user, newest first.
+
+        Cursor pagination on `(created_at DESC, id DESC)`. To advance past the first
+        page, pass the last row's `created_at` and `id` from the previous response.
+
+        Both cursor fields must be provided together or not at all — a cursor with only
+        one half produces the same result as no cursor, silently.
+        """
+        stmt = (
+            select(Analysis)
+            .where(Analysis.user_id == user_id)
+            .order_by(Analysis.created_at.desc(), Analysis.id.desc())
+            .limit(limit)
+        )
+
+        if cursor_created_at is not None and cursor_id is not None:
+            stmt = stmt.where(
+                or_(
+                    Analysis.created_at < cursor_created_at,
+                    and_(
+                        Analysis.created_at == cursor_created_at,
+                        Analysis.id < cursor_id,
+                    ),
+                )
+            )
+
+        return list((await self._session.execute(stmt)).scalars().all())
+
+    async def delete(
+        self,
+        user_id: uuid.UUID,
+        analysis_id: uuid.UUID,
+    ) -> bool:
+        """Delete an analysis, scoped to user_id.
+
+        Returns True if a row was deleted, False if no row matched.
+        Returning False for another user's row is intentional: the caller sees no
+        difference between "not found" and "found but not yours".
+
+        CASCADE on the FK handles the children; no explicit child deletion needed.
+        """
+        result = await self._session.execute(
+            sql_delete(Analysis)
+            .where(Analysis.id == analysis_id, Analysis.user_id == user_id)
+            .returning(Analysis.id)
+        )
+        await self._session.flush()
+        return result.scalar_one_or_none() is not None

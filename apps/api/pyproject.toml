@@ -65,4 +65,7 @@ dev = [
     # session dependency. What they cannot exercise is Postgres-specific behaviour; that is
     # E4's `testcontainers` suite, which is a different ticket for a reason.
     "aiosqlite>=0.20",
+    # Real Postgres for E4's repository integration tests. The `postgres` extra pulls psycopg2
+    # which testcontainers uses to wait for the database to accept connections.
+    "testcontainers[postgres]>=4.9",
 ]
