@@ -57,13 +57,29 @@ jobs:
           python: "3.12"
 
       - name: Start the backing services from a clean state
-        # `--wait` blocks until every long-running service is healthy *and* every one-shot has
-        # exited successfully, so this step failing is itself the healthcheck assertion. Only
-        # the three services are named: `api` and `web` need an image build.
+        # `--wait` blocks until both are healthy, so this step failing *is* the healthcheck
+        # assertion. Only `db` and `minio` are named: `api` and `web` need an image build, which
+        # is `containers.yml`'s job.
+        #
+        # **`minio-init` is deliberately not in this list.** `--wait` means "running or healthy",
+        # and a one-shot that has exited is neither — naming it here makes Compose exit 1 on a
+        # perfectly successful bootstrap. `containers.yml` gets away with an unqualified
+        # `up --wait` only because `api` is in that invocation and declares `minio-init` as a
+        # `service_completed_successfully` dependency, which is what tells Compose the exit is
+        # expected. Here nothing does, so the one-shot is started and waited on separately below.
         #
         # The timeout is generous because a cold `docker pull` of Postgres and MinIO is most of
         # the wall clock here.
-        run: docker compose up -d --wait --wait-timeout 180 db minio minio-init
+        run: docker compose up -d --wait --wait-timeout 180 db minio
+
+      - name: The bucket bootstrap runs to completion
+        # `docker compose wait` blocks until the container exits and returns *its* exit code, so
+        # a failed `mc` fails this step. `up -d` alone would not: it returns as soon as the
+        # container is started, and a bootstrap that died on its first command would look
+        # identical to one that worked.
+        run: |
+          docker compose up -d minio-init
+          docker compose wait minio-init
 
       - name: Every service reached the state it should have
         # `--wait` succeeding is the real gate; this makes the states visible in the log so a
@@ -107,8 +123,8 @@ jobs:
         # this fails, and it fails in a way that blocks the API from ever starting again, because
         # `service_completed_successfully` is never satisfied.
         run: |
-          docker compose up minio-init
-          test "$(docker compose ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^minio-init ' | cut -d' ' -f2)" = "0"
+          docker compose up -d --force-recreate minio-init
+          docker compose wait minio-init
 
       - name: The API can store an object in MinIO
         # Run from the workspace rather than from the image, for the reason in the header. What
