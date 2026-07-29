@@ -19,12 +19,15 @@ allowlist, or a backend that is not there.
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Annotated, Final
 
 import structlog
 from fastapi import APIRouter, Depends, File, Request, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
+from openposture_api.db import get_session
 from openposture_api.errors import PROBLEM_TYPE_BASE, problem_response
 from openposture_api.images import (
     MAX_IMAGE_BYTES,
@@ -34,6 +37,7 @@ from openposture_api.images import (
     decode_upload,
 )
 from openposture_api.pose import get_pose_backend
+from openposture_api.repos import AnalysisRepository, FindingRecord, KeypointRecord, MetricRecord
 from openposture_api.schemas import (
     AnalysisResponse,
     DetectedLandmark,
@@ -44,6 +48,8 @@ from openposture_api.storage import StorageBackend, StorageError, get_storage
 from pose_backends.base import PoseBackend
 from pose_backends.errors import PoseBackendError
 from posture_core import build_report
+from posture_core.report import SCHEMA_VERSION as _SCHEMA_VERSION
+from posture_core.thresholds import DEFAULT_THRESHOLDS as _DEFAULT_THRESHOLDS
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -91,6 +97,7 @@ def build_analyses_router() -> APIRouter:
         request: Request,
         backend: Annotated[PoseBackend, Depends(get_pose_backend)],
         storage: Annotated[StorageBackend, Depends(get_storage)],
+        session: Annotated[AsyncSession, Depends(get_session)],
         image: Annotated[UploadFile, File(description="The photograph to analyse.")],
     ) -> AnalysisResponse:
         raw = await _read_within_limit(image)
@@ -101,15 +108,35 @@ def build_analyses_router() -> APIRouter:
         # more in context switching than it saves. The moment that stops being true (a heavier
         # model, or real concurrency) this becomes `run_in_threadpool`, which is one line and one
         # of the four reasons ADR-0001 chose FastAPI.
+        _t = time.perf_counter()
         frame = backend.detect(decoded.array)
+        measured_ms = (time.perf_counter() - _t) * 1000.0
 
         stored = storage.put(decoded.data, content_type=decoded.content_type)
+
+        repo = AnalysisRepository(session)
 
         if frame is None:
             # An ordinary outcome — the user photographed their desk. 201, because the request
             # succeeded and "nobody in this image" is the finding.
+            analysis = await repo.create(
+                object_key=stored.key,
+                pose_detected=False,
+                image_width=decoded.width,
+                image_height=decoded.height,
+                overall_score=None,
+                assessed=0,
+                total=0,
+                inference_ms=measured_ms,
+                pose_backend=backend.name,
+                rules_version=_DEFAULT_THRESHOLDS.version,
+                schema_version=_SCHEMA_VERSION,
+            )
+            await session.commit()
+
             _LOGGER.info("analysis_no_pose", backend=backend.name, object_key=stored.key)
             return AnalysisResponse(
+                id=analysis.id,
                 object_key=stored.key,
                 pose_detected=False,
                 report=None,
@@ -119,10 +146,29 @@ def build_analyses_router() -> APIRouter:
 
         report = build_report(frame)
 
+        analysis = await repo.create(
+            object_key=stored.key,
+            pose_detected=True,
+            image_width=decoded.width,
+            image_height=decoded.height,
+            overall_score=report.overall_score,
+            assessed=report.quality.assessed,
+            total=report.quality.total,
+            inference_ms=report.inference_ms,
+            pose_backend=backend.name,
+            rules_version=report.rules_version,
+            schema_version=report.schema_version,
+            keypoints=_keypoint_records(frame, report),
+            metrics=_metric_records(report),
+            findings=_finding_records(report),
+        )
+        await session.commit()
+
         _LOGGER.info(
             "analysis_complete",
             backend=backend.name,
             object_key=stored.key,
+            analysis_id=str(analysis.id),
             assessed=report.quality.assessed,
             total=report.quality.total,
             findings=len(report.findings),
@@ -130,6 +176,7 @@ def build_analyses_router() -> APIRouter:
         )
 
         return AnalysisResponse(
+            id=analysis.id,
             object_key=stored.key,
             pose_detected=True,
             landmarks=_landmarks_for(frame, report),
@@ -148,6 +195,53 @@ def build_analyses_router() -> APIRouter:
         )
 
     return router
+
+
+def _keypoint_records(frame: PoseFrame, report: PostureReport) -> list[KeypointRecord]:
+    """Pair each detected landmark with its resolver status, ready for the repository."""
+    statuses = report.quality.keypoints
+    return [
+        KeypointRecord(
+            name=str(name),
+            x=landmark.x,
+            y=landmark.y,
+            status=str(statuses[name]),
+            visibility=landmark.visibility,
+            presence=landmark.presence,
+        )
+        for name, landmark in frame.landmarks.items()
+    ]
+
+
+def _metric_records(report: PostureReport) -> list[MetricRecord]:
+    return [
+        MetricRecord(
+            code=name,
+            value=metric.value,
+            unit=metric.unit,
+            status=metric.status.value,
+            detail=metric.detail,
+            confidence=metric.confidence,
+        )
+        for name, metric in report.metrics.items()
+    ]
+
+
+def _finding_records(report: PostureReport) -> list[FindingRecord]:
+    return [
+        FindingRecord(
+            code=finding.code,
+            severity=finding.severity.value,
+            message=finding.message,
+            metric=finding.metric,
+            # `finding.value` is typed `float | None` in posture_core.rules but in practice is
+            # always set when a finding fires — a rule only fires when a metric is OK, and an OK
+            # metric has a value. The `or 0.0` guard is defensive; it should never trigger.
+            value=finding.value or 0.0,
+            confidence=finding.confidence,
+        )
+        for finding in report.findings
+    ]
 
 
 def _landmarks_for(frame: PoseFrame, report: PostureReport) -> list[DetectedLandmark]:

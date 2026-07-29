@@ -38,8 +38,8 @@ if config.config_file_name is not None:
 # Import Base and register all model tables with its metadata. Both imports are load-bearing:
 # Base brings the naming convention; the models import registers the seven table definitions.
 # Without the second import, Base.metadata is empty and migrations operate on nothing.
-from openposture_api.db.base import Base  # noqa: E402
 import openposture_api.db.models  # noqa: E402, F401
+from openposture_api.db.base import Base  # noqa: E402
 
 target_metadata = Base.metadata
 

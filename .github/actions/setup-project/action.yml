@@ -58,9 +58,12 @@ runs:
     - name: Sync Python workspace
       if: inputs.python != ''
       shell: bash
-      # --frozen fails if uv.lock is out of date with the pyproject files, so a dependency change
-      # that was never locked cannot merge.
-      run: uv sync --all-packages --frozen
+      # --locked, not --frozen. Both refuse to *write* the lock; only --locked also verifies it is
+      # up to date with the pyproject files and fails when it is not. --frozen silently installs
+      # whatever the stale lock happens to say, and a dependency that was added but never locked
+      # then surfaces hundreds of lines later as `ModuleNotFoundError` in an unrelated test job.
+      # That is exactly what this flag was always documented as preventing.
+      run: uv sync --all-packages --locked
 
     # ---- Node ---------------------------------------------------------------
     - name: Install Node
