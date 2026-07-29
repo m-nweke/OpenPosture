@@ -9,8 +9,16 @@
 # why the bucket bootstrap below is a service rather than a step in a README.
 #
 # **Compose-only variables**, overridable in `.env`, documented here rather than in
-# `.env.example` because they are not application settings — `Settings` claims the
-# `OPENPOSTURE_` namespace and rejects anything else it finds in that file:
+# `.env.example` because of an asymmetry in pydantic-settings that is easy to read past:
+#
+#   * an unprefixed **process environment variable** is ignored by `Settings`, as `env_prefix`
+#     implies — `POSTGRES_PORT=5432 uv run uvicorn ...` is fine;
+#   * an unprefixed **key in the `.env` file** is not. The dotenv source loads the file whole and
+#     validates every key against the model, so under `extra="forbid"` an unrecognised one is a
+#     startup error: `postgres_port | Extra inputs are not permitted`.
+#
+# Compose reads the same `.env`, so putting these there breaks a host-run API for anyone who ran
+# `cp .env.example .env`. Hence: documented here, next to the services that consume them.
 #
 #   POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB   development database credentials
 #   MINIO_ROOT_USER / MINIO_ROOT_PASSWORD             development object-store credentials

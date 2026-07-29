@@ -94,27 +94,45 @@ def create_app(
         than a 503, which reaches the same conclusion without a background task and the
         half-initialised window one would open.
         """
+        # Loaded before the `try` deliberately: if this raises there is nothing to release, and
+        # wrapping it would mean the teardown below had to cope with a state that was never
+        # constructed.
         state = load_pose_backend(resolved) if load_backend else PoseBackendState()
         app.state.pose_backend_state = state
-        # Built here rather than at construction because `local` creates its root directory and
-        # `s3` builds a boto3 client — both side effects, and the factory promises none.
-        app.state.storage = create_storage(resolved)
-        _LOGGER.info("storage_ready", backend=app.state.storage.name)
 
-        # The engine opens no connection here: `create_async_engine` fills its pool lazily, on
-        # the first query. That is deliberate and load-bearing — as of OP-50 no route touches
-        # the database, so a stack running without Postgres starts exactly as it did before, and
-        # E5 turns the first query on without changing startup at all.
-        #
-        # It also means an unreachable database is *not* a startup failure. When the database
-        # becomes load-bearing in E5, `/health/ready` should gain a probe for it, so an instance
-        # that cannot reach Postgres is taken out of rotation rather than serving 500s. Adding
-        # that probe now would fail readiness for the whole current stack, which does not use it.
-        app.state.db_engine = create_engine(resolved)
-        app.state.session_factory = create_session_factory(app.state.db_engine)
-        _LOGGER.info("database_configured", pool_size=resolved.database_pool_size)
+        # Present before anything that can fail, so the teardown always finds an attribute
+        # rather than an `AttributeError` that would replace the real startup error with a
+        # misleading one. `close_engine` takes `None` for the same reason.
+        app.state.db_engine = None
+        app.state.session_factory = None
 
+        # Everything from here is inside the `try`, so a failure part-way through startup still
+        # releases what was already acquired. Constructing the engine outside it would mean an
+        # unusable database URL leaked a loaded pose model — tens of seconds of work and a live
+        # native handle — on every failed boot.
         try:
+            # Built here rather than at construction because `local` creates its root directory
+            # and `s3` builds a boto3 client — both side effects, and the factory promises none.
+            app.state.storage = create_storage(resolved)
+            _LOGGER.info("storage_ready", backend=app.state.storage.name)
+
+            # The engine opens no connection here: `create_async_engine` fills its pool lazily,
+            # on the first query. That is deliberate and load-bearing — as of OP-50 no route
+            # touches the database, so a stack running without Postgres starts exactly as it did
+            # before, and E5 turns the first query on without changing startup at all.
+            #
+            # It also means an unreachable database is *not* a startup failure. It does not mean
+            # nothing can fail here: a malformed URL or an uninstalled driver raises immediately,
+            # which is the case the `try` exists for.
+            #
+            # When the database becomes load-bearing in E5, `/health/ready` should gain a probe
+            # for it, so an instance that cannot reach Postgres is taken out of rotation rather
+            # than serving 500s. Adding that probe now would fail readiness for the whole current
+            # stack, which does not use it.
+            app.state.db_engine = create_engine(resolved)
+            app.state.session_factory = create_session_factory(app.state.db_engine)
+            _LOGGER.info("database_configured", pool_size=resolved.database_pool_size)
+
             yield
         finally:
             close_pose_backend(state)
