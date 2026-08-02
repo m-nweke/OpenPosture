@@ -106,6 +106,7 @@ async def run_migrations_online() -> None:
         # the second migrator acquires it, runs `upgrade head`, finds nothing to do, and exits.
         await connection.execute(text(f"SELECT pg_advisory_lock({_ADVISORY_LOCK_KEY})"))
         await connection.run_sync(do_run_migrations)
+        await connection.commit()
 
     await connectable.dispose()
 
