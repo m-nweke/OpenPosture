@@ -338,11 +338,18 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     Raises `HTTPException(400)` on any malformed input — the cursor is client-supplied and
     must be treated as untrusted.
     """
+    # Narrow rather than bare `Exception`: every way a malformed cursor can fail lands in one of
+    # these three. `binascii.Error` from base64 and `JSONDecodeError` are both ValueError
+    # subclasses, as are `fromisoformat` and `UUID`; a payload that decodes to a non-dict raises
+    # TypeError, and one missing a key raises KeyError. Catching `Exception` would also swallow a
+    # genuine bug in here and report it to the client as their bad input.
     try:
         payload = json.loads(base64.urlsafe_b64decode(cursor.encode()))
         return datetime.fromisoformat(payload["t"]), uuid.UUID(payload["id"])
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor.")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor."
+        ) from exc
 
 
 def _to_list_item(analysis: Analysis) -> AnalysisListItem:

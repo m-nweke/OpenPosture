@@ -452,20 +452,6 @@ class TestReadAndDeleteEndpoints:
 
     _USER_ID = uuid.uuid4()
 
-    def _build_client(
-        self,
-        settings: Settings,
-        storage: LocalDiskStorage,
-        session_mock: object,
-    ) -> Iterator[TestClient]:
-        """Client with auth, storage, and session all substituted."""
-        app: FastAPI = create_app(settings, load_backend=False)
-        app.dependency_overrides[get_pose_backend] = lambda: FakePoseBackend(PosePreset.STRAIGHT)
-        app.dependency_overrides[get_storage] = lambda: storage
-        app.dependency_overrides[get_session] = _fake_session
-        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
-        return app
-
     def test_list_requires_authentication(self, settings: Settings, tmp_path: Any) -> None:
         """Without an auth override the placeholder raises 401."""
         app = create_app(settings, load_backend=False)
