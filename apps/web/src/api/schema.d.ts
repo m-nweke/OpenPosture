@@ -11,7 +11,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List analyses newest first
+         * @description Returns a cursor-paginated list of the authenticated user's analyses. Pass the `next_cursor` from a previous response as `cursor` to advance. `next_cursor` is `null` on the last page.
+         */
+        get: operations["list_analyses_api_v1_analyses_get"];
         put?: never;
         /**
          * Analyse posture in a photograph
@@ -19,6 +23,30 @@ export interface paths {
          */
         post: operations["create_analysis_api_v1_analyses_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyses/{analysis_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch one analysis
+         * @description Returns the full analysis record including keypoints, metrics, and findings. Returns 404 whether the analysis does not exist or belongs to a different user — existence is not leaked.
+         */
+        get: operations["get_analysis_api_v1_analyses__analysis_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete one analysis
+         * @description Hard-deletes the analysis and all its child rows. Returns 404 whether the analysis does not exist or belongs to a different user — the same 404-not-403 rule as the read endpoint.
+         */
+        delete: operations["delete_analysis_api_v1_analyses__analysis_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -68,6 +96,82 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AnalysisDetail
+         * @description Full analysis record, returned by `GET /api/v1/analyses/{id}`.
+         */
+        AnalysisDetail: {
+            /** Assessed */
+            assessed: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Findings */
+            findings: components["schemas"]["StoredFinding"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            image: components["schemas"]["ImageSize"];
+            /** Inference Ms */
+            inference_ms: number;
+            /** Keypoints */
+            keypoints: components["schemas"]["DetectedLandmark"][];
+            /** Metrics */
+            metrics: components["schemas"]["StoredMetric"][];
+            /** Object Key */
+            object_key: string;
+            /** Overall Score */
+            overall_score: number | null;
+            /** Pose Backend */
+            pose_backend: string;
+            /** Pose Detected */
+            pose_detected: boolean;
+            /** Rules Version */
+            rules_version: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * AnalysisListItem
+         * @description One row in the history list — enough to render a thumbnail row, nothing more.
+         */
+        AnalysisListItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Object Key */
+            object_key: string;
+            /** Overall Score */
+            overall_score: number | null;
+            /** Pose Detected */
+            pose_detected: boolean;
+        };
+        /**
+         * AnalysisPage
+         * @description One page of the analysis history list.
+         */
+        AnalysisPage: {
+            /** Items */
+            items: components["schemas"]["AnalysisListItem"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor to pass as `cursor` on the next request. `null` when this is the last page.
+             */
+            next_cursor: string | null;
+        };
         /**
          * AnalysisResponse
          * @description What `POST /api/v1/analyses` returns on success.
@@ -322,6 +426,48 @@ export interface components {
             /** Ready */
             ready: boolean;
         };
+        /**
+         * StoredFinding
+         * @description One finding row as it came out of the database.
+         */
+        StoredFinding: {
+            /** Code */
+            code: string;
+            /** Confidence */
+            confidence: number;
+            /** Message */
+            message: string;
+            /** Metric */
+            metric: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "major" | "minor" | "info";
+            /** Value */
+            value: number;
+        };
+        /**
+         * StoredMetric
+         * @description One metric row as it came out of the database.
+         */
+        StoredMetric: {
+            /** Code */
+            code: string;
+            /** Confidence */
+            confidence: number | null;
+            /** Detail */
+            detail: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "insufficient_keypoints" | "low_confidence";
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: number | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -344,6 +490,40 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_analyses_api_v1_analyses_get: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: number;
+                /** @description Opaque cursor from `next_cursor`. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_analysis_api_v1_analyses_post: {
         parameters: {
             query?: never;
@@ -409,6 +589,80 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_analysis_api_v1_analyses__analysis_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisDetail"];
+                };
+            };
+            /** @description Analysis not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_analysis_api_v1_analyses__analysis_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Analysis not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

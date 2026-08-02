@@ -1,6 +1,183 @@
 {
   "components": {
     "schemas": {
+      "AnalysisDetail": {
+        "additionalProperties": false,
+        "description": "Full analysis record, returned by `GET /api/v1/analyses/{id}`.",
+        "properties": {
+          "assessed": {
+            "title": "Assessed",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/StoredFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/components/schemas/ImageSize"
+          },
+          "inference_ms": {
+            "title": "Inference Ms",
+            "type": "number"
+          },
+          "keypoints": {
+            "items": {
+              "$ref": "#/components/schemas/DetectedLandmark"
+            },
+            "title": "Keypoints",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/StoredMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "object_key": {
+            "title": "Object Key",
+            "type": "string"
+          },
+          "overall_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Score"
+          },
+          "pose_backend": {
+            "title": "Pose Backend",
+            "type": "string"
+          },
+          "pose_detected": {
+            "title": "Pose Detected",
+            "type": "boolean"
+          },
+          "rules_version": {
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "object_key",
+          "pose_detected",
+          "image",
+          "overall_score",
+          "assessed",
+          "total",
+          "inference_ms",
+          "pose_backend",
+          "rules_version",
+          "schema_version",
+          "keypoints",
+          "metrics",
+          "findings"
+        ],
+        "title": "AnalysisDetail",
+        "type": "object"
+      },
+      "AnalysisListItem": {
+        "additionalProperties": false,
+        "description": "One row in the history list \u2014 enough to render a thumbnail row, nothing more.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "object_key": {
+            "title": "Object Key",
+            "type": "string"
+          },
+          "overall_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Score"
+          },
+          "pose_detected": {
+            "title": "Pose Detected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "object_key",
+          "pose_detected",
+          "overall_score"
+        ],
+        "title": "AnalysisListItem",
+        "type": "object"
+      },
+      "AnalysisPage": {
+        "additionalProperties": false,
+        "description": "One page of the analysis history list.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opaque cursor to pass as `cursor` on the next request. `null` when this is the last page.",
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AnalysisPage",
+        "type": "object"
+      },
       "AnalysisResponse": {
         "additionalProperties": false,
         "description": "What `POST /api/v1/analyses` returns on success.",
@@ -497,6 +674,110 @@
         "title": "ReadinessCheck",
         "type": "object"
       },
+      "StoredFinding": {
+        "additionalProperties": false,
+        "description": "One finding row as it came out of the database.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "major",
+              "minor",
+              "info"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "metric",
+          "value",
+          "confidence"
+        ],
+        "title": "StoredFinding",
+        "type": "object"
+      },
+      "StoredMetric": {
+        "additionalProperties": false,
+        "description": "One metric row as it came out of the database.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "insufficient_keypoints",
+              "low_confidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "code",
+          "value",
+          "unit",
+          "status",
+          "detail",
+          "confidence"
+        ],
+        "title": "StoredMetric",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -547,6 +828,70 @@
   "openapi": "3.1.0",
   "paths": {
     "/api/v1/analyses": {
+      "get": {
+        "description": "Returns a cursor-paginated list of the authenticated user's analyses. Pass the `next_cursor` from a previous response as `cursor` to advance. `next_cursor` is `null` on the last page.",
+        "operationId": "list_analyses_api_v1_analyses_get",
+        "parameters": [
+          {
+            "description": "Page size.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Page size.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from `next_cursor`.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from `next_cursor`.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List analyses newest first",
+        "tags": [
+          "analyses"
+        ]
+      },
       "post": {
         "description": "Upload a lateral photograph and receive a posture report. A report that could not assess some metrics still returns 201 with those metrics listed under `quality.gaps` \u2014 abstention is an answer, not an error.",
         "operationId": "create_analysis_api_v1_analyses_post",
@@ -598,6 +943,91 @@
           }
         },
         "summary": "Analyse posture in a photograph",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
+    "/api/v1/analyses/{analysis_id}": {
+      "delete": {
+        "description": "Hard-deletes the analysis and all its child rows. Returns 404 whether the analysis does not exist or belongs to a different user \u2014 the same 404-not-403 rule as the read endpoint.",
+        "operationId": "delete_analysis_api_v1_analyses__analysis_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Analysis not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete one analysis",
+        "tags": [
+          "analyses"
+        ]
+      },
+      "get": {
+        "description": "Returns the full analysis record including keypoints, metrics, and findings. Returns 404 whether the analysis does not exist or belongs to a different user \u2014 existence is not leaked.",
+        "operationId": "get_analysis_api_v1_analyses__analysis_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Analysis not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fetch one analysis",
         "tags": [
           "analyses"
         ]
