@@ -104,7 +104,14 @@ async def run_migrations_online() -> None:
         # so a second migrator waits here while the first runs its migrations. When the first
         # migrator's connection closes (end of this `async with`), the lock is released and
         # the second migrator acquires it, runs `upgrade head`, finds nothing to do, and exits.
-        await connection.execute(text(f"SELECT pg_advisory_lock({_ADVISORY_LOCK_KEY})"))
+        #
+        # Bound parameter rather than an f-string. The key is a module-level `int` today, so
+        # interpolation is not currently exploitable — but "not currently" is the whole problem
+        # with writing it that way, and a parameterised statement costs nothing.
+        await connection.execute(
+            text("SELECT pg_advisory_lock(:lock_key)"),
+            {"lock_key": _ADVISORY_LOCK_KEY},
+        )
         await connection.run_sync(do_run_migrations)
         await connection.commit()
 
