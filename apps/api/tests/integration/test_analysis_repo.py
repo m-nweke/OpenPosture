@@ -273,6 +273,55 @@ async def test_list_page_cursor_advances_the_window(session: AsyncSession) -> No
     assert ids_page1 | ids_page2 == {a.id for a in analyses}, "pages must cover all rows"
 
 
+async def test_list_page_is_stable_when_rows_are_inserted_mid_traversal(
+    session: AsyncSession,
+) -> None:
+    """A row inserted between page 1 and page 2 causes neither a skip nor a duplicate.
+
+    This is the property offset pagination cannot have, and the reason the ticket specified a
+    cursor. With `LIMIT 3 OFFSET 3`, inserting one newer row pushes everything down by one
+    position, so page 2 re-serves the last row of page 1 and the reader sees it twice. The
+    cursor is anchored to a row's own `(created_at, id)` rather than to a count, so an insert
+    elsewhere in the ordering cannot move the boundary.
+
+    The new row is newer than everything, so under `created_at DESC` it sorts ahead of page 1
+    and is correctly absent from page 2 — it was not there when traversal began.
+    """
+    user_id = await _make_user_id(session)
+    repo = AnalysisRepository(session)
+
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    original = []
+    for i in range(5):
+        a = await _create_minimal(session, user_id=user_id, object_key=f"analyses/{i}.jpg")
+        a.created_at = base + timedelta(seconds=i)
+        original.append(a)
+    await session.flush()
+
+    page1 = await repo.list_page(user_id, limit=3)
+    assert len(page1) == 3
+
+    # The insert that would break an offset-based reader.
+    intruder = await _create_minimal(session, user_id=user_id, object_key="analyses/new.jpg")
+    intruder.created_at = base + timedelta(seconds=99)
+    await session.flush()
+
+    last = page1[-1]
+    page2 = await repo.list_page(
+        user_id,
+        cursor_created_at=last.created_at,
+        cursor_id=last.id,
+        limit=3,
+    )
+
+    ids1 = [row.id for row in page1]
+    ids2 = [row.id for row in page2]
+    assert set(ids1).isdisjoint(ids2), "no row may appear on both pages"
+    assert len(ids1 + ids2) == len(set(ids1 + ids2)), "no duplicates within the traversal"
+    assert set(ids1) | set(ids2) == {a.id for a in original}, "every original row seen exactly once"
+    assert intruder.id not in set(ids1) | set(ids2), "a row inserted mid-traversal is not injected"
+
+
 async def test_list_page_returns_empty_for_user_with_no_analyses(session: AsyncSession) -> None:
     user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)

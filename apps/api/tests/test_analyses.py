@@ -509,3 +509,37 @@ class TestReadAndDeleteEndpoints:
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.get("/api/v1/analyses?cursor=not-a-valid-cursor")
         assert response.status_code == 400
+
+    def test_delete_removes_the_stored_object(
+        self, settings: Settings, storage: LocalDiskStorage
+    ) -> None:
+        """Deleting the rows must also destroy the image.
+
+        The row is the only thing that knows the object key, so a delete that stops at the
+        database leaves an image nothing can ever reach — and, for photographs of the user's
+        body, leaves it after they asked for it to be gone.
+        """
+        stored = storage.put(b"not-really-a-jpeg", content_type="image/jpeg")
+        assert storage.exists(stored.key)
+
+        async def _session_holding_one_row() -> AsyncIterator[MagicMock]:
+            result = MagicMock()
+            # What `DELETE ... RETURNING object_key` yields for a row that matched.
+            result.scalar_one_or_none.return_value = stored.key
+            mock = MagicMock()
+            mock.execute = AsyncMock(return_value=result)
+            mock.flush = AsyncMock()
+            mock.commit = AsyncMock()
+            mock.close = AsyncMock()
+            yield mock
+
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _session_holding_one_row
+        app.dependency_overrides[get_storage] = lambda: storage
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.delete(f"/api/v1/analyses/{uuid.uuid4()}")
+
+        assert response.status_code == 204
+        assert not storage.exists(stored.key), "the object outlived the row that named it"
