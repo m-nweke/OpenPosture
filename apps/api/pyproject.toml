@@ -31,6 +31,10 @@ dependencies = [
     # The async Postgres driver. Not psycopg: the API is async end to end, and a synchronous
     # driver blocks the event loop for the duration of every query.
     "asyncpg>=0.30",
+    # Schema migration. Runs in the container entrypoint behind a Postgres advisory lock so
+    # concurrent API replicas serialise rather than race on DDL. Ships as a runtime dependency
+    # (not dev-only) because the container needs it to start.
+    "alembic>=1.14",
 ]
 
 [project.optional-dependencies]
@@ -61,4 +65,9 @@ dev = [
     # session dependency. What they cannot exercise is Postgres-specific behaviour; that is
     # E4's `testcontainers` suite, which is a different ticket for a reason.
     "aiosqlite>=0.20",
+    # Real Postgres for E4's repository integration tests. No extra and no psycopg2: 4.15 waits
+    # for readiness by running `psql` *inside* the container, so the host needs no sync driver —
+    # which suits a project whose only Postgres driver is asyncpg. Floored at 4.15 because that
+    # is where `testcontainers.community.postgres` replaced `testcontainers.postgres`.
+    "testcontainers>=4.15",
 ]

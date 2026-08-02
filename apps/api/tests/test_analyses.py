@@ -8,8 +8,10 @@ this project's story — an all-gaps report is a 201, not an error.
 from __future__ import annotations
 
 import io
+import uuid
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +19,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from openposture_api.config import Settings
+from openposture_api.db import get_session
 from openposture_api.images import MAX_IMAGE_BYTES
 from openposture_api.main import create_app
 from openposture_api.pose import get_pose_backend
@@ -27,7 +30,7 @@ from pose_backends.fake import FakePoseBackend, PosePreset
 from posture_core import build_report
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import AsyncIterator, Iterator
     from pathlib import Path
 
     from fastapi import FastAPI
@@ -80,6 +83,37 @@ def storage(tmp_path: Path) -> LocalDiskStorage:
     return LocalDiskStorage(tmp_path / "objects")
 
 
+async def _fake_session() -> AsyncIterator[MagicMock]:
+    """A mock database session for unit tests.
+
+    The route calls `session.add`, `session.flush`, and `session.commit`. All are mocked here so
+    these tests exercise the HTTP contract without a real database. Persistence correctness is
+    covered by the integration suite in `tests/integration/`.
+
+    `flush` is not a plain no-op, though, and it cannot be. `Base` declares
+    `id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)`, and SQLAlchemy
+    applies a column default at INSERT time — not at construction. So `analysis.id` is None until
+    something flushes, which is exactly why `AnalysisRepository.create` flushes the parent before
+    it builds the child rows that reference it. A mock whose flush did nothing would leave `id`
+    unset and the route would fail to build its response — so the fake reproduces the one piece
+    of real flush behaviour these tests depend on, and nothing else.
+    """
+    pending: list[Any] = []
+
+    async def _flush() -> None:
+        for obj in pending:
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid.uuid4()
+
+    mock = MagicMock()
+    mock.add = MagicMock(side_effect=pending.append)
+    mock.add_all = MagicMock(side_effect=pending.extend)
+    mock.flush = AsyncMock(side_effect=_flush)
+    mock.commit = AsyncMock()
+    mock.close = AsyncMock()
+    yield mock
+
+
 @contextmanager
 def build_client(
     settings: Settings,
@@ -88,10 +122,11 @@ def build_client(
     preset: PosePreset = PosePreset.STRAIGHT,
     backend: object | None = None,
 ) -> Iterator[TestClient]:
-    """An app whose pose backend and storage are both substituted.
+    """An app whose pose backend, storage, and database session are all substituted.
 
-    `load_backend=False` plus two dependency overrides means this test touches no model file and
-    writes nowhere but a temporary directory — which is the whole point of both seams.
+    `load_backend=False` plus three dependency overrides means this test touches no model file,
+    writes nowhere but a temporary directory, and makes no database call — the point of all three
+    seams.
 
     A context manager rather than a bare generator. Called as `next(build_client(...))` the
     generator is never closed, so the `with TestClient(...)` block below never exits: lifespan
@@ -100,6 +135,7 @@ def build_client(
     app: FastAPI = create_app(settings, load_backend=False)
     app.dependency_overrides[get_pose_backend] = lambda: backend or FakePoseBackend(preset)
     app.dependency_overrides[get_storage] = lambda: storage
+    app.dependency_overrides[get_session] = _fake_session
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 
@@ -124,6 +160,15 @@ class TestValidUpload:
         assert body["pose_detected"] is True
         assert body["report"]["schema_version"]
         assert body["report"]["metrics"]
+
+    def test_the_response_carries_a_database_id(self, client: TestClient) -> None:
+        """Every persisted analysis gets a UUID that the client can use to retrieve or delete it."""
+        body = upload(client, make_image()).json()
+
+        assert "id" in body
+        # A valid UUID — not a sequential integer, not a storage key, not a URL.
+        parsed = uuid.UUID(body["id"])
+        assert parsed.version == 4
 
     def test_the_report_carries_real_measured_values(self, client: TestClient) -> None:
         """Not a placeholder, not a constant string — a number describing the pose."""

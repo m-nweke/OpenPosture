@@ -135,47 +135,12 @@ jobs:
           echo "minio-init exited ${code} on a populated volume"
           test "${code}" = "0"
 
-      - name: The API can store an object in MinIO
-        # Run from the workspace rather than from the image, for the reason in the header. What
-        # this catches that the moto-backed unit tests cannot: a wrong endpoint URL, credentials
-        # that do not match the ones MinIO booted with, a bucket name that differs between the
-        # bootstrap and the application, and path-style addressing — moto accepts virtual-host
-        # style, a real MinIO on an IP address does not.
-        env:
-          OPENPOSTURE_POSE_BACKEND: fake
-          OPENPOSTURE_POSE_BACKEND_PRESET: hunchback
-          OPENPOSTURE_STORAGE_BACKEND: s3
-          OPENPOSTURE_S3_ENDPOINT_URL: http://127.0.0.1:9000
-          OPENPOSTURE_S3_ACCESS_KEY: openposture
-          OPENPOSTURE_S3_SECRET_KEY: openposture-dev-only
-        run: |
-          uv run python - <<'PY'
-          from fastapi.testclient import TestClient
-
-          from openposture_api.config import Settings
-          from openposture_api.main import create_app
-
-          with TestClient(create_app(Settings())) as client:
-              with open("fixtures/images/desk_hunch.jpeg", "rb") as image:
-                  response = client.post(
-                      "/api/v1/analyses",
-                      files={"image": ("desk_hunch.jpeg", image, "image/jpeg")},
-                  )
-
-          assert response.status_code == 201, (response.status_code, response.text)
-          key = response.json()["object_key"]
-          assert key.startswith("analyses/"), key
-          print("stored:", key)
-          PY
-
       - name: The API's own engine reaches Postgres
         # Through `create_engine(Settings())` rather than through psql, so what is exercised is
         # the configured URL, the asyncpg driver and the pool the application will actually use.
         # The step above proves Postgres is up; this proves the API can talk to it, which are
         # different claims and fail for different reasons — a wrong driver prefix
         # (`postgresql://` instead of `postgresql+asyncpg://`) passes the first and fails here.
-        #
-        # No schema yet: OP-51 adds Alembic, and this workflow gains the migration checks there.
         env:
           OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
         run: |
@@ -201,6 +166,121 @@ jobs:
 
           asyncio.run(main())
           PY
+
+      - name: Initial migration applies cleanly
+        # `alembic upgrade head` against a fresh database. This is the happy path: a clean schema
+        # the schema matches the models. The advisory lock is exercised by this step too (it is
+        # acquired on every run, released when the connection closes).
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini upgrade head
+          echo "OK  initial migration applied"
+
+      - name: Downgrade and re-upgrade both succeed
+        # The only real test that a downgrade path exists and works. Downgrades are written once,
+        # never exercised, and are broken more often than not — "it compiles" is not the same claim
+        # as "it runs against a real database".
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini downgrade base
+          echo "OK  downgraded to base"
+          uv run alembic -c apps/api/alembic.ini upgrade head
+          echo "OK  re-upgraded to head"
+
+      - name: Advisory lock serializes two concurrent migrators
+        # Proves the advisory lock actually works under the race it was written for. Both
+        # migrators start simultaneously against the same database after a downgrade — only one
+        # performs the migration, the other acquires the lock afterwards and finds nothing to do.
+        # Both must exit 0.
+        #
+        # `wait $pid1; code1=$?` captures each exit code independently. A bare `wait` reports the
+        # last job only, which would hide a failure by the first.
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini downgrade base
+          uv run alembic -c apps/api/alembic.ini upgrade head &
+          pid1=$!
+          uv run alembic -c apps/api/alembic.ini upgrade head &
+          pid2=$!
+          wait $pid1; code1=$?
+          wait $pid2; code2=$?
+          echo "migrator 1 exited ${code1}"
+          echo "migrator 2 exited ${code2}"
+          test "${code1}" = "0"
+          test "${code2}" = "0"
+          echo "OK  advisory lock serialized both migrators"
+
+      - name: No drift between models and the migrated schema
+        # `alembic check` compares the current database state against Base.metadata and exits
+        # non-zero if autogenerate would produce any operations. After `upgrade head`, an empty
+        # diff is the definition of "the migration reproduced the schema exactly".
+        #
+        # This is the same principle as D7's OpenAPI drift job: the danger is not writing the
+        # artifact, it is the artifact silently diverging from its source. A model field added
+        # without a migration is invisible until a query fails in production — this catches it.
+        env:
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run alembic -c apps/api/alembic.ini check
+          echo "OK  no drift"
+
+      - name: The API can store an object in MinIO
+        # Run from the workspace rather than from the image, for the reason in the header. What
+        # this catches that the moto-backed unit tests cannot: a wrong endpoint URL, credentials
+        # that do not match the ones MinIO booted with, a bucket name that differs between the
+        # bootstrap and the application, and path-style addressing — moto accepts virtual-host
+        # style, a real MinIO on an IP address does not.
+        #
+        # **Placed after the migration steps, not with the other bucket checks.** This posts a
+        # real image to `/analyses`, and since E5 that endpoint writes rows as well as an object,
+        # so it needs a migrated schema. Run earlier it fails on the insert, and the failure
+        # reads as a storage problem because of what the step is called.
+        env:
+          OPENPOSTURE_POSE_BACKEND: fake
+          OPENPOSTURE_POSE_BACKEND_PRESET: hunchback
+          OPENPOSTURE_STORAGE_BACKEND: s3
+          OPENPOSTURE_S3_ENDPOINT_URL: http://127.0.0.1:9000
+          OPENPOSTURE_S3_ACCESS_KEY: openposture
+          OPENPOSTURE_S3_SECRET_KEY: openposture-dev-only
+          # Without this, `Settings()` falls back to its default of `@db:5432` — the Compose
+          # service name. That resolves inside the network and nowhere else, and this step runs
+          # on the runner, so the symptom is a `socket.gaierror` surfacing as a 500 from the
+          # endpoint rather than as anything that names the real problem.
+          OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
+        run: |
+          uv run python - <<'PY'
+          from fastapi.testclient import TestClient
+
+          from openposture_api.config import Settings
+          from openposture_api.main import create_app
+
+          with TestClient(create_app(Settings())) as client:
+              with open("fixtures/images/desk_hunch.jpeg", "rb") as image:
+                  response = client.post(
+                      "/api/v1/analyses",
+                      files={"image": ("desk_hunch.jpeg", image, "image/jpeg")},
+                  )
+
+          assert response.status_code == 201, (response.status_code, response.text)
+          key = response.json()["object_key"]
+          assert key.startswith("analyses/"), key
+          print("stored:", key)
+          PY
+
+      - name: Repository integration tests pass against a real Postgres
+        # testcontainers starts its own Postgres container on a random port, separate from the
+        # compose service. Docker is available on `ubuntu-latest` and is already in use by the
+        # compose steps above, so no extra setup is needed.
+        #
+        # These tests prove the repository layer's behaviour under real Postgres semantics:
+        # cursor pagination ordering, RETURNING on DELETE, and user_id scoping. They are
+        # deliberately not in `pr.yml` — the SQLite suite there cannot exercise any of these.
+        run: |
+          uv run pytest apps/api/tests/integration/ -v --no-header
+          echo "OK  repository integration tests passed"
 
       - name: The object is actually in the bucket
         # Asserted from MinIO's side, not from the API's response. A 201 carrying an object key
