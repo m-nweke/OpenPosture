@@ -285,26 +285,34 @@ async def test_list_page_returns_empty_for_user_with_no_analyses(session: AsyncS
 # ---------------------------------------------------------------------------
 
 
-async def test_delete_removes_the_row(session: AsyncSession) -> None:
+async def test_delete_removes_the_row_and_reports_its_object_key(
+    session: AsyncSession,
+) -> None:
+    """The key comes back because the caller has to delete the object next.
+
+    It is only readable from the row being removed, so returning it here is the last chance
+    anything has to name the object this analysis owned.
+    """
     user_id = await _make_user_id(session)
     analysis = await _create_minimal(session, user_id=user_id)
+    expected_key = analysis.object_key
 
     repo = AnalysisRepository(session)
-    deleted = await repo.delete(user_id, analysis.id)
+    object_key = await repo.delete(user_id, analysis.id)
 
-    assert deleted is True
+    assert object_key == expected_key
     assert await repo.get(user_id, analysis.id) is None
 
 
-async def test_delete_returns_false_for_unknown_id(session: AsyncSession) -> None:
+async def test_delete_returns_none_for_unknown_id(session: AsyncSession) -> None:
     user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
     result = await repo.delete(user_id, uuid.uuid4())
-    assert result is False
+    assert result is None
 
 
-async def test_delete_returns_false_for_another_users_analysis(session: AsyncSession) -> None:
-    """Deleting another user's row returns False, not an error.
+async def test_delete_returns_none_for_another_users_analysis(session: AsyncSession) -> None:
+    """Deleting another user's row returns None, not an error.
 
     The attacker learns nothing: they cannot tell whether the row exists.
     """
@@ -316,6 +324,6 @@ async def test_delete_returns_false_for_another_users_analysis(session: AsyncSes
     repo = AnalysisRepository(session)
     result = await repo.delete(requester, analysis.id)
 
-    assert result is False
+    assert result is None
     # The row is still there for its owner.
     assert await repo.get(owner, analysis.id) is not None

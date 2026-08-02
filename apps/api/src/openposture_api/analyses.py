@@ -315,13 +315,38 @@ def build_analyses_router() -> APIRouter:
     async def delete_analysis(
         analysis_id: uuid.UUID,
         user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+        storage: Annotated[StorageBackend, Depends(get_storage)],
         session: Annotated[AsyncSession, Depends(get_session)],
     ) -> None:
+        """Hard delete, rows before object.
+
+        **Hard, not soft.** This application stores photographs of the user's body. When someone
+        deletes one, the defensible reading of that request is "destroy it", not "hide it behind
+        a flag" — a tombstoned row and a retained image is exactly the outcome the user believed
+        they had prevented. If auditability ever argues for a tombstone, the image must still be
+        hard-deleted.
+
+        **Rows first, then the object** — the reverse of E5's write order, and for the same
+        reason. The two stores cannot be committed together, so one of them fails first, and the
+        choice is which residue to prefer. Deleting the object first and failing on the rows
+        leaves a row pointing at nothing, which every read path then has to defend against.
+        Deleting the rows first and failing on the object leaves an unreferenced object: invisible
+        to the application, and reclaimable later precisely because no row claims it.
+        """
         repo = AnalysisRepository(session)
-        deleted = await repo.delete(user_id, analysis_id)
-        if not deleted:
+        object_key = await repo.delete(user_id, analysis_id)
+        if object_key is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         await session.commit()
+
+        # After the commit, deliberately. Deleting inside the transaction would destroy the object
+        # for a transaction that could still roll back.
+        try:
+            storage.delete(object_key)
+        except StorageError:
+            # Not fatal: the rows are gone, so the delete the client asked for has happened. The
+            # object is now unreferenced rather than dangling — logged so it can be reclaimed.
+            _LOGGER.warning("orphaned_object", object_key=object_key, exc_info=True)
 
     return router
 
