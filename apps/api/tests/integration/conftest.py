@@ -17,18 +17,19 @@ are automatically treated as coroutines. No `@pytest.mark.asyncio` markers are n
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 import openposture_api.db.models  # noqa: F401  side-effect: registers all tables with Base.metadata
 from openposture_api.db.base import Base
 
 
 @pytest.fixture(scope="module")
-def pg_dsn() -> str:  # type: ignore[return]
+def pg_dsn() -> Iterator[str]:
     """Start a real Postgres container and apply the schema.
 
     Module-scoped: one container per test module, not one per test. Container startup
@@ -39,9 +40,11 @@ def pg_dsn() -> str:  # type: ignore[return]
     Yields an asyncpg-style DSN: `postgresql+asyncpg://...`.
     """
     with PostgresContainer("postgres:16.10-alpine") as container:
-        async_url = container.get_connection_url().replace(
-            "postgresql://", "postgresql+asyncpg://", 1
-        )
+        # Ask for the driver by name rather than rewriting the URL. `get_connection_url()` defaults
+        # to `postgresql+psycopg2://`, so a `postgresql://` -> `postgresql+asyncpg://` string
+        # replace matches nothing and hands SQLAlchemy the psycopg2 dialect — which then fails on
+        # an import of a driver this project deliberately does not install (ADR: async end to end).
+        async_url = container.get_connection_url(driver="asyncpg")
 
         async def _apply_schema() -> None:
             engine = create_async_engine(async_url, echo=False)
@@ -57,7 +60,7 @@ def pg_dsn() -> str:  # type: ignore[return]
 
 
 @pytest_asyncio.fixture
-async def session(pg_dsn: str) -> AsyncSession:  # type: ignore[return]
+async def session(pg_dsn: str) -> AsyncIterator[AsyncSession]:
     """One session per test, backed by a rolled-back transaction.
 
     The pattern: begin a connection-level transaction, bind the session to that connection,

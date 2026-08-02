@@ -38,8 +38,8 @@ if config.config_file_name is not None:
 # Import Base and register all model tables with its metadata. Both imports are load-bearing:
 # Base brings the naming convention; the models import registers the seven table definitions.
 # Without the second import, Base.metadata is empty and migrations operate on nothing.
-from openposture_api.db.base import Base  # noqa: E402
 import openposture_api.db.models  # noqa: E402, F401
+from openposture_api.db.base import Base  # noqa: E402
 
 target_metadata = Base.metadata
 
@@ -104,8 +104,16 @@ async def run_migrations_online() -> None:
         # so a second migrator waits here while the first runs its migrations. When the first
         # migrator's connection closes (end of this `async with`), the lock is released and
         # the second migrator acquires it, runs `upgrade head`, finds nothing to do, and exits.
-        await connection.execute(text(f"SELECT pg_advisory_lock({_ADVISORY_LOCK_KEY})"))
+        #
+        # Bound parameter rather than an f-string. The key is a module-level `int` today, so
+        # interpolation is not currently exploitable — but "not currently" is the whole problem
+        # with writing it that way, and a parameterised statement costs nothing.
+        await connection.execute(
+            text("SELECT pg_advisory_lock(:lock_key)"),
+            {"lock_key": _ADVISORY_LOCK_KEY},
+        )
         await connection.run_sync(do_run_migrations)
+        await connection.commit()
 
     await connectable.dispose()
 

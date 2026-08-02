@@ -8,10 +8,9 @@ this project's story — an all-gaps report is a 201, not an error.
 from __future__ import annotations
 
 import io
+import uuid
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
-
-import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -32,7 +31,7 @@ from pose_backends.fake import FakePoseBackend, PosePreset
 from posture_core import build_report
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import AsyncIterator, Iterator
     from pathlib import Path
 
     from fastapi import FastAPI
@@ -85,16 +84,20 @@ def storage(tmp_path: Path) -> LocalDiskStorage:
     return LocalDiskStorage(tmp_path / "objects")
 
 
-async def _fake_session():
+async def _fake_session() -> AsyncIterator[MagicMock]:
     """A mock database session for unit tests.
 
     Configured for both write paths (add/flush/commit) and read paths (execute). The execute
     mock returns empty results by default — no rows, scalar_one_or_none returns None — which is
     what the list, get, and delete routes see when no data exists.
 
-    The `Analysis` object returned by the repository on writes carries an `id` assigned by
-    Python's `default=uuid.uuid4` at construction, so the mock flush is enough to make the
-    create route build a valid response.
+    `flush` is not a plain no-op, though, and it cannot be. `Base` declares
+    `id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)`, and SQLAlchemy
+    applies a column default at INSERT time — not at construction. So `analysis.id` is None until
+    something flushes, which is exactly why `AnalysisRepository.create` flushes the parent before
+    it builds the child rows that reference it. A mock whose flush did nothing would leave `id`
+    unset and the route would fail to build its response — so the fake reproduces the one piece
+    of real flush behaviour these tests depend on, and nothing else.
 
     Persistence correctness is covered by the integration suite in `tests/integration/`.
     """
@@ -102,11 +105,18 @@ async def _fake_session():
     execute_result.scalar_one_or_none.return_value = None
     execute_result.scalars.return_value.all.return_value = []
 
+    pending: list[Any] = []
+
+    async def _flush() -> None:
+        for obj in pending:
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid.uuid4()
+
     mock = MagicMock()
-    mock.add = MagicMock()
-    mock.add_all = MagicMock()
+    mock.add = MagicMock(side_effect=pending.append)
+    mock.add_all = MagicMock(side_effect=pending.extend)
     mock.get = AsyncMock(return_value=None)
-    mock.flush = AsyncMock()
+    mock.flush = AsyncMock(side_effect=_flush)
     mock.commit = AsyncMock()
     mock.close = AsyncMock()
     mock.execute = AsyncMock(return_value=execute_result)

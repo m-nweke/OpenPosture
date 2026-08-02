@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from openposture_api.db.models import User
 from openposture_api.repos.analyses import (
     AnalysisRepository,
     FindingRecord,
@@ -26,6 +27,8 @@ from openposture_api.repos.analyses import (
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from openposture_api.db.models import Analysis
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +63,18 @@ def test_every_read_method_requires_user_id() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_user_id() -> uuid.UUID:
-    return uuid.uuid4()
+async def _make_user_id(session: AsyncSession) -> uuid.UUID:
+    """Insert a real user and return its id.
+
+    Not `uuid.uuid4()`. `analyses.user_id` is a genuine foreign key, so an id with no `users` row
+    behind it is not a usable owner — Postgres rejects the insert outright. The model tests get
+    away with an invented id because SQLite does not enforce foreign keys unless asked to, and
+    that gap between the two engines is a large part of why this suite runs against real Postgres.
+    """
+    user = User(email=f"{uuid.uuid4()}@example.test", password_hash="not-a-real-hash")
+    session.add(user)
+    await session.flush()
+    return user.id
 
 
 async def _create_minimal(
@@ -69,7 +82,7 @@ async def _create_minimal(
     *,
     user_id: uuid.UUID | None = None,
     object_key: str = "analyses/test.jpg",
-) -> object:
+) -> Analysis:
     repo = AnalysisRepository(session)
     return await repo.create(
         user_id=user_id,
@@ -93,7 +106,7 @@ async def _create_minimal(
 
 
 async def test_create_returns_a_persisted_analysis(session: AsyncSession) -> None:
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
     analysis = await repo.create(
         user_id=user_id,
@@ -116,7 +129,7 @@ async def test_create_returns_a_persisted_analysis(session: AsyncSession) -> Non
 
 
 async def test_create_persists_children(session: AsyncSession) -> None:
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
     analysis = await repo.create(
         user_id=user_id,
@@ -169,7 +182,7 @@ async def test_create_persists_children(session: AsyncSession) -> None:
 
 
 async def test_get_returns_none_for_unknown_id(session: AsyncSession) -> None:
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
     result = await repo.get(user_id, uuid.uuid4())
     assert result is None
@@ -181,8 +194,8 @@ async def test_get_returns_none_for_another_users_analysis(session: AsyncSession
     The repo has no path that returns an analysis to a user who does not own it. The caller
     sees only None — there is no 403 because existence is not confirmed.
     """
-    owner = _make_user_id()
-    requester = _make_user_id()
+    owner = await _make_user_id(session)
+    requester = await _make_user_id(session)
 
     analysis = await _create_minimal(session, user_id=owner)
 
@@ -197,8 +210,8 @@ async def test_get_returns_none_for_another_users_analysis(session: AsyncSession
 
 
 async def test_list_page_returns_only_the_requesting_users_rows(session: AsyncSession) -> None:
-    user_a = _make_user_id()
-    user_b = _make_user_id()
+    user_a = await _make_user_id(session)
+    user_b = await _make_user_id(session)
 
     await _create_minimal(session, user_id=user_a, object_key="analyses/a1.jpg")
     await _create_minimal(session, user_id=user_a, object_key="analyses/a2.jpg")
@@ -212,7 +225,7 @@ async def test_list_page_returns_only_the_requesting_users_rows(session: AsyncSe
 
 
 async def test_list_page_is_newest_first(session: AsyncSession) -> None:
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
 
     first = await _create_minimal(session, user_id=user_id, object_key="analyses/old.jpg")
@@ -229,7 +242,7 @@ async def test_list_page_is_newest_first(session: AsyncSession) -> None:
 
 async def test_list_page_cursor_advances_the_window(session: AsyncSession) -> None:
     """Passing a cursor from page N returns page N+1 without overlap or gaps."""
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
 
     analyses = []
@@ -261,7 +274,7 @@ async def test_list_page_cursor_advances_the_window(session: AsyncSession) -> No
 
 
 async def test_list_page_returns_empty_for_user_with_no_analyses(session: AsyncSession) -> None:
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
     page = await repo.list_page(user_id)
     assert page == []
@@ -273,7 +286,7 @@ async def test_list_page_returns_empty_for_user_with_no_analyses(session: AsyncS
 
 
 async def test_delete_removes_the_row(session: AsyncSession) -> None:
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     analysis = await _create_minimal(session, user_id=user_id)
 
     repo = AnalysisRepository(session)
@@ -284,7 +297,7 @@ async def test_delete_removes_the_row(session: AsyncSession) -> None:
 
 
 async def test_delete_returns_false_for_unknown_id(session: AsyncSession) -> None:
-    user_id = _make_user_id()
+    user_id = await _make_user_id(session)
     repo = AnalysisRepository(session)
     result = await repo.delete(user_id, uuid.uuid4())
     assert result is False
@@ -295,8 +308,8 @@ async def test_delete_returns_false_for_another_users_analysis(session: AsyncSes
 
     The attacker learns nothing: they cannot tell whether the row exists.
     """
-    owner = _make_user_id()
-    requester = _make_user_id()
+    owner = await _make_user_id(session)
+    requester = await _make_user_id(session)
 
     analysis = await _create_minimal(session, user_id=owner)
 

@@ -79,6 +79,13 @@ services:
       - ./packages/posture-core/src:/app/packages/posture-core/src:ro
       - ./packages/posture-spec/src:/app/packages/posture-spec/src:ro
       - ./packages/pose-backends/src:/app/packages/pose-backends/src:ro
+      # Migrations and their config. Not source — `--reload` does not watch these and could not
+      # usefully act on them if it did, since `alembic upgrade head` runs once from the
+      # entrypoint. Mounted so that writing a revision needs `docker compose restart api`
+      # rather than a rebuild: without this, `migrations/` is only what `COPY apps/api/` baked
+      # in, and a new revision file is invisible to the container that is supposed to apply it.
+      - ./apps/api/migrations:/app/apps/api/migrations:ro
+      - ./apps/api/alembic.ini:/app/apps/api/alembic.ini:ro
       # Named volume so uploaded images survive a restart without landing in the host checkout.
       - api-storage:/app/var/storage
     ports:

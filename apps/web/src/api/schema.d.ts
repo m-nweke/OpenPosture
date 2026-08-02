@@ -73,6 +73,12 @@ export interface components {
          * @description What `POST /api/v1/analyses` returns on success.
          */
         AnalysisResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The analysis's database ID. Use this to retrieve or delete the record later. A UUID rather than an integer so that the presence of adjacent IDs is not leaked — a sequential key at `/analyses/41` implies `/analyses/40` belongs to somebody.
+             */
+            id: string;
             /** @description The uploaded photograph's dimensions after EXIF rotation is applied — what the user actually sees. This is the authoritative size for a client; see the note on `PostureReportModel.image` for why the two can differ. */
             image: components["schemas"]["ImageSize"];
             /**
