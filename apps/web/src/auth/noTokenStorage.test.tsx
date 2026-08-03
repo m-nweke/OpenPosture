@@ -48,13 +48,23 @@ const TOKEN_KEY_PATTERN = /token|jwt|bearer|credential|password|secret/i
 const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/
 
 /**
- * The application's own source, excluding tests.
+ * The application's own source: hand-written, executable TypeScript.
  *
- * Test files are excluded deliberately: `auth.test.tsx` seeds `sessionStorage` to prove a session
- * survives a reload, and this file names both APIs in order to forbid them.
+ * Two exclusions, both necessary rather than convenient.
+ *
+ * Test files, because `auth.test.tsx` seeds `sessionStorage` to prove a session survives a
+ * reload, and this file names both APIs in order to forbid them.
+ *
+ * `.d.ts` files, because they are generated from the OpenAPI document and contain no executable
+ * code — only type declarations and the API's own prose. `TokenResponse`'s description explains
+ * that the refresh token is kept out of the body so nothing lands in `localStorage`, and
+ * `openapi-typescript` copies that sentence verbatim into `schema.d.ts`. Matching it there is a
+ * scan reading documentation as behaviour.
  */
 function applicationSources(): Array<[string, string]> {
-  return Object.entries(SOURCES).filter(([path]) => !/\.test\.tsx?$/.test(path))
+  return Object.entries(SOURCES).filter(
+    ([path]) => !/\.test\.tsx?$/.test(path) && !/\.d\.ts$/.test(path),
+  )
 }
 
 describe('no credential reaches web storage', () => {
