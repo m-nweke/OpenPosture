@@ -205,11 +205,31 @@ class TestAccountExistenceOracle:
         )
 
     def test_neither_response_names_the_field_that_was_wrong(self, client: TestClient) -> None:
+        """The message must blame both fields or neither, never one.
+
+        Naming a single field is an oracle in either direction, and the asymmetry is easy to
+        miss. "Email not found" obviously reveals that the address is unregistered. "Password
+        incorrect" reveals the opposite and is just as bad: it confirms the address *is*
+        registered, which is precisely what an attacker enumerating a list wants to learn.
+
+        Hence an equality between two membership tests rather than an implication. The earlier
+        version of this assertion read `"email" not in detail or "password" in detail`, which is
+        satisfied by "Password incorrect" — it passes on exactly the message it exists to catch.
+        """
         client.post(REGISTER, json=_credentials())
 
-        detail = client.post(LOGIN, json=_credentials(password="nope")).json()["detail"]
+        # Long enough to clear `MIN_PASSWORD_LENGTH`, and that is not incidental. An obviously
+        # bad password like "nope" is rejected by the schema with a 422 whose detail mentions
+        # neither field, so the assertion below would hold without the login route ever running.
+        # The earlier version did exactly that and was therefore vacuous.
+        rejected = client.post(LOGIN, json=_credentials(password="the-wrong-password"))
+        assert rejected.status_code == 401, "the request must reach the credential check"
 
-        assert "email" not in detail.lower() or "password" in detail.lower()
+        detail = rejected.json()["detail"].lower()
+
+        assert ("email" in detail) == ("password" in detail), (
+            f"{detail!r} singles out one credential, which tells the caller which half was wrong"
+        )
 
     def test_an_unknown_email_still_costs_a_password_hash(self, client: TestClient) -> None:
         """The timing half, asserted through the clock.
