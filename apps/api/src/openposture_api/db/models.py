@@ -248,17 +248,16 @@ class Analysis(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "analyses"
 
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
-        # Nullable, and only until E7. Analyses become persistable in E5, which lands before
-        # authentication exists in E7, so there is a window where an upload has no owner. Making
-        # the column non-nullable now would mean E5 could not write a row at all.
+        # Nullable from E5, when analyses became persistable, until E8 — the window in which an
+        # upload could arrive before authentication existed to attribute it to anyone.
         #
-        # E7 tightens this: a migration deletes any ownerless rows — they are anonymous
-        # development uploads, not user data — and sets `NOT NULL`. Left permanently nullable it
-        # would be a hole in the authorization story, because "scope every query by user_id"
-        # cannot scope a row whose user_id is null.
-        nullable=True,
+        # Tightened in E8 (migration `b4c1f7e29a05`), which deleted the ownerless rows left in
+        # that window and set `NOT NULL`. The column has to be non-nullable for the authorization
+        # story to close: every query is scoped by `user_id`, and no `user_id` matches null, so a
+        # null-owner row is one no request can reach and no deletion can find.
+        nullable=False,
     )
 
     object_key: Mapped[str] = mapped_column(

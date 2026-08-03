@@ -36,25 +36,46 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def test_every_read_method_requires_user_id() -> None:
+def test_every_public_method_requires_user_id() -> None:
     """The tenancy guarantee as an executable rule.
 
-    Any method whose name starts with `get` or `list` must declare a `user_id` parameter.
-    Adding a read method without one would fail this test before the branch is merged, which is
-    the only reliable way to enforce a constraint on future code.
-    """
-    read_methods = [
-        name
-        for name, member in inspect.getmembers(AnalysisRepository)
-        if name.startswith(("get", "list")) and callable(member)
-    ]
-    assert read_methods, "expected at least one read method on AnalysisRepository"
+    Every public method must declare a `user_id` parameter. Adding one without it would fail this
+    test before the branch is merged, which is the only reliable way to enforce a constraint on
+    code nobody has written yet.
 
-    for method_name in read_methods:
+    Widened in E8 from "every read" to "every method". `create` was the exception while analyses
+    could outlive the absence of authentication; now that an owner always exists, an unscoped
+    write is as much a hole as an unscoped read — it produces a row no scoped read can return.
+    """
+    public_methods = [
+        name
+        for name, member in inspect.getmembers(AnalysisRepository, callable)
+        if not name.startswith("_")
+    ]
+    assert public_methods, "expected at least one method on AnalysisRepository"
+
+    for method_name in public_methods:
         params = inspect.signature(getattr(AnalysisRepository, method_name)).parameters
         assert "user_id" in params, (
             f"AnalysisRepository.{method_name} must declare a `user_id` parameter — "
-            "every read is scoped to the requesting user"
+            "every query and every insert is scoped to one user"
+        )
+
+
+def test_user_id_is_required_rather_than_defaulted() -> None:
+    """Declaring the parameter is not enough; it must have no default.
+
+    A `user_id: uuid.UUID | None = None` satisfies the test above while still allowing every
+    caller to omit it — which is exactly the state `create` was in before E8. Requiring the
+    absence of a default is what makes "cannot be forgotten" true: forgetting is a TypeError at
+    the call site rather than a null in the database.
+    """
+    for method_name in ("create", "get", "list_page", "delete"):
+        parameter = inspect.signature(getattr(AnalysisRepository, method_name)).parameters[
+            "user_id"
+        ]
+        assert parameter.default is inspect.Parameter.empty, (
+            f"AnalysisRepository.{method_name} gives `user_id` a default, so a caller can omit it"
         )
 
 
@@ -83,9 +104,14 @@ async def _create_minimal(
     user_id: uuid.UUID | None = None,
     object_key: str = "analyses/test.jpg",
 ) -> Analysis:
+    """An analysis owned by `user_id`, or by a freshly-minted user if none is named.
+
+    The default stopped being `None` in E8: `create` now requires an owner and the column is
+    `NOT NULL`, so a caller that does not care who owns the row still has to produce someone.
+    """
     repo = AnalysisRepository(session)
     return await repo.create(
-        user_id=user_id,
+        user_id=user_id if user_id is not None else await _make_user_id(session),
         object_key=object_key,
         pose_detected=True,
         image_width=640,

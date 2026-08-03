@@ -6,9 +6,14 @@ it is why a route that calls this repo cannot accidentally serve one user's anal
 The 404-not-403 rule in E8 is a consequence of this: the repo returns None for "not found" and
 for "found but wrong owner", so the route sees exactly one signal and renders it once.
 
-**No unscoped reads.** A test in the integration suite enumerates every method whose name
-starts with `get` or `list` and asserts that `user_id` appears in its signature. Adding a
-method without it will fail that test before the branch is merged.
+**No unscoped reads.** A test in the integration suite enumerates every public method and
+asserts that `user_id` appears in its signature *without a default*. Adding a method without
+one will fail that test before the branch is merged.
+
+**No unscoped writes either, as of E8.** `create` took `user_id` as an optional keyword until
+authentication existed to supply one; it is now required, and `analyses.user_id` is `NOT NULL`.
+An ownerless row is unreachable by construction — every read is scoped by `user_id`, and no
+`user_id` matches null — so allowing one only meant writing data nothing could ever return.
 """
 
 from __future__ import annotations
@@ -79,6 +84,7 @@ class AnalysisRepository:
     async def create(
         self,
         *,
+        user_id: uuid.UUID,
         object_key: str,
         pose_detected: bool,
         image_width: int,
@@ -90,7 +96,6 @@ class AnalysisRepository:
         pose_backend: str,
         rules_version: str,
         schema_version: str,
-        user_id: uuid.UUID | None = None,
         keypoints: list[KeypointRecord] | None = None,
         metrics: list[MetricRecord] | None = None,
         findings: list[FindingRecord] | None = None,
