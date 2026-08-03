@@ -24,6 +24,7 @@ from fastapi import FastAPI
 
 from openposture_api import __version__
 from openposture_api.analyses import build_analyses_router, register_analysis_error_handlers
+from openposture_api.auth import build_auth_router
 from openposture_api.config import Settings, get_settings
 from openposture_api.db import close_engine, create_engine, create_session_factory
 from openposture_api.errors import register_error_handlers
@@ -174,6 +175,7 @@ def create_app(
     app.include_router(
         build_health_router(version=__version__, probes=probes),
     )
+    app.include_router(build_auth_router())
     app.include_router(build_analyses_router())
 
     _LOGGER.info(

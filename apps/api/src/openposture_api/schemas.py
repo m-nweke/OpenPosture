@@ -17,16 +17,19 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 __all__ = [
+    "MAX_PASSWORD_LENGTH",
+    "MIN_PASSWORD_LENGTH",
     "AnalysisDetail",
     "AnalysisListItem",
     "AnalysisPage",
     "AnalysisResponse",
     "ContractModel",
+    "CredentialsRequest",
     "DetectedLandmark",
     "Finding",
     "Gap",
@@ -36,7 +39,28 @@ __all__ = [
     "Quality",
     "StoredFinding",
     "StoredMetric",
+    "TokenResponse",
 ]
+
+MIN_PASSWORD_LENGTH: Final = 12
+"""Length is the cheapest real entropy, and the only thing argon2 cannot supply.
+
+Hashing multiplies the cost of a guess; it does not make a guessable password unguessable. No
+character-class rule accompanies this deliberately — those reliably produce `Password1!`, which
+satisfies every rule and appears in every wordlist.
+"""
+
+MAX_PASSWORD_LENGTH: Final = 128
+"""A bound on request memory, not on hashing cost.
+
+The usual justification for a cap is that a huge password would exhaust the hasher. Measured
+against argon2id, that is close to false: 16 characters and 1,000,000 characters both hash in
+~24 ms, because the cost comes from the memory and time parameters rather than the input. What a
+10 MB password *does* cost is 10 MB of memory per concurrent request, materialised by the JSON
+parser long before argon2 sees it. That is the real bound, and this is where it belongs.
+
+Note there is no bcrypt-style 72-byte truncation to work around here; argon2 has no such limit.
+"""
 
 
 class ContractModel(BaseModel):
@@ -248,6 +272,51 @@ class StoredFinding(ContractModel):
     metric: str
     value: float
     confidence: float
+
+
+class CredentialsRequest(ContractModel):
+    """The body of `POST /auth/register` and `POST /auth/login`.
+
+    One model for both, because the two must validate identically. If registration accepted a
+    password that login rejected, an account could be created and never used again.
+    """
+
+    email: EmailStr = Field(
+        max_length=320,
+        description="Address to register or sign in with. Compared case-insensitively.",
+    )
+
+    password: str = Field(
+        min_length=MIN_PASSWORD_LENGTH,
+        max_length=MAX_PASSWORD_LENGTH,
+        description=(
+            "At least 12 characters. Length is the only property checked — no character-class "
+            "rule, which pushes people towards `Password1!` and away from a long passphrase."
+        ),
+    )
+
+
+class TokenResponse(ContractModel):
+    """What every successful auth route returns.
+
+    **The refresh token is deliberately not here.** It goes back as an `HttpOnly` cookie and
+    appears in no response body anywhere, which is what makes "no token in `localStorage`"
+    a property of the API rather than a rule the frontend has to keep remembering.
+    """
+
+    access_token: str = Field(description="Bearer token. Hold in memory only; never persist it.")
+
+    token_type: Literal["bearer"] = Field(
+        default="bearer",
+        description="RFC 6750 scheme, so the client sends `Authorization: Bearer <token>`.",
+    )
+
+    expires_in: int = Field(
+        description=(
+            "Seconds until the access token expires. Sent so the client can refresh *before* "
+            "expiry rather than discovering it through a failed request."
+        )
+    )
 
 
 class AnalysisDetail(ContractModel):

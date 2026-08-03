@@ -42,6 +42,10 @@ dependencies = [
     # Access tokens. Decoding always passes an explicit algorithm allowlist, which is what makes
     # `alg: none` and HS/RS confusion unrepresentable rather than merely untested.
     "pyjwt>=2.10",
+    # `EmailStr`. Pydantic keeps the address parser behind an extra because it carries a DNS
+    # library; registration validates the shape of an address at the boundary rather than
+    # discovering it is unroutable at send time — which this project has no path to do anyway.
+    "pydantic[email]>=2.0",
 ]
 
 [project.optional-dependencies]
