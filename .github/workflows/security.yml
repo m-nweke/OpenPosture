@@ -1,0 +1,152 @@
+# Security scanning (OP-55).
+#
+# Separate from `pr.yml` rather than folded into it, for one reason: `pr.yml` is the required
+# check and has a five-minute budget, while these jobs are slower, partly scheduled, and some of
+# them cannot run on a `push` at all. Merging them would either blow that budget or make the
+# required check depend on jobs that skip in half the situations it runs in.
+#
+# Four questions, one job each:
+#
+#   dependency-review  Does this PR add a dependency with a known vulnerability, or a licence
+#                      the project cannot ship?
+#   codeql             Does the code itself contain an injection, a path traversal, an unsafe
+#                      deserialisation?
+#   secrets            Is there a credential anywhere in the history?
+#   licences           Does the *existing* tree — not just the diff — still comply?
+#
+# ACTION PINNING. Follows `pr.yml`'s policy: third-party actions are pinned to a full commit SHA
+# with the release tag in a trailing comment, GitHub-owned actions use a major tag. Two notes
+# where reality did not fit the policy cleanly, both verified against the tag list rather than
+# assumed:
+#
+#   * `github/codeql-action` is GitHub-owned but not under `actions/*`. It is treated as
+#     first-party, because the policy's reasoning — GitHub controls the namespace and the runner,
+#     so a SHA pin buys little against a threat model that already trusts the platform — applies
+#     to it exactly as written. `v4` exists and is used.
+#   * `actions/dependency-review-action` publishes no major tag past `v3`; `v4` and `v5` do not
+#     exist as refs. It is therefore pinned to the exact release, which freezes patches too and
+#     has to be bumped by hand like the SHA-pinned entries.
+#
+# This workflow needs no secret. `gitleaks` requires a licence key only for organisation-owned
+# repositories, and this one belongs to a personal account.
+
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # CodeQL's value decays without this. A rule added to the query pack next month finds nothing
+  # if the code is only ever scanned on the day it changes, and the files least likely to be
+  # touched again are exactly the ones worth re-examining.
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # Blocks a *new* vulnerable or badly-licensed dependency at the point it is introduced, which
+  # is the only moment when removing it is free.
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    # `pull_request` only, and not by preference: the action diffs the dependency graph between
+    # two commits, and a push has no base to diff against. Gated here rather than left to fail.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Review dependency changes
+        # No major tag exists for this action (see the note at the top of the file).
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          # Fail on a newly introduced moderate-or-worse advisory. Not `low`: the base rate of
+          # low-severity advisories in a transitive tree is high enough that a gate set there
+          # trains people to bypass it, and a gate routinely bypassed protects nothing.
+          fail-on-severity: moderate
+          # Copyleft licences the project cannot ship under, given it is MIT. Denying rather than
+          # allow-listing, because an allow-list rejects every unrecognised SPDX string —
+          # including dual licences and the occasional `LicenseRef-*` — and turns a licence gate
+          # into a source of unrelated failures.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-3.0, SSPL-1.0
+          comment-summary-in-pr: on-failure
+
+  # Static analysis of our own code, as opposed to our dependencies'.
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # The one privilege escalation in this file: writing results back to the Security tab.
+      security-events: write
+      # CodeQL reads the workflow run's own metadata to attribute results to a run.
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both halves of the application. Scanning only Python would leave the code that actually
+        # touches a browser DOM unexamined, which is where injection findings mostly live.
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # `security-extended` over the default pack. The default is tuned to near-zero false
+          # positives; extended accepts a few more in exchange for finding the classes of bug
+          # this ticket exists to keep out — injection, unsafe deserialisation, weak crypto.
+          queries: security-extended
+
+      # No build step and no `setup-project`. Both languages here are interpreted, so CodeQL
+      # extracts from source directly; installing the dependency tree would add minutes and
+      # would only put third-party code in front of an analysis that already has
+      # `dependency-review` looking at it.
+      - name: Analyse
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  # A credential in the history is a credential to rotate, whether or not it is in the current
+  # tree. Deleting the file in a later commit does not unpublish it.
+  secrets:
+    name: Secret detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history, not the default shallow clone. A secret committed and then removed
+          # is still in the pack file, still fetchable, and still valid until rotated — and a
+          # depth-1 checkout is precisely blind to it.
+          fetch-depth: 0
+
+      - name: Scan history for credentials
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Dependency review sees only what a PR changes. This answers the same question about the tree
+  # as it stands, which is what catches a licence that changed under an existing dependency.
+  licences:
+    name: Licence policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+        with:
+          python: "3.12"
+
+      - name: Check installed Python licences
+        run: uv run --with pip-licenses python -m piplicenses --format=markdown --with-urls
+        # Reporting, not gating. A first pass at a licence policy that fails the build tends to
+        # fail on a package whose metadata is merely missing rather than incompatible, and the
+        # fix for that is a per-package exception list nobody maintains. `dependency-review`
+        # above is the gate; this is the inventory that makes writing a real policy possible.
+        continue-on-error: true
