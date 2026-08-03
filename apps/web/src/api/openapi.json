@@ -873,6 +873,13 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "The `access_token` returned by register, login or refresh.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -931,6 +938,9 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid access token."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -942,6 +952,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List analyses newest first",
         "tags": [
           "analyses"
@@ -974,6 +989,9 @@
           "400": {
             "description": "The file could not be decoded."
           },
+          "401": {
+            "description": "Missing or invalid access token."
+          },
           "413": {
             "description": "Over the size limit."
           },
@@ -997,6 +1015,11 @@
             "description": "Inference is unavailable."
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Analyse posture in a photograph",
         "tags": [
           "analyses"
@@ -1023,6 +1046,9 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid access token."
+          },
           "404": {
             "description": "Analysis not found."
           },
@@ -1037,6 +1063,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Delete one analysis",
         "tags": [
           "analyses"
@@ -1068,6 +1099,9 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid access token."
+          },
           "404": {
             "description": "Analysis not found."
           },
@@ -1082,6 +1116,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Fetch one analysis",
         "tags": [
           "analyses"

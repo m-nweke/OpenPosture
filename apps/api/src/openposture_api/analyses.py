@@ -24,7 +24,7 @@ import json
 import time
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import TYPE_CHECKING, Annotated, Any, Final
 
 import structlog
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
@@ -74,6 +74,16 @@ API_PREFIX: Final = "/api/v1"
 
 _LOGGER = structlog.get_logger(__name__)
 
+_UNAUTHORIZED: Final[dict[int | str, dict[str, Any]]] = {
+    status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid access token."}
+}
+"""Declared on every route in this module, because every one of them requires a token.
+
+Written once and spread into each `responses` map rather than repeated: OP-45 generates the
+frontend's types from this schema, and a 401 that is reachable but undeclared is a response the
+client is not typed to handle (the same argument as the 502 below).
+"""
+
 
 def build_analyses_router() -> APIRouter:
     """The analyses routes.
@@ -94,6 +104,7 @@ def build_analyses_router() -> APIRouter:
             "`quality.gaps` — abstention is an answer, not an error."
         ),
         responses={
+            **_UNAUTHORIZED,
             status.HTTP_400_BAD_REQUEST: {"description": "The file could not be decoded."},
             status.HTTP_413_CONTENT_TOO_LARGE: {"description": "Over the size limit."},
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"description": "Format not supported."},
@@ -106,6 +117,7 @@ def build_analyses_router() -> APIRouter:
     )
     async def create_analysis(
         request: Request,
+        user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
         backend: Annotated[PoseBackend, Depends(get_pose_backend)],
         storage: Annotated[StorageBackend, Depends(get_storage)],
         session: Annotated[AsyncSession, Depends(get_session)],
@@ -143,6 +155,7 @@ def build_analyses_router() -> APIRouter:
                 # An ordinary outcome — the user photographed their desk. 201, because the
                 # request succeeded and "nobody in this image" is the finding.
                 analysis = await repo.create(
+                    user_id=user_id,
                     object_key=stored.key,
                     pose_detected=False,
                     image_width=decoded.width,
@@ -170,6 +183,7 @@ def build_analyses_router() -> APIRouter:
             report = build_report(frame)
 
             analysis = await repo.create(
+                user_id=user_id,
                 object_key=stored.key,
                 pose_detected=True,
                 image_width=decoded.width,
@@ -244,6 +258,7 @@ def build_analyses_router() -> APIRouter:
             "`next_cursor` from a previous response as `cursor` to advance. "
             "`next_cursor` is `null` on the last page."
         ),
+        responses={**_UNAUTHORIZED},
     )
     async def list_analyses(
         user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
@@ -285,6 +300,7 @@ def build_analyses_router() -> APIRouter:
             "existence is not leaked."
         ),
         responses={
+            **_UNAUTHORIZED,
             status.HTTP_404_NOT_FOUND: {"description": "Analysis not found."},
         },
     )
@@ -309,6 +325,7 @@ def build_analyses_router() -> APIRouter:
             "rule as the read endpoint."
         ),
         responses={
+            **_UNAUTHORIZED,
             status.HTTP_404_NOT_FOUND: {"description": "Analysis not found."},
         },
     )
