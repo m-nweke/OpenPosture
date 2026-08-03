@@ -10,12 +10,23 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy.exc import NoSuchModuleError
 
 from openposture_api import __version__, main
 from openposture_api.config import Settings
 from openposture_api.main import create_app
 from openposture_api.pose import PoseBackendState, PoseBackendStatus
+
+
+def _production_settings() -> Settings:
+    """Production settings that get past OP-55's boot guard.
+
+    Production refuses to start on the repository's default signing key, so every production
+    `Settings` now has to supply one. These tests are about the factory, not about auth — the
+    secret is scaffolding, and naming it once keeps that obvious.
+    """
+    return Settings(environment="production", jwt_secret=SecretStr("test-only-signing-key"))
 
 
 class _RecordingBackend:
@@ -44,7 +55,7 @@ class TestConstruction:
     def test_two_apps_built_from_different_settings_are_independent(self) -> None:
         """The property that makes the suite order-independent: no shared module-level state."""
         development = create_app(Settings(environment="development", json_logs=True))
-        production = create_app(Settings(environment="production"))
+        production = create_app(_production_settings())
 
         assert development.state.settings.environment == "development"
         assert production.state.settings.environment == "production"
@@ -69,14 +80,14 @@ class TestDocumentation:
             assert client.get("/docs").status_code == 200
 
     def test_interactive_docs_are_absent_in_production(self) -> None:
-        app = create_app(Settings(environment="production"))
+        app = create_app(_production_settings())
         with TestClient(app) as client:
             assert client.get("/docs").status_code == 404
 
     def test_the_openapi_schema_is_served_regardless(self) -> None:
         """OP-45 generates the frontend's TypeScript types from this document, so it is a build
         input rather than a convenience route."""
-        app = create_app(Settings(environment="production"))
+        app = create_app(_production_settings())
         with TestClient(app) as client:
             schema = client.get("/openapi.json")
 

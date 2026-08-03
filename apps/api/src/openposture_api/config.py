@@ -22,7 +22,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pose_backends.fake import BACKEND_NAME as FAKE_BACKEND
@@ -30,6 +30,7 @@ from pose_backends.fake import PosePreset
 from pose_backends.mediapipe_backend import BACKEND_NAME as MEDIAPIPE_BACKEND
 
 __all__ = [
+    "DEV_JWT_SECRET",
     "ENV_PREFIX",
     "Environment",
     "PoseBackendName",
@@ -45,6 +46,15 @@ ENV_PREFIX: Final = "OPENPOSTURE_"
 """
 
 Environment = Literal["development", "test", "production"]
+
+DEV_JWT_SECRET: Final = "dev-only-insecure-jwt-secret-change-me"
+"""The signing key `docker compose up` gets for free, and the one production must never see.
+
+A default that *works* is why the service needs no configuration to run locally. It is also, on
+exactly the same mechanism, how a deployment ships signed with a key that is printed in a public
+repository. :meth:`Settings._reject_default_secret_in_production` is the five lines that make the
+convenient case and the catastrophic case distinguishable.
+"""
 
 LogLevel = Literal["debug", "info", "warning", "error", "critical"]
 
@@ -209,6 +219,45 @@ class Settings(BaseSettings):
         description="Secret key. `None` defers to boto3's own credential chain.",
     )
 
+    jwt_secret: SecretStr = Field(
+        default=SecretStr(DEV_JWT_SECRET),
+        description=(
+            "HS256 signing key for access tokens. Must be overridden in production, which "
+            "the validator below enforces rather than documents."
+        ),
+    )
+
+    access_token_ttl_minutes: int = Field(
+        default=15,
+        ge=1,
+        description=(
+            "Access token lifetime. Short because a JWT cannot be revoked before it expires — "
+            "this number is the window an attacker keeps a stolen token (ADR-0003)."
+        ),
+    )
+
+    refresh_token_ttl_days: int = Field(
+        default=30,
+        ge=1,
+        description=(
+            "Refresh token lifetime, and so the longest a session survives without a login."
+        ),
+    )
+
+    refresh_cookie_name: str = Field(
+        default="openposture_refresh",
+        min_length=1,
+        description="Cookie carrying the opaque refresh token. Never readable by JavaScript.",
+    )
+
+    refresh_cookie_secure: bool | None = Field(
+        default=None,
+        description=(
+            "Restrict the refresh cookie to HTTPS. Defaults to true outside development, where "
+            "`Secure` would make the cookie unusable over a plain-http localhost."
+        ),
+    )
+
     @field_validator("request_id_header")
     @classmethod
     def _reject_blank_header(cls, value: str) -> str:
@@ -223,9 +272,36 @@ class Settings(BaseSettings):
             raise ValueError("must not be blank")
         return stripped
 
+    @model_validator(mode="after")
+    def _reject_default_secret_in_production(self) -> Settings:
+        """Refuse to boot production with the signing key that ships in the repository.
+
+        A `field_validator` cannot express this: it sees one field, and the rule is a
+        *relationship* between two. `mode="after"` runs once every field has been parsed and
+        coerced, so both `environment` and `jwt_secret` are final values here rather than raw
+        environment strings.
+
+        Failing at startup is the entire point. A weak key produces perfectly valid-looking
+        tokens, so there is no request whose behaviour would reveal the mistake — the only
+        moment this is detectable is before the process accepts traffic.
+        """
+        if self.is_production and self.jwt_secret.get_secret_value() == DEV_JWT_SECRET:
+            raise ValueError(
+                f"{ENV_PREFIX}JWT_SECRET is still the development default. Production must set "
+                "its own key — anyone with the repository can forge tokens signed with this one."
+            )
+        return self
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def use_secure_cookies(self) -> bool:
+        """Explicit setting if given, otherwise HTTPS-only everywhere but a developer's machine."""
+        if self.refresh_cookie_secure is not None:
+            return self.refresh_cookie_secure
+        return self.environment != "development"
 
     @property
     def emit_json_logs(self) -> bool:
