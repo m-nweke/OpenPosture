@@ -247,6 +247,32 @@
         "title": "Body_create_analysis_api_v1_analyses_post",
         "type": "object"
       },
+      "CredentialsRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /auth/register` and `POST /auth/login`.\n\nOne model for both, because the two must validate identically. If registration accepted a\npassword that login rejected, an account could be created and never used again.",
+        "properties": {
+          "email": {
+            "description": "Address to register or sign in with. Compared case-insensitively.",
+            "format": "email",
+            "maxLength": 320,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "description": "At least 12 characters. Length is the only property checked \u2014 no character-class rule, which pushes people towards `Password1!` and away from a long passphrase.",
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "CredentialsRequest",
+        "type": "object"
+      },
       "DetectedLandmark": {
         "additionalProperties": false,
         "description": "One measured point, in the form a client needs to draw it.\n\n**Normalised to the image, not in pixels.** The frontend renders the photo at whatever size\nthe viewport allows, so a pixel coordinate would be wrong the moment the layout changed. `x`\nand `y` are fractions of width and height, which stay correct under any scale \u2014 the same\nreasoning as the world-space metrics, applied to presentation.\n\nWorld coordinates are deliberately absent: they are metres from the hip and mean nothing on\na 2D canvas.",
@@ -778,6 +804,35 @@
         "title": "StoredMetric",
         "type": "object"
       },
+      "TokenResponse": {
+        "additionalProperties": false,
+        "description": "What every successful auth route returns.\n\n**The refresh token is deliberately not here.** It goes back as an `HttpOnly` cookie and\nappears in no response body anywhere, which is what makes \"no token in `localStorage`\"\na property of the API rather than a rule the frontend has to keep remembering.",
+        "properties": {
+          "access_token": {
+            "description": "Bearer token. Hold in memory only; never persist it.",
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Seconds until the access token expires. Sent so the client can refresh *before* expiry rather than discovering it through a failed request.",
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "description": "RFC 6750 scheme, so the client sends `Authorization: Bearer <token>`.",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1030,6 +1085,128 @@
         "summary": "Fetch one analysis",
         "tags": [
           "analyses"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Credentials rejected."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "Revoke the whole family and clear the cookie.\n\nAlways 204, even when the cookie is absent or unrecognised. Logging out is not a place to\nreport that a token was already invalid \u2014 the caller wanted no session, and afterwards\nthere is no session. Reporting the difference would turn logout into a token oracle.\n\nThe family, not just the presented token, because \"log out\" means the session is over. A\nrotation the client had already performed elsewhere must not survive it.",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "End the session on every device",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "description": "Rotate the refresh token and mint a new access token.\n\nThe presented token is always retired, whatever else happens. A refresh that returned a\nnew token while leaving the old one usable would make rotation decorative.",
+        "operationId": "refresh_api_v1_auth_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "The refresh token is missing, expired, unknown or already used."
+          }
+        },
+        "summary": "Exchange a refresh token for a new access token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "description": "Register, then immediately issue a session \u2014 nobody wants to log in twice.\n\n**This route does leak whether an address is registered**, via the 409, and that is a\nknown gap rather than an oversight. Closing it means always returning 201 and sending a\n\"somebody tried to register your address\" email, and ADR-0003 records that this project\nhas no outbound mail path. The alternative \u2014 a 201 that silently creates nothing \u2014 lies\nto legitimate users about whether they have an account, which is worse.",
+        "operationId": "register_api_v1_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "That email is already registered."
+          },
+          "422": {
+            "description": "Password or email rejected."
+          }
+        },
+        "summary": "Create an account and sign in",
+        "tags": [
+          "auth"
         ]
       }
     },

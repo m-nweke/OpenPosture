@@ -35,6 +35,17 @@ dependencies = [
     # concurrent API replicas serialise rather than race on DDL. Ships as a runtime dependency
     # (not dev-only) because the container needs it to start.
     "alembic>=1.14",
+    # Password hashing (ADR-0003). argon2id, not passlib: passlib's last release predates several
+    # Python versions this project supports, and a hashing library going quiet is the one
+    # dependency where "still works" is not the same as "still maintained".
+    "argon2-cffi>=23.1",
+    # Access tokens. Decoding always passes an explicit algorithm allowlist, which is what makes
+    # `alg: none` and HS/RS confusion unrepresentable rather than merely untested.
+    "pyjwt>=2.10",
+    # `EmailStr`. Pydantic keeps the address parser behind an extra because it carries a DNS
+    # library; registration validates the shape of an address at the boundary rather than
+    # discovering it is unroutable at send time — which this project has no path to do anyway.
+    "pydantic[email]>=2.0",
 ]
 
 [project.optional-dependencies]

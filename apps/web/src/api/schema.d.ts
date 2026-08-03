@@ -52,6 +52,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in */
+        post: operations["login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End the session on every device
+         * @description Revoke the whole family and clear the cookie.
+         *
+         *     Always 204, even when the cookie is absent or unrecognised. Logging out is not a place to
+         *     report that a token was already invalid — the caller wanted no session, and afterwards
+         *     there is no session. Reporting the difference would turn logout into a token oracle.
+         *
+         *     The family, not just the presented token, because "log out" means the session is over. A
+         *     rotation the client had already performed elsewhere must not survive it.
+         */
+        post: operations["logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a refresh token for a new access token
+         * @description Rotate the refresh token and mint a new access token.
+         *
+         *     The presented token is always retired, whatever else happens. A refresh that returned a
+         *     new token while leaving the old one usable would make rotation decorative.
+         */
+        post: operations["refresh_api_v1_auth_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account and sign in
+         * @description Register, then immediately issue a session — nobody wants to log in twice.
+         *
+         *     **This route does leak whether an address is registered**, via the 409, and that is a
+         *     known gap rather than an oversight. Closing it means always returning 201 and sending a
+         *     "somebody tried to register your address" email, and ADR-0003 records that this project
+         *     has no outbound mail path. The alternative — a 201 that silently creates nothing — lies
+         *     to legitimate users about whether they have an account, which is worse.
+         */
+        post: operations["register_api_v1_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -207,6 +300,26 @@ export interface components {
              * @description The photograph to analyse.
              */
             image: string;
+        };
+        /**
+         * CredentialsRequest
+         * @description The body of `POST /auth/register` and `POST /auth/login`.
+         *
+         *     One model for both, because the two must validate identically. If registration accepted a
+         *     password that login rejected, an account could be created and never used again.
+         */
+        CredentialsRequest: {
+            /**
+             * Email
+             * Format: email
+             * @description Address to register or sign in with. Compared case-insensitively.
+             */
+            email: string;
+            /**
+             * Password
+             * @description At least 12 characters. Length is the only property checked — no character-class rule, which pushes people towards `Password1!` and away from a long passphrase.
+             */
+            password: string;
         };
         /**
          * DetectedLandmark
@@ -468,6 +581,33 @@ export interface components {
             /** Value */
             value: number | null;
         };
+        /**
+         * TokenResponse
+         * @description What every successful auth route returns.
+         *
+         *     **The refresh token is deliberately not here.** It goes back as an `HttpOnly` cookie and
+         *     appears in no response body anywhere, which is what makes "no token in `localStorage`"
+         *     a property of the API rather than a rule the frontend has to keep remembering.
+         */
+        TokenResponse: {
+            /**
+             * Access Token
+             * @description Bearer token. Hold in memory only; never persist it.
+             */
+            access_token: string;
+            /**
+             * Expires In
+             * @description Seconds until the access token expires. Sent so the client can refresh *before* expiry rather than discovering it through a failed request.
+             */
+            expires_in: number;
+            /**
+             * Token Type
+             * @description RFC 6750 scheme, so the client sends `Authorization: Bearer <token>`.
+             * @default bearer
+             * @constant
+             */
+            token_type: "bearer";
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -663,6 +803,129 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Credentials rejected. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    refresh_api_v1_auth_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description The refresh token is missing, expired, unknown or already used. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    register_api_v1_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description That email is already registered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Password or email rejected. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -81,6 +81,16 @@ class RefreshTokenRepository:
         )
         return result.scalar_one_or_none()
 
+    async def revoke(self, token: RefreshToken, revoked_at: datetime) -> None:
+        """Revoke one token — the normal end of a rotation.
+
+        Separate from `revoke_family` because rotation and replay detection mean opposite things.
+        Rotating retires a token that was used correctly and leaves the family alive; revoking
+        the family is the response to a token used *twice*, and ends every session in it.
+        """
+        token.revoked_at = revoked_at
+        await self._session.flush()
+
     async def revoke_family(self, family_id: uuid.UUID, revoked_at: datetime) -> int:
         """Revoke every active token in a family. Returns the row count."""
         result = await self._session.execute(
