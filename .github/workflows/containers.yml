@@ -129,12 +129,30 @@ jobs:
       - name: Web is served
         run: curl --fail --silent --show-error --output /dev/null http://localhost:5173/
 
+      - name: Obtain an access token
+        # Since E8 (OP-56) every analyses route requires one, so the smoke steps below need a
+        # session. Registering through the running stack rather than signing a token locally is
+        # deliberate: it exercises the real auth path against the containerised API, so a broken
+        # register or a misconfigured JWT secret fails here rather than looking like an upload
+        # fault three steps later.
+        run: |
+          body="$(curl --fail --silent --show-error http://localhost:8000/api/v1/auth/register \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com\",\"password\":\"a-sufficiently-long-smoke-test-password\"}")"
+          token="$(echo "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+          test -n "$token"
+          # Masked so a token cannot be read out of the public log, and exported for later steps.
+          echo "::add-mask::${token}"
+          echo "ACCESS_TOKEN=${token}" >> "$GITHUB_ENV"
+          echo "OK  registered and holding an access token"
+
       - name: The Vite proxy reaches the API
         # The point of the whole arrangement: the browser's origin serves both the app and the
         # API, so there is no CORS and no per-environment base URL. If this passes on :5173 the
         # proxy is wired; if it only passes on :8000 it is not.
         run: |
           body="$(curl --fail --silent --show-error http://localhost:5173/api/v1/analyses -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
             -F "image=@fixtures/images/desk_hunch.jpeg")"
           echo "$body" | head -c 400
           echo "$body" | grep -q '"pose_detected":true'
@@ -146,6 +164,7 @@ jobs:
         # would pass against a mocked frontend, which is why the assertion is on the API.
         run: |
           body="$(curl --fail --silent --show-error http://localhost:8000/api/v1/analyses -X POST \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
             -F "image=@fixtures/images/desk_hunch.jpeg")"
           echo "$body" | python3 -c "
           import json, sys
@@ -160,6 +179,7 @@ jobs:
       - name: Errors use the documented problem shape
         run: |
           status="$(curl --silent --output /tmp/problem.json --write-out '%{http_code}' \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
             http://localhost:8000/api/v1/analyses -X POST -F "image=@README.md")"
           cat /tmp/problem.json
           test "$status" = "400"

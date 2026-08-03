@@ -252,16 +252,37 @@ jobs:
           OPENPOSTURE_DATABASE_URL: postgresql+asyncpg://openposture:openposture-dev-only@127.0.0.1:5432/openposture
         run: |
           uv run python - <<'PY'
+          import uuid
+
           from fastapi.testclient import TestClient
 
           from openposture_api.config import Settings
           from openposture_api.main import create_app
 
           with TestClient(create_app(Settings())) as client:
+              # Since E8 the upload route requires a token, so this step has to hold a session
+              # like any other client. Registered rather than minted with `issue_access_token`:
+              # signing one here would prove only that the step can sign a token, while this
+              # exercises the real register-then-use path against the migrated schema.
+              registration = client.post(
+                  "/api/v1/auth/register",
+                  json={
+                      # Unique per run, because the database persists across steps within a job.
+                      "email": f"smoke-{uuid.uuid4().hex}@example.com",
+                      "password": "a-sufficiently-long-smoke-test-password",
+                  },
+              )
+              assert registration.status_code == 201, (
+                  registration.status_code,
+                  registration.text,
+              )
+              token = registration.json()["access_token"]
+
               with open("fixtures/images/desk_hunch.jpeg", "rb") as image:
                   response = client.post(
                       "/api/v1/analyses",
                       files={"image": ("desk_hunch.jpeg", image, "image/jpeg")},
+                      headers={"Authorization": f"Bearer {token}"},
                   )
 
           assert response.status_code == 201, (response.status_code, response.text)
