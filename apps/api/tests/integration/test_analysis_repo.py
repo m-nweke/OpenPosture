@@ -46,6 +46,13 @@ def test_every_public_method_requires_user_id() -> None:
     Widened in E8 from "every read" to "every method". `create` was the exception while analyses
     could outlive the absence of authentication; now that an owner always exists, an unscoped
     write is as much a hole as an unscoped read — it produces a row no scoped read can return.
+
+    **Declaring the parameter is not enough; it must also have no default.** A
+    `user_id: uuid.UUID | None = None` names the parameter while letting every caller omit it —
+    exactly the state `create` was in before E8. Both halves are asserted over the same
+    enumeration rather than in a second test against a fixed list of method names, because a list
+    written today does not contain the method someone adds tomorrow, which is the only case either
+    assertion exists for.
     """
     public_methods = [
         name
@@ -60,22 +67,9 @@ def test_every_public_method_requires_user_id() -> None:
             f"AnalysisRepository.{method_name} must declare a `user_id` parameter — "
             "every query and every insert is scoped to one user"
         )
-
-
-def test_user_id_is_required_rather_than_defaulted() -> None:
-    """Declaring the parameter is not enough; it must have no default.
-
-    A `user_id: uuid.UUID | None = None` satisfies the test above while still allowing every
-    caller to omit it — which is exactly the state `create` was in before E8. Requiring the
-    absence of a default is what makes "cannot be forgotten" true: forgetting is a TypeError at
-    the call site rather than a null in the database.
-    """
-    for method_name in ("create", "get", "list_page", "delete"):
-        parameter = inspect.signature(getattr(AnalysisRepository, method_name)).parameters[
-            "user_id"
-        ]
-        assert parameter.default is inspect.Parameter.empty, (
-            f"AnalysisRepository.{method_name} gives `user_id` a default, so a caller can omit it"
+        assert params["user_id"].default is inspect.Parameter.empty, (
+            f"AnalysisRepository.{method_name} gives `user_id` a default, so a caller can omit "
+            "it and write or read rows belonging to nobody"
         )
 
 

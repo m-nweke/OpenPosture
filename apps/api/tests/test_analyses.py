@@ -151,8 +151,9 @@ def build_client(
     app.dependency_overrides[get_session] = _fake_session
     # Overridden rather than minting a real token: these tests assert the upload pipeline, and a
     # signed token would make every one of them also a test of JWT decoding. The dependency's own
-    # behaviour is covered in `TestGetCurrentUserId`, and that it is *wired up* is covered by the
-    # route-table test — neither of which should be able to pass because a fixture faked it.
+    # behaviour is covered by `TestAccessTokenDependency` in `test_tenancy.py`, and that it is
+    # *wired up* by `TestRouteTable` in the same file — neither of which can pass because a
+    # fixture faked it.
     app.dependency_overrides[get_current_user_id] = lambda: UPLOADER_ID
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
