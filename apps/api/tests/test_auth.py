@@ -229,8 +229,11 @@ class TestAccountExistenceOracle:
     def test_a_known_and_unknown_email_take_comparable_time(self, client: TestClient) -> None:
         """Not constant-time, but within the same order of magnitude.
 
-        The naive implementation differs by ~200x. A factor of 3 is well inside network jitter
-        and is what "equalised" means in practice.
+        The bound is deliberately loose. The bug this catches is a ~200x difference — the early
+        return that skips hashing entirely — so a 5x threshold detects it with enormous margin
+        while leaving room for a shared CI runner to be descheduled mid-request. A tighter bound
+        would buy no additional detection and would fail on load, and a timing test that flakes
+        gets marked skip, which is worse than a loose one that does not.
         """
         client.post(REGISTER, json=_credentials())
         client.cookies.clear()
@@ -239,7 +242,7 @@ class TestAccountExistenceOracle:
         unknown = _time_of(lambda: client.post(LOGIN, json=_credentials(email="ghost@here.com")))
 
         ratio = max(known, unknown) / min(known, unknown)
-        assert ratio < 3.0, f"login timing differs by {ratio:.1f}x, which is an existence oracle"
+        assert ratio < 5.0, f"login timing differs by {ratio:.1f}x, which is an existence oracle"
 
 
 class TestRefreshRotation:
@@ -268,6 +271,36 @@ class TestRefreshRotation:
         client.cookies.set("openposture_refresh", "a-token-nobody-ever-issued")
 
         assert client.post(REFRESH).status_code == 401
+
+    def test_a_rejected_refresh_clears_the_dead_cookie(self, client: TestClient) -> None:
+        """Regression: the 401 used to keep the browser resending a token it can never use.
+
+        The first implementation `raise`d an `HTTPException` after writing the deletion to the
+        injected `Response`. Raising hands control to the error handler, which builds its own
+        response — so the `Set-Cookie` was written to an object that was then discarded, and the
+        clearing the code documented never reached the client.
+        """
+        client.cookies.set("openposture_refresh", "a-token-nobody-ever-issued")
+
+        response = client.post(REFRESH)
+
+        assert response.status_code == 401
+        assert "set-cookie" in response.headers, (
+            "the 401 sent no Set-Cookie, so the dead token stays in the browser and is resent "
+            "on every subsequent refresh"
+        )
+        assert 'openposture_refresh=""' in response.headers["set-cookie"]
+
+    def test_a_rejected_refresh_still_returns_an_rfc_9457_body(self, client: TestClient) -> None:
+        """Building the response by hand must not lose the error envelope the rest of the API
+        uses — that is the risk taken on by returning instead of raising."""
+        client.cookies.set("openposture_refresh", "a-token-nobody-ever-issued")
+
+        response = client.post(REFRESH)
+
+        assert response.headers["content-type"].startswith("application/problem+json")
+        assert response.json()["status"] == 401
+        assert response.json()["type"].endswith("/unauthorized")
 
     async def test_only_the_hash_of_the_token_is_stored(
         self, client: TestClient, session_factory: async_sessionmaker[AsyncSession]

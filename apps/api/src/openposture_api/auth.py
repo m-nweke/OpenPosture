@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from openposture_api.db import get_session
+from openposture_api.errors import problem_response
 from openposture_api.repos import RefreshTokenRepository, UserRepository
 from openposture_api.schemas import CredentialsRequest, TokenResponse
 from openposture_api.security import (
@@ -45,6 +46,8 @@ from openposture_api.security import (
 )
 
 if TYPE_CHECKING:
+    from starlette.responses import JSONResponse
+
     from openposture_api.config import Settings
     from openposture_api.db.models import User
 
@@ -193,7 +196,7 @@ def build_auth_router() -> APIRouter:
         request: Request,
         response: Response,
         session: Annotated[AsyncSession, Depends(get_session)],
-    ) -> TokenResponse:
+    ) -> TokenResponse | JSONResponse:
         """Rotate the refresh token and mint a new access token.
 
         The presented token is always retired, whatever else happens. A refresh that returned a
@@ -202,14 +205,14 @@ def build_auth_router() -> APIRouter:
         settings = _settings_of(request)
         presented = request.cookies.get(settings.refresh_cookie_name)
         if not presented:
-            raise _unauthorized_refresh(response, settings)
+            return _unauthorized_refresh(request, settings)
 
         tokens = RefreshTokenRepository(session)
         stored = await tokens.get_by_hash(hash_refresh_token(presented))
         now = datetime.now(UTC)
 
         if stored is None:
-            raise _unauthorized_refresh(response, settings)
+            return _unauthorized_refresh(request, settings)
 
         if stored.revoked_at is not None:
             # Replay. This token was already rotated, so a correct client would never present it
@@ -225,10 +228,10 @@ def build_auth_router() -> APIRouter:
                 family_id=str(stored.family_id),
                 tokens_revoked=revoked,
             )
-            raise _unauthorized_refresh(response, settings)
+            return _unauthorized_refresh(request, settings)
 
         if _as_utc(stored.expires_at) <= now:
-            raise _unauthorized_refresh(response, settings)
+            return _unauthorized_refresh(request, settings)
 
         await tokens.revoke(stored, now)
         await _issue_refresh_cookie(
@@ -385,19 +388,27 @@ def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
     )
 
 
-def _unauthorized_refresh(response: Response, settings: Settings) -> HTTPException:
+def _unauthorized_refresh(request: Request, settings: Settings) -> JSONResponse:
     """One 401 for every way a refresh can fail, with the dead cookie cleared on the way out.
 
     Missing, unknown, expired and replayed are deliberately indistinguishable to the client. A
     client that could tell "expired" from "revoked as stolen" would learn whether the token it
     holds was ever real, which is exactly what an attacker testing a captured token wants to know.
+
+    **Returned and not raised, and the difference is load-bearing.** Raising `HTTPException`
+    hands control to the error handler, which builds its own response — so anything written to
+    the injected `Response` object, including a `Set-Cookie`, is discarded. The first version of
+    this function raised, and the cookie clearing it documented simply never reached the client.
+    Building the problem response here keeps the header attached to the response that is sent.
     """
-    _clear_refresh_cookie(response, settings)
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Your session has expired. Please sign in again.",
+    problem = problem_response(
+        request,
+        status.HTTP_401_UNAUTHORIZED,
+        "Your session has expired. Please sign in again.",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    _clear_refresh_cookie(problem, settings)
+    return problem
 
 
 def _as_utc(moment: datetime) -> datetime:
