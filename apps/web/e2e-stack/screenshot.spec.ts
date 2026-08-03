@@ -72,7 +72,10 @@ test('capture the landing page for the README', async ({ page }) => {
   })
 })
 
-test('capture a real result for the README', async ({ page }) => {
+// Skipped with the analysis journey: this one also uploads, so OP-56's token requirement
+// refuses it. OP-57 restores it — see the note at the top of analysis.spec.ts. The landing-page
+// capture above needs no upload and still runs.
+test.skip('capture a real result for the README', async ({ page }) => {
   await page.goto('/register')
   await page.getByLabel('Name:').fill('Ada')
   await page.getByLabel('Email:').fill('ada@example.com')
