@@ -18,13 +18,21 @@
 > | C — Rules engine | `OP-2` | OP-30…45 | `OP-23`…`OP-38` |
 > | D — Walking skeleton | `OP-3` | OP-50…59 | `OP-39`…`OP-48` |
 > | E — Persistence + auth | `OP-5` | OP-60…70 | `OP-49`…`OP-59` |
-> | F — LLM coaching | `OP-6` | OP-80…88 | — |
+> | F — LLM coaching | `OP-6` | OP-80…88 | `OP-63`…`OP-75` |
 > | G — Live mode | `OP-7` | OP-100…104 | — |
 > | H — Polish and proof | `OP-8` | OP-110…116 | `OP-60`, `OP-61` |
 >
-> Epics F, G and H are held as the plan text below until their stories are cut; the two H stories
+> Epics G and H are held as the plan text below until their stories are cut; the two H stories
 > that do exist (`OP-60` threshold recalibration, `OP-61` the `overall_score` design) were raised
 > during Epic C rather than planned here.
+>
+> **Epic F is the one section rewritten rather than preserved.** Its stories were cut *after* the
+> import and after Epics A–D shipped, so the draft numbering never described anything that was
+> built. Re-planning it revealed three changes the original text got wrong: the provider sequence
+> (local-first, paid last), the exercise library (referenced as a phrase, never designed as an
+> artifact), and coaching persistence (a text column that cannot answer the questions a history
+> view asks). The section below is written against the **Jira** keys because, unlike the rest of
+> this document, it is a current plan rather than a historical record.
 >
 > **Progress against the plan:** Epics A, B and D are merged. Epic C is merged through the
 > shared spec, the report CLI and `scientific-validation.yml`; its remaining stories are the
@@ -97,7 +105,8 @@ openposture/
 │  ├─ posture-core/              # ⭐ PURE rules engine. numpy only. No I/O, no globals.
 │  ├─ pose-backends/             # inference adapters behind a Protocol (impure, heavy)
 │  ├─ posture-core-ts/           # TS mirror for browser live mode
-│  └─ posture-spec/              # SHARED rules.json + golden/*.json (cross-language contract)
+│  ├─ posture-spec/              # SHARED rules.json + golden/*.json (cross-language contract)
+│  └─ posture-coaching/          # curated exercise library keyed by finding code (data only)
 ├─ docs/
 │  ├─ V2-PLAN.md                 # this plan, committed
 │  ├─ adr/0001..0006.md
@@ -113,7 +122,7 @@ Python packaging via **`uv` workspace** (`[tool.uv.workspace] members = ["apps/a
 
 ### Why FastAPI, not modernized Flask
 
-Nothing in `app.py`'s 56 lines survives the new requirements, so this is a rewrite either way — the only question is which framework. FastAPI wins on all four actual needs: `UploadFile` is spooled to disk (a 15 MB photo doesn't sit in RAM); `run_in_threadpool` keeps blocking CPU-bound inference off the event loop; `StreamingResponse` over an async Anthropic stream is ~10 lines where Flask+WSGI streaming while holding a DB session is genuinely awkward; and `app.dependency_overrides` **is the answer** to "how do I test an endpoint that runs a model without running the model."
+Nothing in `app.py`'s 56 lines survives the new requirements, so this is a rewrite either way — the only question is which framework. FastAPI wins on all four actual needs: `UploadFile` is spooled to disk (a 15 MB photo doesn't sit in RAM); `run_in_threadpool` keeps blocking CPU-bound inference off the event loop; `StreamingResponse` over an async LLM stream is ~10 lines where Flask+WSGI streaming while holding a DB session is genuinely awkward; and `app.dependency_overrides` **is the answer** to "how do I test an endpoint that runs a model without running the model."
 
 The bonus that improves the frontend: FastAPI emits OpenAPI 3.1, so `openapi-typescript` generates `apps/web/src/api/schema.d.ts` from `/openapi.json`. A breaking backend change then fails `tsc` in CI. *"My frontend types are generated from my backend schema"* is a stronger interview line than anything else in the stack.
 
@@ -262,19 +271,31 @@ Tables: `users` · `refresh_tokens` · `sessions` · `analyses` · `keypoints` �
 - **OP-70** Rate limiting (`slowapi`) on `/auth/login` (5/min/IP) and `/analyses`.
 
 ### Epic F — LLM coaching
-*Leaves: personalized, streaming, metric-grounded feedback.*
+*Leaves: personalized, streaming, metric-grounded feedback — what your posture is doing now, plus exercises chosen for your specific findings — persisted so progression is visible over time.*
 
-**The LLM sits strictly off the critical path.** `POST /analyses` returns the deterministic report immediately and never waits on Anthropic; coaching is a separate, cached call. **Only the structured report is sent — never the image.** Cheaper, faster, and no user photo leaves the machine: real privacy-by-design, worth stating in the README.
+**The LLM sits strictly off the critical path.** `POST /analyses` returns the deterministic report immediately and never waits on a model; coaching is a separate, cached, explicitly-requested call. The app stays fully functional when the LLM is down, unconfigured, or over budget. **Only the structured report is sent — never the image.** Cheaper, faster, and no user photo leaves the machine: real privacy-by-design, worth stating in the README.
 
-- **OP-80** `LLMClient` Protocol + `FakeLLMClient` (tests) + **`TemplateLLMClient`** — deterministic Jinja rendering from findings, no network. **`LLM_ENABLED=false` is the default in `.env.example`**, so `docker compose up` yields a fully working app with real posture analysis and real (if less eloquent) coaching **with no API key**. A recruiter cloning the repo gets a working demo in one command; that is worth more than streaming.
-- **OP-81** `AnthropicLLMClient`: `claude-opus-5`, `client.messages.parse()` → validated `CoachingResponse{summary, encouragement, recommendations[≤4], caveats[]}` — which maps directly onto the existing Dashboard shape, so the frontend change is a data-source swap, not a redesign. **Handle `stop_reason == "refusal"` before reading `content`** (it returns HTTP 200, not an error — easy to skip, looks sloppy when missed).
-- **OP-82** System prompt (exercise library + rules explanation) + report→prompt serializer. Guardrails: never diagnose, never contradict the numeric metrics, one recommendation per finding, always cite the metric value. Mark the system prompt `cache_control: {"type": "ephemeral"}` — keep it above the 512-token minimum for `claude-opus-5` so it actually caches. Prompt snapshot test.
-- **OP-83** `POST /analyses/{id}/coaching` — idempotent, persists to `coaching_text`, one generation per analysis ever.
-- **OP-84** `GET /analyses/{id}/coaching/stream` (SSE) via `client.messages.stream()`, persisting on completion.
-- **OP-85** Frontend consumer using **`fetch` + `ReadableStream`, not `EventSource`** — `EventSource` can't set an `Authorization` header. Comment the reason. Graceful non-streaming fallback.
-- **OP-86** Cost controls: `max_tokens=1500`; per-user rate limit (10/hr); `LLM_MONTHLY_TOKEN_BUDGET` counter that silently falls back to `TemplateLLMClient` when exceeded; token usage recorded per analysis. At ~600 input + ~800 cached system + ~400 output tokens, that's **≈$0.017/call** — trivial at portfolio volume.
-- **OP-87** `GET /sessions/{id}/summary` — trend narrative over the last N analyses (one indexed query, thanks to the normalized schema), cached 1 h. This is what makes it read as a product rather than a one-shot classifier.
-- **OP-88** Tests: fake-client units, SSE frame-parsing, `LLM_ENABLED=false` path.
+**Provider sequencing: local first, paid last.** Ollama runs locally and free as the first real model (OP-65); Anthropic on `claude-haiku-4-5` lands last (OP-75), behind an explicit spend gate, once the app is confirmed working end to end. Prompt iteration is where a paid API bleeds — dozens of runs while the prompt is still wrong. Doing that locally costs nothing, and Anthropic is billed only for calls already known to work. **OP-63 through OP-74 cost nothing.** The caveat, stated honestly: a prompt tuned on a small local model isn't *optimal* for a hosted one, but the expensive parts — schema, guardrails, serializer, snapshot test — transfer completely.
+
+**The exercise library is data, not prompt text.** If exercises live only as prose inside a system prompt, the model invents them — and a posture app confidently inventing stretches is the one failure mode that makes the project look unserious. As a versioned data module the library is reviewable, citable, diffable, and assertable. The LLM selects and phrases; it never generates. Retrieval is an **exact-match lookup by finding code** — the rules engine already computed the key, so there is no vector database, no embeddings, and no RAG.
+
+**Grounding is a tested property.** `recommendations` are structured (`finding_code`, `metric_name`, `metric_value`, `exercise_id`, `why_this_helps`, `how_to`), so every claim is checkable against the report and the library. **Abstention is respected**: no exercise for a metric Epic C could not measure.
+
+**Coaching persists as rows, not a text blob** — the same argument Epic E makes about `keypoints`, one layer up. Prose cannot answer "which findings keep recurring"; rows can. Analysis history itself belongs to Epic E (OP-54, OP-58); OP-71 extends it rather than rebuilding it.
+
+- **`OP-63`** `packages/posture-coaching`: ~100 curated exercises across 10 groups keyed by finding code, each with a source citation and contraindications. Includes two **maintenance** groups, because good posture emits no finding and a healthy user must still receive something; excludes `frontal_view`, which is camera guidance, not a posture state. A test enumerates every code `rules.evaluate` can emit and **fails CI on a gap**. *(1.5–2 days — the largest content item in the epic.)*
+- **`OP-64`** `LLMClient` Protocol + `FakeLLMClient` + **`TemplateLLMClient`** (Jinja over the library, no network) + the `CoachingResponse`/`Recommendation` schema. **`LLM_PROVIDER=template` is the default in `.env.example`**, so `docker compose up` yields a fully working app with real analysis and real recommendations, **no API key and no model download**. A recruiter cloning the repo gets a working demo in one command; that is worth more than streaming.
+- **`OP-65`** `OllamaLLMClient` — structured output via Ollama's JSON-schema `format`. Model **pinned by tag, never `:latest`**, pulled with `make fetch-llm` into `~/.ollama` and therefore never in the repo tree — the Epic B `fetch-model` pattern, not the pre-v2 Dropbox link. Ollama runs on the **host**, not in Compose: Docker Desktop on macOS has no GPU passthrough. Unreachable → falls back to the template client.
+- **`OP-66`** System prompt + report→prompt serializer, **provider-neutral**. Guardrails: recommend only from the supplied library; nothing for an abstained metric; never diagnose; never contradict the numeric metrics; one recommendation per finding; always cite the measured value; general guidance, not medical advice. Prompt snapshot test.
+- **`OP-67`** Coaching persistence: `coaching` (one row per analysis, unique on `analysis_id`) + `coaching_recommendations` rows, stamped with `llm_provider`, `llm_model`, `prompt_version`, `library_version` so history survives the OP-75 swap. Alembic migration, reversible.
+- **`OP-68`** `POST /analyses/{id}/coaching` — idempotent via the unique constraint, **one generation per analysis ever**. This is the real cost control: spend scales with distinct analyses, not page views.
+- **`OP-69`** `GET /analyses/{id}/coaching/stream` (SSE), persisting on completion only — a mid-stream disconnect must not leave a half-written row.
+- **`OP-70`** Frontend consumer using **`fetch` + `ReadableStream`, not `EventSource`** — `EventSource` can't set an `Authorization` header and the access token lives in memory. Comment the reason. Graceful non-streaming fallback.
+- **`OP-71`** Coaching in history + recommendation progression: which findings recur, which have stopped, which exercises were recommended and when — beside the existing `trunk_inclination_deg` sparkline. Present the series adjacently; correlation is not proof the exercises worked, and overclaiming would undo the credibility Epic C's abstention work bought.
+- **`OP-72`** `max_tokens=1500`; per-user rate limit (10/hr); `LLM_MONTHLY_TOKEN_BUDGET` silently falling back to `TemplateLLMClient`; token usage recorded per analysis **for every provider including Ollama**, so OP-75's cost estimate comes from measured counts rather than a guess. With a local model the binding constraint is the machine, not money.
+- **`OP-73`** `GET /sessions/{id}/summary` — trend narrative over the last N analyses (one indexed query, thanks to the normalized schema), cached 1 h. What makes it read as a product rather than a one-shot classifier. **Cut line #1.**
+- **`OP-74`** Tests: grounding properties, Protocol conformance across all four clients, SSE frame parsing and disconnect, the concurrent-generation race, budget and outage fallbacks, tenancy 404s. **CI never requires Ollama, a model, a key, or network** — a test that quietly depends on a running Ollama is the same class of defect as the Dropbox-hosted model.
+- **`OP-75`** `AnthropicLLMClient` on `claude-haiku-4-5` via `LLM_MODEL`, **config-only swap**. `output_config.effort` errors on Haiku; thinking uses `budget_tokens` and should be off; handle `stop_reason == "refusal"` before reading content (HTTP 200, not an error). **The cacheable prefix minimum is 4096 tokens on Haiku 4.5** — an ~800-token system prompt won't cache and fails *silently*, so either accept it or grow the prompt deliberately; never ship a cache marker that can't fire. `config.py` refuses to boot on a paid provider without `LLM_ALLOW_PAID_PROVIDER=true`. ≈**$0.0034/call**.
 
 ### Epic G — Browser-side live mode
 *Leaves: real-time skeleton + posture verdict in the browser. Replaces `posture_realtime.py`, which is deleted (90% copy-paste, a broken `cap.set(100, …)` resolution call, and a `config_reader()` re-parse on every single frame).*
@@ -349,7 +370,7 @@ CI grows with the architecture; Epic H only audits and hardens it.
 - **`pr.yml`** starts at OP-4 with Python jobs, expands at OP-5 with React jobs, and expands at OP-50 with API-specific coverage. Frozen installs; ruff + oxlint + Prettier; mypy `--strict` + `tsc --noEmit`; Python 3.11/3.12 matrix; `posture-core` 95%, API 85%, React 70%; production web build. Independent jobs run in parallel. Fast target: **≤5 minutes**.
 - **`scientific-validation.yml`** starts with the shared spec at OP-43, then gains property, data-quality, parity, and evaluation-regression jobs as those capabilities appear. This is the capstone's signature workflow.
 - **`integration.yml`** starts with Postgres/MinIO at OP-60 and immediately protects service startup; Alembic and repository/auth/storage round trips are added by their implementation tickets.
-- **`e2e.yml`** starts with the first walking-skeleton journey at OP-58 and grows only for critical cross-layer behavior. It uses `POSE_BACKEND=fake` and `LLM_ENABLED=false`; failures upload traces, screenshots/video, API logs, and Compose logs.
+- **`e2e.yml`** starts with the first walking-skeleton journey at OP-58 and grows only for critical cross-layer behavior. It uses `POSE_BACKEND=fake` and `LLM_PROVIDER=template`; failures upload traces, screenshots/video, API logs, and Compose logs.
 - **`containers.yml`** is required from OP-54, the first Docker/Compose commit. It begins with build/config/readiness/smoke/cleanup and grows with Postgres, MinIO, production images, multi-architecture support, budgets, and scans.
 - **`security.yml`** starts when authentication is introduced. Dependency review is required on PRs; CodeQL, secret detection, license policy, and image/dependency vulnerability scans run on `main` and weekly. New high/critical findings fail unless a time-bounded exception is documented.
 
@@ -379,7 +400,7 @@ Baseline updates are intentional review events: the PR must include the regenera
 - **`model-validation.yml`** — invoked manually with `workflow_dispatch` and by `release.yml`, not on a nightly schedule. Verify SHA256; run the curated evaluation set; enforce tolerant metric and latency/memory budgets; upload metrics, confusion matrices, regression diff, and environment manifest. Numerical comparisons use documented tolerances, not byte equality.
 - **`release.yml`** — triggered by `v*.*.*`; reruns release gates and creates a reproducible local bundle with Compose configuration, metadata, evaluation summary, SBOMs, digests, and checksums. It does **not** deploy or require cloud credentials.
 
-**Every PR runs with no model weights, no `ANTHROPIC_API_KEY`, and no write-capable external credential.** Deterministic fake backends keep application CI stable; on-demand/release validation supplies separate evidence about real-model behavior without paying for redundant scheduled runs.
+**Every PR runs with no model weights, no `ANTHROPIC_API_KEY`, no running Ollama, and no write-capable external credential.** Deterministic fake backends keep application CI stable; on-demand/release validation supplies separate evidence about real-model behavior without paying for redundant scheduled runs.
 
 ## Docker
 
@@ -395,9 +416,9 @@ Baseline updates are intentional review events: the PR must include the regenera
 
 Cut bottom-up. The first four are nearly free; past #4 you start losing signal.
 
-1. `GET /sessions/{id}/summary` (OP-87) — *~1 day*
+1. `GET /sessions/{id}/summary` (`OP-73`) — *~1 day*
 2. MinIO → `LocalDiskStorage` on a named volume; the Protocol already exists — *~1 day*
-3. SSE streaming (OP-84/85) → non-streaming with a spinner — *~1 day*
+3. SSE streaming (`OP-69`/`OP-70`) → non-streaming with a spinner — *~1 day*
 4. Multi-arch Docker; build amd64 only in CI — *~0.5 day*
 5. **Epic G live mode entirely** — the most self-contained epic; nothing depends on it, and `posture-spec` still pays for itself as the Python engine's config — *~3 days*
 6. Playwright → keep exactly one happy path (don't drop it; "has E2E tests" is a checkbox recruiters look for) — *~0.5 day*
@@ -408,7 +429,7 @@ Cut bottom-up. The first four are nearly free; past #4 you start losing signal.
 
 - **Epic D, the walking skeleton.** The mocked dashboard is the single thing making this repo unpresentable.
 - **`posture-core` at 95% coverage.** The load-bearing evidence of mid-level ability — and the cheapest thing in the plan.
-- **`docker compose up` working with no accounts and no API key.** `LLM_ENABLED=false` + `TemplateLLMClient` is what makes that true; guard it with the CI smoke test.
+- **`docker compose up` working with no accounts, no API key, and no model download.** `LLM_PROVIDER=template` + `TemplateLLMClient` + the `posture-coaching` library is what makes that true; guard it with the CI smoke test.
 - **The README with a real GIF.** Most people evaluating this will never run it.
 - **ADR-0002 and ADR-0005 + OP-115.** They convert "I picked MediaPipe" into "I evaluated three backends against six criteria," and "I changed some numbers" into "the original thresholds were raw pixels — here's the invariance property test and the old-vs-new evaluation."
 
@@ -432,7 +453,7 @@ Cut bottom-up. The first four are nearly free; past #4 you start losing signal.
 5. Golden-parity: same corpus through Python and TS, zero verdict diffs.
 6. Upload `OP55.jpeg` (the image `RUNDOWN.md` verified against the old model) via the UI → canvas skeleton + real metrics; confirm a *frontal* photo is rejected by `view_confidence`.
 7. `curl -X POST localhost:8000/api/v1/analyses -F "image=@fixtures/images/OP55.jpeg"` returns typed JSON; `/docs` renders the schema.
-8. Request coaching with `LLM_ENABLED=false` (template) and `=true` (Anthropic); confirm the narrative cites **actual measured angles**, not generic advice.
+8. Request coaching with `LLM_PROVIDER=template`, then `=ollama`, then `=anthropic`; confirm each cites **actual measured angles** and recommends only library exercises matched to the findings actually present. Request it twice and confirm the second call regenerates nothing.
 9. Live mode: webcam skeleton tracks with a stable, non-flickering verdict.
 10. Register user B, request user A's analysis id → **404**.
 11. `npx playwright test` green; push a branch → independent Python, React, API, contract, container, integration, scientific, security, and E2E jobs run in parallel where dependencies allow and finish green **with zero secrets configured**.
