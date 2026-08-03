@@ -19,14 +19,19 @@ allowlist, or a backend that is not there.
 
 from __future__ import annotations
 
+import base64
+import json
 import time
+import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Final
 
 import structlog
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
+from openposture_api.auth import get_current_user_id
 from openposture_api.db import get_session
 from openposture_api.errors import PROBLEM_TYPE_BASE, problem_response
 from openposture_api.images import (
@@ -39,10 +44,15 @@ from openposture_api.images import (
 from openposture_api.pose import get_pose_backend
 from openposture_api.repos import AnalysisRepository, FindingRecord, KeypointRecord, MetricRecord
 from openposture_api.schemas import (
+    AnalysisDetail,
+    AnalysisListItem,
+    AnalysisPage,
     AnalysisResponse,
     DetectedLandmark,
     ImageSize,
     PostureReportModel,
+    StoredFinding,
+    StoredMetric,
 )
 from openposture_api.storage import StorageBackend, StorageError, get_storage
 from pose_backends.base import PoseBackend
@@ -55,6 +65,7 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
     from starlette.responses import JSONResponse
 
+    from openposture_api.db.models import Analysis
     from posture_core import PoseFrame, PostureReport
 
 __all__ = ["API_PREFIX", "build_analyses_router", "register_analysis_error_handlers"]
@@ -223,7 +234,207 @@ def build_analyses_router() -> APIRouter:
             image=ImageSize(width=decoded.width, height=decoded.height),
         )
 
+    @router.get(
+        "/analyses",
+        status_code=status.HTTP_200_OK,
+        response_model=AnalysisPage,
+        summary="List analyses newest first",
+        description=(
+            "Returns a cursor-paginated list of the authenticated user's analyses. Pass the "
+            "`next_cursor` from a previous response as `cursor` to advance. "
+            "`next_cursor` is `null` on the last page."
+        ),
+    )
+    async def list_analyses(
+        user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+        session: Annotated[AsyncSession, Depends(get_session)],
+        limit: int = Query(default=20, ge=1, le=100, description="Page size."),
+        cursor: str | None = Query(default=None, description="Opaque cursor from `next_cursor`."),
+    ) -> AnalysisPage:
+        cursor_created_at: datetime | None = None
+        cursor_id: uuid.UUID | None = None
+        if cursor is not None:
+            cursor_created_at, cursor_id = _decode_cursor(cursor)
+
+        repo = AnalysisRepository(session)
+        # Fetch one extra to know whether another page follows, without a COUNT query.
+        rows = await repo.list_page(
+            user_id,
+            cursor_created_at=cursor_created_at,
+            cursor_id=cursor_id,
+            limit=limit + 1,
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+
+        next_cursor = _encode_cursor(rows[-1].created_at, rows[-1].id) if has_more else None
+
+        return AnalysisPage(
+            items=[_to_list_item(a) for a in rows],
+            next_cursor=next_cursor,
+        )
+
+    @router.get(
+        "/analyses/{analysis_id}",
+        status_code=status.HTTP_200_OK,
+        response_model=AnalysisDetail,
+        summary="Fetch one analysis",
+        description=(
+            "Returns the full analysis record including keypoints, metrics, and findings. "
+            "Returns 404 whether the analysis does not exist or belongs to a different user — "
+            "existence is not leaked."
+        ),
+        responses={
+            status.HTTP_404_NOT_FOUND: {"description": "Analysis not found."},
+        },
+    )
+    async def get_analysis(
+        analysis_id: uuid.UUID,
+        user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+        session: Annotated[AsyncSession, Depends(get_session)],
+    ) -> AnalysisDetail:
+        repo = AnalysisRepository(session)
+        analysis = await repo.get(user_id, analysis_id)
+        if analysis is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return _to_detail(analysis)
+
+    @router.delete(
+        "/analyses/{analysis_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Delete one analysis",
+        description=(
+            "Hard-deletes the analysis and all its child rows. Returns 404 whether the "
+            "analysis does not exist or belongs to a different user — the same 404-not-403 "
+            "rule as the read endpoint."
+        ),
+        responses={
+            status.HTTP_404_NOT_FOUND: {"description": "Analysis not found."},
+        },
+    )
+    async def delete_analysis(
+        analysis_id: uuid.UUID,
+        user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+        storage: Annotated[StorageBackend, Depends(get_storage)],
+        session: Annotated[AsyncSession, Depends(get_session)],
+    ) -> None:
+        """Hard delete, rows before object.
+
+        **Hard, not soft.** This application stores photographs of the user's body. When someone
+        deletes one, the defensible reading of that request is "destroy it", not "hide it behind
+        a flag" — a tombstoned row and a retained image is exactly the outcome the user believed
+        they had prevented. If auditability ever argues for a tombstone, the image must still be
+        hard-deleted.
+
+        **Rows first, then the object** — the reverse of E5's write order, and for the same
+        reason. The two stores cannot be committed together, so one of them fails first, and the
+        choice is which residue to prefer. Deleting the object first and failing on the rows
+        leaves a row pointing at nothing, which every read path then has to defend against.
+        Deleting the rows first and failing on the object leaves an unreferenced object: invisible
+        to the application, and reclaimable later precisely because no row claims it.
+        """
+        repo = AnalysisRepository(session)
+        object_key = await repo.delete(user_id, analysis_id)
+        if object_key is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        await session.commit()
+
+        # After the commit, deliberately. Deleting inside the transaction would destroy the object
+        # for a transaction that could still roll back.
+        try:
+            storage.delete(object_key)
+        except StorageError:
+            # Not fatal: the rows are gone, so the delete the client asked for has happened. The
+            # object is now unreferenced rather than dangling — logged so it can be reclaimed.
+            _LOGGER.warning("orphaned_object", object_key=object_key, exc_info=True)
+
     return router
+
+
+def _encode_cursor(created_at: datetime, analysis_id: uuid.UUID) -> str:
+    """Encode a (created_at, id) pair as an opaque URL-safe cursor."""
+    payload = json.dumps({"t": created_at.isoformat(), "id": str(analysis_id)})
+    return base64.urlsafe_b64encode(payload.encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    """Decode a cursor produced by `_encode_cursor`.
+
+    Raises `HTTPException(400)` on any malformed input — the cursor is client-supplied and
+    must be treated as untrusted.
+    """
+    # Narrow rather than bare `Exception`: every way a malformed cursor can fail lands in one of
+    # these three. `binascii.Error` from base64 and `JSONDecodeError` are both ValueError
+    # subclasses, as are `fromisoformat` and `UUID`; a payload that decodes to a non-dict raises
+    # TypeError, and one missing a key raises KeyError. Catching `Exception` would also swallow a
+    # genuine bug in here and report it to the client as their bad input.
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(cursor.encode()))
+        return datetime.fromisoformat(payload["t"]), uuid.UUID(payload["id"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor."
+        ) from exc
+
+
+def _to_list_item(analysis: Analysis) -> AnalysisListItem:
+    return AnalysisListItem(
+        id=analysis.id,
+        created_at=analysis.created_at,
+        object_key=analysis.object_key,
+        pose_detected=analysis.pose_detected,
+        overall_score=analysis.overall_score,
+    )
+
+
+def _to_detail(analysis: Analysis) -> AnalysisDetail:
+    return AnalysisDetail(
+        id=analysis.id,
+        created_at=analysis.created_at,
+        object_key=analysis.object_key,
+        pose_detected=analysis.pose_detected,
+        image=ImageSize(width=analysis.image_width, height=analysis.image_height),
+        overall_score=analysis.overall_score,
+        assessed=analysis.assessed,
+        total=analysis.total,
+        inference_ms=analysis.inference_ms,
+        pose_backend=analysis.pose_backend,
+        rules_version=analysis.rules_version,
+        schema_version=analysis.schema_version,
+        keypoints=[
+            DetectedLandmark(
+                name=kp.name,
+                x=kp.x,
+                y=kp.y,
+                status=kp.status,  # type: ignore[arg-type]
+                visibility=kp.visibility,
+                presence=kp.presence,
+            )
+            for kp in analysis.keypoints
+        ],
+        metrics=[
+            StoredMetric(
+                code=m.code,
+                value=m.value,
+                unit=m.unit,
+                status=m.status,  # type: ignore[arg-type]
+                detail=m.detail,
+                confidence=m.confidence,
+            )
+            for m in analysis.metrics
+        ],
+        findings=[
+            StoredFinding(
+                code=f.code,
+                severity=f.severity,  # type: ignore[arg-type]
+                message=f.message,
+                metric=f.metric,
+                value=f.value,
+                confidence=f.confidence,
+            )
+            for f in analysis.findings
+        ],
+    )
 
 
 def _keypoint_records(frame: PoseFrame, report: PostureReport) -> list[KeypointRecord]:

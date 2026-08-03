@@ -225,19 +225,23 @@ class AnalysisRepository:
         self,
         user_id: uuid.UUID,
         analysis_id: uuid.UUID,
-    ) -> bool:
-        """Delete an analysis, scoped to user_id.
+    ) -> str | None:
+        """Delete an analysis, scoped to user_id, and report the object key it referenced.
 
-        Returns True if a row was deleted, False if no row matched.
-        Returning False for another user's row is intentional: the caller sees no
-        difference between "not found" and "found but not yours".
+        Returns None if no row matched. Returning None for another user's row is intentional:
+        the caller sees no difference between "not found" and "found but not yours".
+
+        **Returns the key rather than a bool** because the stored object has to be deleted too,
+        and this is the last moment anything knows which one it was — the key lives only in the
+        row being removed. A bool would leave the caller holding a successful delete and no way
+        to name the object it just orphaned.
 
         CASCADE on the FK handles the children; no explicit child deletion needed.
         """
         result = await self._session.execute(
             sql_delete(Analysis)
             .where(Analysis.id == analysis_id, Analysis.user_id == user_id)
-            .returning(Analysis.id)
+            .returning(Analysis.object_key)
         )
         await self._session.flush()
-        return result.scalar_one_or_none() is not None
+        return result.scalar_one_or_none()
