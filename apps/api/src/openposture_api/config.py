@@ -221,9 +221,14 @@ class Settings(BaseSettings):
 
     jwt_secret: SecretStr = Field(
         default=SecretStr(DEV_JWT_SECRET),
+        # RFC 7518 §3.2: an HMAC key must be at least the hash's output size, which for SHA-256
+        # is 32 bytes. Below that the key, rather than the algorithm, becomes the weakest part —
+        # and a short key is brute-forceable offline from a single captured token, after which
+        # every token is forgeable. PyJWT warns about this; a warning is not a control.
+        min_length=32,
         description=(
-            "HS256 signing key for access tokens. Must be overridden in production, which "
-            "the validator below enforces rather than documents."
+            "HS256 signing key for access tokens. At least 32 characters, and overridden in "
+            "production — both enforced here rather than documented and hoped for."
         ),
     )
 

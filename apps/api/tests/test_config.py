@@ -120,6 +120,23 @@ class TestJwtSecret:
 
         assert settings.jwt_secret.get_secret_value() == A_REAL_SECRET
 
+    @pytest.mark.parametrize("short", ["", "hunter2", "x" * 31])
+    def test_a_key_shorter_than_the_hash_is_rejected(self, short: str) -> None:
+        """RFC 7518 §3.2: an HMAC key must be at least the hash's output size — 32 bytes here.
+
+        A shorter key is the weakest part of the scheme rather than the algorithm, and it is
+        brute-forceable offline from one captured token, after which every token is forgeable.
+        PyJWT emits a warning about this; a warning that nobody is watching is not a control.
+        """
+        with pytest.raises(ValidationError) as caught:
+            Settings(jwt_secret=SecretStr(short), _env_file=None)  # type: ignore[call-arg]
+
+        assert "jwt_secret" in str(caught.value)
+
+    def test_the_shipped_default_clears_the_length_bar(self) -> None:
+        """Otherwise development would be unable to boot on its own default."""
+        assert len(DEV_JWT_SECRET) >= 32
+
     def test_the_secret_does_not_appear_in_the_settings_repr(self) -> None:
         """`SecretStr` is why a logged or traceback-printed Settings cannot leak the key."""
         settings = Settings(jwt_secret=SecretStr(A_REAL_SECRET), _env_file=None)  # type: ignore[call-arg]

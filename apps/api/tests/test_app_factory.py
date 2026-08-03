@@ -26,7 +26,9 @@ def _production_settings() -> Settings:
     `Settings` now has to supply one. These tests are about the factory, not about auth — the
     secret is scaffolding, and naming it once keeps that obvious.
     """
-    return Settings(environment="production", jwt_secret=SecretStr("test-only-signing-key"))
+    return Settings(
+        environment="production", jwt_secret=SecretStr("test-only-signing-key-of-sufficient-length")
+    )
 
 
 class _RecordingBackend:
