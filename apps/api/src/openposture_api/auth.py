@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Annotated, Final
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
@@ -38,6 +39,8 @@ from openposture_api.errors import problem_response
 from openposture_api.repos import RefreshTokenRepository, UserRepository
 from openposture_api.schemas import CredentialsRequest, TokenResponse
 from openposture_api.security import (
+    InvalidAccessTokenError,
+    decode_access_token,
     hash_password,
     hash_refresh_token,
     issue_access_token,
@@ -81,13 +84,57 @@ double the cost of every failed sign-in for no benefit.
 """
 
 
-async def get_current_user_id() -> uuid.UUID:
-    """Placeholder — implemented in E8 (OP-56).
+_BEARER: Final = HTTPBearer(
+    auto_error=False,
+    description="The `access_token` returned by register, login or refresh.",
+)
+"""The `Authorization: Bearer` reader, declared as a security scheme.
 
-    Routes depend on this rather than on a hard-coded user so that swapping the implementation
-    is one change in one place. Override in tests with `app.dependency_overrides`.
+`auto_error=False` so that *this* module decides what a rejection looks like. Left at its
+default, `HTTPBearer` raises its own `HTTPException` with the detail "Not authenticated" — a
+second vocabulary for the same refusal, and one that would sit outside the single 401 message
+below. Returning `None` instead hands the decision back here.
+
+Declaring it as a dependency rather than reading the header by hand is also what puts
+`securitySchemes` into the OpenAPI document, so the generated frontend client knows these routes
+take a bearer token instead of discovering it with a 401.
+"""
+
+
+async def get_current_user_id(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_BEARER)],
+) -> uuid.UUID:
+    """Resolve the access token to the user it identifies, or refuse the request.
+
+    The dependency every protected route depends on. It returns a `user_id` and nothing else,
+    because a `user_id` is all the repository layer needs — handing back a `User` would mean a
+    database round trip per request to fetch a row most routes never read, and would throw away
+    the property that makes a signed token worth having (:mod:`~openposture_api.security.tokens`).
+
+    **One 401 for every failure.** Missing header, wrong scheme, expired, tampered, wrong
+    algorithm, well-signed-but-nonsense subject: all the same status and the same sentence. A
+    client that could tell "expired" from "bad signature" would learn which of its guesses were
+    structurally correct, which is the same oracle the login flow closes in `_verify_credentials`.
+
+    The 401 body is RFC 9457 without doing anything here: `HTTPException` is caught by the handler
+    registered in :mod:`~openposture_api.errors`, which renders it as a problem document and
+    forwards `WWW-Authenticate` — the header RFC 9110 requires on a 401.
     """
-    raise HTTPException(
+    if credentials is None:
+        raise _unauthenticated()
+
+    try:
+        return decode_access_token(credentials.credentials, settings=_settings_of(request))
+    except InvalidAccessTokenError as exc:
+        # Chained with `from exc` so the reason survives in the traceback for the logs, while the
+        # response says only that authentication failed.
+        raise _unauthenticated() from exc
+
+
+def _unauthenticated() -> HTTPException:
+    """The one refusal, built in one place so no caller can phrase it differently."""
+    return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required.",
         headers={"WWW-Authenticate": "Bearer"},

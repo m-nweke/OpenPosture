@@ -62,8 +62,27 @@ async def session() -> AsyncIterator[AsyncSession]:
     await engine.dispose()
 
 
+async def _make_owner(session: AsyncSession) -> uuid.UUID:
+    """A user row to hang an analysis off.
+
+    `analyses.user_id` is a real foreign key and these tests run with `PRAGMA foreign_keys=ON`, so
+    a random UUID would not do — the row has to exist. The address is derived from a fresh UUID
+    because `users.email` is unique and several tests make more than one owner. Lowercase by
+    construction, which the column's CHECK constraint requires.
+    """
+    user = User(email=f"{uuid.uuid4().hex}@example.com", password_hash="$argon2id$fake")
+    session.add(user)
+    await session.flush()
+    return user.id
+
+
 async def _make_analysis(session: AsyncSession, **overrides: object) -> Analysis:
     """An analysis with every non-nullable column filled, so a test can vary one thing."""
+    # Only minted when the caller did not name an owner — otherwise every call that passes its own
+    # `user_id` would still insert a second, unreferenced user row.
+    if "user_id" not in overrides:
+        overrides["user_id"] = await _make_owner(session)
+
     defaults: dict[str, object] = {
         "object_key": "analyses/abc123.jpg",
         "pose_detected": True,

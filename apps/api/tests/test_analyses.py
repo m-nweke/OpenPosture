@@ -123,6 +123,10 @@ async def _fake_session() -> AsyncIterator[MagicMock]:
     yield mock
 
 
+UPLOADER_ID = uuid.uuid4()
+"""The authenticated user that `build_client`'s app attributes uploads to."""
+
+
 @contextmanager
 def build_client(
     settings: Settings,
@@ -145,6 +149,12 @@ def build_client(
     app.dependency_overrides[get_pose_backend] = lambda: backend or FakePoseBackend(preset)
     app.dependency_overrides[get_storage] = lambda: storage
     app.dependency_overrides[get_session] = _fake_session
+    # Overridden rather than minting a real token: these tests assert the upload pipeline, and a
+    # signed token would make every one of them also a test of JWT decoding. The dependency's own
+    # behaviour is covered by `TestAccessTokenDependency` in `test_tenancy.py`, and that it is
+    # *wired up* by `TestRouteTable` in the same file — neither of which can pass because a
+    # fixture faked it.
+    app.dependency_overrides[get_current_user_id] = lambda: UPLOADER_ID
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 
@@ -390,10 +400,17 @@ class TestBackendFailure:
         assert "/srv/secrets" not in response.text
 
     def test_an_unavailable_backend_is_a_503(self, settings: Settings, tmp_path: Path) -> None:
-        """No override at all: the app started without loading a backend, which is what a missing
-        model file looks like in production."""
+        """No backend override: the app started without loading one, which is what a missing model
+        file looks like in production.
+
+        Authenticated, because the 401 would otherwise arrive first and this test would pass
+        without ever reaching the backend. That ordering is the right one — an anonymous caller
+        should not be able to probe which of a service's dependencies are down — but it means the
+        503 can only be observed from behind a valid session.
+        """
         app = create_app(settings, load_backend=False)
         app.dependency_overrides[get_storage] = lambda: LocalDiskStorage(tmp_path / "a")
+        app.dependency_overrides[get_current_user_id] = lambda: UPLOADER_ID
 
         with TestClient(app, raise_server_exceptions=False) as client:
             response = upload(client, make_image())

@@ -653,6 +653,13 @@ export interface operations {
                     "application/json": components["schemas"]["AnalysisPage"];
                 };
             };
+            /** @description Missing or invalid access token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -688,6 +695,13 @@ export interface operations {
             };
             /** @description The file could not be decoded. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid access token. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -752,6 +766,13 @@ export interface operations {
                     "application/json": components["schemas"]["AnalysisDetail"];
                 };
             };
+            /** @description Missing or invalid access token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Analysis not found. */
             404: {
                 headers: {
@@ -783,6 +804,13 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid access token. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
