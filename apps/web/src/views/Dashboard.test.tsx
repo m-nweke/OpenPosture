@@ -7,13 +7,11 @@ import { renderWithProviders } from '../test/renderWithProviders'
 import { server } from '../test/mswServer'
 import { allGapsReport, analysisOf, frontalViewReport, hunchbackReport } from '../test/reports'
 import { ANALYSES_ENDPOINT } from '../api/client'
+import { mockSignedIn } from '../test/authFixtures'
 import type { AnalysisResponse } from '../api/types'
 
 function signedInAs(displayName: string | null) {
-  window.sessionStorage.setItem(
-    'openposture.session',
-    JSON.stringify({ id: 'u1', email: 'ada@example.com', displayName }),
-  )
+  mockSignedIn({ id: 'u1', email: 'ada@example.com', displayName })
 }
 
 /** Real bytes, because jsdom's FileReader will not produce a data URL from a string stub. */
