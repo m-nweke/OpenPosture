@@ -146,6 +146,25 @@ describe('signUp', () => {
       result.current.signUp('ADA@example.com', 'other-password', 'Imposter'),
     ).rejects.toMatchObject({ code: 'email-already-registered' })
   })
+
+  it("maps the server's real password-length rejection to weak-password, not unknown", async () => {
+    // The form's own check only enforces 8 characters; the server's is 12 (schemas.py's
+    // `MIN_PASSWORD_LENGTH`). A password in that gap clears the client check above and comes
+    // back 422 from the real API — this is that response, not the client-side short-circuit.
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/register`, () =>
+        HttpResponse.json(
+          { type: 't', title: 'Unprocessable Content', status: 422, detail: 'Password too short.' },
+          { status: 422 },
+        ),
+      ),
+    )
+    const { result } = await renderAuth()
+
+    await expect(
+      result.current.signUp('ada@example.com', 'eight-ish', 'Ada'),
+    ).rejects.toMatchObject({ code: 'weak-password' })
+  })
 })
 
 describe('signIn', () => {
@@ -184,6 +203,22 @@ describe('signIn', () => {
     // same property the server's own constant-time check protects (auth.py's `_verify_credentials`).
     await expect(wrongPassword).rejects.toMatchObject({ code: 'invalid-credentials' })
     await expect(noSuchAccount).rejects.toMatchObject({ code: 'invalid-credentials' })
+  })
+
+  it('does not call a rate limit "invalid credentials" — a fine password tried too often', async () => {
+    // `login` and `register` share one error surface, so a 429 (OP-59) is an `ApiError` just
+    // like a 401 is. Only the 401 belongs in `invalid-credentials`; this must not.
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/login`, () =>
+        HttpResponse.json(
+          { type: 't', title: 'Too Many Requests', status: 429, detail: 'Slow down.' },
+          { status: 429 },
+        ),
+      ),
+    )
+    const { result } = await renderAuth()
+
+    await expect(result.current.signIn(...CREDENTIALS)).rejects.toMatchObject({ code: 'unknown' })
   })
 })
 

@@ -99,11 +99,16 @@ export function ApiAuthProvider({ children }: { children: ReactNode }) {
     try {
       tokens = await login(normalized, password)
     } catch (err) {
-      // One error for every rejection the server can give a sign-in attempt, on purpose — see
-      // `_INVALID_CREDENTIALS` in the API's auth.py. Distinguishing "no such account" from "wrong
-      // password" here would reintroduce the account-existence oracle that constant-time
-      // verification closes server-side.
-      throw err instanceof ApiError
+      // One error for every *credentials* rejection, on purpose — see `_INVALID_CREDENTIALS` in
+      // the API's auth.py. Distinguishing "no such account" from "wrong password" here would
+      // reintroduce the account-existence oracle that constant-time verification closes
+      // server-side, so both collapse to the same 401 and the same `invalid-credentials`.
+      //
+      // Checked by status, not just `instanceof ApiError`: `login` and `register` share one
+      // schema, so a password Pydantic rejects (422) or a rate limit this account just tripped
+      // (429, OP-59) are also `ApiError`s — and "invalid credentials" would be a wrong, unhelpful
+      // thing to tell someone who typed a fine password too many times.
+      throw err instanceof ApiError && err.status === 401
         ? new AuthError('invalid-credentials')
         : new AuthError('unknown')
     }
@@ -135,6 +140,11 @@ export function ApiAuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 409)
         throw new AuthError('email-already-registered')
+      // The server's real minimum is 12 characters (`schemas.py`'s `MIN_PASSWORD_LENGTH`); this
+      // form's own check above only enforces 8. A password of 8–11 characters clears the client
+      // check, reaches the server, and comes back 422 — which belongs in the same bucket as a
+      // password this form rejected itself, not lumped in with "unknown".
+      if (err instanceof ApiError && err.status === 422) throw new AuthError('weak-password')
       throw new AuthError('unknown')
     }
 
