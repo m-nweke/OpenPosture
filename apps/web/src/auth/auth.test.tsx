@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
 import { AuthProvider, AuthError, useAuth } from '.'
 import { AUTH_ENDPOINT } from '../api/client'
-import { setAccessToken } from './tokenStore'
+import { getAccessToken, setAccessToken } from './tokenStore'
 import { installFakeAuthApi } from '../test/fakeAuthApi'
 import { mockSignedIn } from '../test/authFixtures'
 import { server } from '../test/mswServer'
@@ -78,6 +78,22 @@ describe('session restore', () => {
     const { result } = await renderAuth()
 
     expect(result.current.user).toBeNull()
+  })
+
+  it('clears an undecodable token rather than leaving it attached behind a signed-out UI', async () => {
+    // A token refreshAccessToken() genuinely stored (the server answered 200), but this client
+    // cannot read a `sub` claim from. Left in the store, it would ride along on every future
+    // request's Authorization header while the UI reports signed out.
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/refresh`, () =>
+        HttpResponse.json({ access_token: 'not-a-jwt', token_type: 'bearer' }),
+      ),
+    )
+
+    const { result } = await renderAuth()
+
+    expect(result.current.user).toBeNull()
+    expect(getAccessToken()).toBeNull()
   })
 })
 
@@ -165,6 +181,21 @@ describe('signUp', () => {
       result.current.signUp('ada@example.com', 'eight-ish', 'Ada'),
     ).rejects.toMatchObject({ code: 'weak-password' })
   })
+
+  it('clears the token register() already stored when it cannot be decoded', async () => {
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/register`, () =>
+        HttpResponse.json({ access_token: 'not-a-jwt', token_type: 'bearer' }, { status: 201 }),
+      ),
+    )
+    const { result } = await renderAuth()
+
+    await expect(result.current.signUp(...CREDENTIALS, 'Ada')).rejects.toMatchObject({
+      code: 'unknown',
+    })
+    expect(result.current.user).toBeNull()
+    expect(getAccessToken()).toBeNull()
+  })
 })
 
 describe('signIn', () => {
@@ -203,6 +234,19 @@ describe('signIn', () => {
     // same property the server's own constant-time check protects (auth.py's `_verify_credentials`).
     await expect(wrongPassword).rejects.toMatchObject({ code: 'invalid-credentials' })
     await expect(noSuchAccount).rejects.toMatchObject({ code: 'invalid-credentials' })
+  })
+
+  it('clears the token login() already stored when it cannot be decoded', async () => {
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/login`, () =>
+        HttpResponse.json({ access_token: 'not-a-jwt', token_type: 'bearer' }),
+      ),
+    )
+    const { result } = await renderAuth()
+
+    await expect(result.current.signIn(...CREDENTIALS)).rejects.toMatchObject({ code: 'unknown' })
+    expect(result.current.user).toBeNull()
+    expect(getAccessToken()).toBeNull()
   })
 
   it('does not call a rate limit "invalid credentials" — a fine password tried too often', async () => {

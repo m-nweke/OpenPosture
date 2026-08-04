@@ -3,7 +3,7 @@ import { AuthContext } from './context'
 import { AuthError, type AuthUser, type AuthContextValue } from './types'
 import { decodeAccessTokenSubject } from './jwt'
 import { readCachedProfile, writeCachedProfile } from './profileCache'
-import { subscribeToAccessToken } from './tokenStore'
+import { setAccessToken, subscribeToAccessToken } from './tokenStore'
 import { ApiError, login, logout, refreshAccessToken, register } from '../api/client'
 
 /**
@@ -58,18 +58,21 @@ export function ApiAuthProvider({ children }: { children: ReactNode }) {
         setChecking(false)
         return
       }
-      const cached = readCachedProfile()
       const id = decodeAccessTokenSubject(token)
-      const restored: AuthUser | null =
-        id === null
-          ? null
-          : cached !== null && cached.id === id
-            ? cached
-            : { id, email: '', displayName: null }
-      if (restored !== null) {
-        writeCachedProfile(restored)
-        setUser(restored)
+      if (id === null) {
+        // `refreshAccessToken()` already stored `token` — a real, server-issued token this
+        // client just cannot read a `sub` claim from. Leaving it in the store would attach
+        // `Authorization: Bearer <token>` to every future request behind a UI that says signed
+        // out; clearing it here keeps the token store and `user` from disagreeing.
+        setAccessToken(null)
+        setChecking(false)
+        return
       }
+      const cached = readCachedProfile()
+      const restored: AuthUser =
+        cached !== null && cached.id === id ? cached : { id, email: '', displayName: null }
+      writeCachedProfile(restored)
+      setUser(restored)
       setChecking(false)
     })
     return () => {
@@ -113,17 +116,20 @@ export function ApiAuthProvider({ children }: { children: ReactNode }) {
         : new AuthError('unknown')
     }
 
-    const cached = readCachedProfile()
     const id = decodeAccessTokenSubject(tokens.access_token)
-    const nextUser: AuthUser | null =
-      id === null
-        ? null
-        : {
-            id,
-            email: normalized,
-            displayName: cached !== null && cached.id === id ? cached.displayName : null,
-          }
-    if (nextUser === null) throw new AuthError('unknown')
+    if (id === null) {
+      // `login()` already stored this token as a side effect. Clear it before throwing, or the
+      // token store and this rejection disagree about whether anyone is signed in.
+      setAccessToken(null)
+      throw new AuthError('unknown')
+    }
+
+    const cached = readCachedProfile()
+    const nextUser: AuthUser = {
+      id,
+      email: normalized,
+      displayName: cached !== null && cached.id === id ? cached.displayName : null,
+    }
 
     writeCachedProfile(nextUser)
     setUser(nextUser)
@@ -154,7 +160,12 @@ export function ApiAuthProvider({ children }: { children: ReactNode }) {
       normalized,
       trimmedName === '' ? null : trimmedName,
     )
-    if (nextUser === null) throw new AuthError('unknown')
+    if (nextUser === null) {
+      // register() already stored this token as a side effect — see the identical guard in
+      // signIn above for why it can't just be left there.
+      setAccessToken(null)
+      throw new AuthError('unknown')
+    }
 
     writeCachedProfile(nextUser)
     setUser(nextUser)
