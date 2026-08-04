@@ -12,9 +12,11 @@
  * this ticket deletes, just better dressed. XHR's `upload.onprogress` reports real bytes.
  */
 
-import type { AnalysisResponse, Problem } from './types'
+import type { AnalysisResponse, CredentialsRequest, Problem, TokenResponse } from './types'
+import { getAccessToken, setAccessToken } from '../auth/tokenStore'
 
 export const ANALYSES_ENDPOINT = '/api/v1/analyses'
+export const AUTH_ENDPOINT = '/api/v1/auth'
 
 /** A failure the UI can render, whatever its origin. */
 export class ApiError extends Error {
@@ -67,6 +69,23 @@ export function analysePosture(
   file: File,
   options: AnalyseOptions = {},
 ): Promise<AnalysisResponse> {
+  return attemptAnalysis(file, options, /* allowRetry */ true)
+}
+
+/**
+ * One attempt at the request above, with the 401-refresh-retry split out so it can call itself
+ * exactly once more and never again.
+ *
+ * `allowRetry` is what makes "a failed refresh logs out cleanly rather than looping" true by
+ * construction: the retried attempt is always called with `false`, so a second 401 — refreshed
+ * token and all — falls straight through to the ordinary error branch instead of refreshing
+ * again. Without that flag a server that kept answering 401 would recurse forever.
+ */
+function attemptAnalysis(
+  file: File,
+  options: AnalyseOptions,
+  allowRetry: boolean,
+): Promise<AnalysisResponse> {
   const { onProgress, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = options
 
   return new Promise<AnalysisResponse>((resolve, reject) => {
@@ -76,6 +95,11 @@ export function analysePosture(
 
     request.open('POST', ANALYSES_ENDPOINT)
     request.responseType = 'text'
+
+    const token = getAccessToken()
+    if (token !== null) {
+      request.setRequestHeader('Authorization', `Bearer ${token}`)
+    }
 
     // The timeout is our own timer rather than `XMLHttpRequest.timeout`.
     //
@@ -111,6 +135,22 @@ export function analysePosture(
 
     request.addEventListener('load', () => {
       clearTimer()
+
+      // A single-flight guard, not one guard per request: concurrent 401s from three components
+      // loading at once all call `refreshAccessToken`, but only the first actually reaches the
+      // network — see the docstring on that function for why a second refresh mid-rotation would
+      // get the user logged out rather than merely wasting a request.
+      if (request.status === 401 && allowRetry) {
+        void refreshAccessToken().then((refreshed) => {
+          if (refreshed === null) {
+            reject(new ApiError('Your session has expired. Please sign in again.', { status: 401 }))
+            return
+          }
+          attemptAnalysis(file, options, /* allowRetry */ false).then(resolve, reject)
+        })
+        return
+      }
+
       const parsed = parseBody(request.responseText)
 
       if (request.status >= 200 && request.status < 300) {
@@ -170,6 +210,109 @@ function parseBody(text: string): unknown {
     // A proxy error page or an HTML 502 from something in front of the API. Swallowing the parse
     // failure is right here: the caller wants a usable message, and "Unexpected token < in JSON"
     // is not one.
+    return null
+  }
+}
+
+/**
+ * `fetch`, not `XMLHttpRequest`, for everything below.
+ *
+ * The XHR machinery above earns its keep on one thing only — upload progress — and none of these
+ * calls upload anything. `fetch` is the plainer tool for a JSON request/response.
+ */
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const init: RequestInit = {
+    method: 'POST',
+    // The refresh cookie is `HttpOnly` and scoped to `AUTH_PREFIX` (see the API's auth.py) —
+    // `credentials: 'include'` is what makes the browser attach it on the way out and store the
+    // one register, login and refresh send back. Requests are same-origin (the Vite proxy sees
+    // to that), so this never turns into a cross-site credentialed request.
+    credentials: 'include',
+  }
+  // `exactOptionalPropertyTypes` forbids assigning `undefined` to an optional property, so a
+  // bodyless call (logout, refresh) omits `headers`/`body` entirely rather than setting them to
+  // undefined.
+  if (body !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' }
+    init.body = JSON.stringify(body)
+  }
+
+  const response = await fetch(`${AUTH_ENDPOINT}${path}`, init)
+
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => null)) as Problem | null
+    throw new ApiError(problem?.detail ?? `The server responded with ${response.status}.`, {
+      status: response.status,
+      type: problem?.type,
+      requestId: problem?.request_id,
+    })
+  }
+
+  // `logout` answers 204 with no body; parsing that as JSON would throw.
+  return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+}
+
+/** Register an account and open a session for it in the same call — see the route's own docs. */
+export async function register(email: string, password: string): Promise<TokenResponse> {
+  const credentials: CredentialsRequest = { email, password }
+  const tokens = await postJson<TokenResponse>('/register', credentials)
+  setAccessToken(tokens.access_token)
+  return tokens
+}
+
+export async function login(email: string, password: string): Promise<TokenResponse> {
+  const credentials: CredentialsRequest = { email, password }
+  const tokens = await postJson<TokenResponse>('/login', credentials)
+  setAccessToken(tokens.access_token)
+  return tokens
+}
+
+/** Best-effort: the client forgets the session whether or not the network call lands. */
+export async function logout(): Promise<void> {
+  try {
+    await postJson<void>('/logout')
+  } finally {
+    setAccessToken(null)
+  }
+}
+
+let refreshInFlight: Promise<string | null> | null = null
+
+/**
+ * Exchange the refresh cookie for a new access token, coalescing concurrent callers onto one
+ * request.
+ *
+ * **Why single-flight, specifically:** the refresh token rotates on every use, and reusing an
+ * already-rotated token is treated as theft — the API revokes the *entire* token family
+ * (auth.py's `refresh` route). A page that renders three components which each hold an expired
+ * access token fires three 401s at once. Without this guard, each would call `refresh`
+ * independently: the first rotation succeeds, and the second and third then present the token the
+ * first just retired. The server cannot tell that apart from an attacker replaying a stolen
+ * token, so it revokes the whole family — and the user is signed out for the crime of loading a
+ * page. Coalescing every concurrent caller onto the *same* promise means exactly one refresh
+ * request reaches the server no matter how many callers ask at once; each caller still gets the
+ * resulting token (or `null`) when it resolves.
+ *
+ * Resolves to `null` — never rejects — on any failure, whether that is a 401 (no valid cookie) or
+ * a network error. Callers branch on `null` to end the session; a promise that could also reject
+ * would need two failure paths for what is, from here, one outcome.
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight === null) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null
+    })
+  }
+  return refreshInFlight
+}
+
+async function performRefresh(): Promise<string | null> {
+  try {
+    const tokens = await postJson<TokenResponse>('/refresh')
+    setAccessToken(tokens.access_token)
+    return tokens.access_token
+  } catch {
+    setAccessToken(null)
     return null
   }
 }
