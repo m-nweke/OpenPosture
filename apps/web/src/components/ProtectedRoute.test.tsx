@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './ProtectedRoute'
 import { renderWithProviders } from '../test/renderWithProviders'
+import { mockSignedIn } from '../test/authFixtures'
 
 /** The guard in a router, so a redirect is observable as a route change rather than mocked. */
 function renderGuarded(route: string) {
@@ -41,10 +42,7 @@ describe('ProtectedRoute', () => {
   })
 
   it('renders its children once a session is restored', async () => {
-    window.sessionStorage.setItem(
-      'openposture.session',
-      JSON.stringify({ id: 'u1', email: 'ada@example.com', displayName: 'Ada' }),
-    )
+    mockSignedIn({ id: 'u1', email: 'ada@example.com', displayName: 'Ada' })
 
     renderGuarded('/secret')
 

@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import Login from './Login'
 import Registration from './Registration'
 import { renderWithProviders } from '../../test/renderWithProviders'
+import { installFakeAuthApi } from '../../test/fakeAuthApi'
+
+beforeEach(() => {
+  installFakeAuthApi()
+})
 
 /**
  * Login mounted with a real /dashboard route, so "did it navigate" is answered by what renders

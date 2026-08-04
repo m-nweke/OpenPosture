@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { ANALYSES_ENDPOINT, ApiError, analysePosture } from './client'
+import { ANALYSES_ENDPOINT, AUTH_ENDPOINT, ApiError, analysePosture, logout } from './client'
+import { getAccessToken, setAccessToken } from '../auth/tokenStore'
 import { server } from '../test/mswServer'
 import { analysisOf, hunchbackReport } from '../test/reports'
 
@@ -138,5 +139,142 @@ describe('analysePosture', () => {
     // schedule: every value is a real percentage, and the last one is completion.
     expect(seen.every((percent) => percent >= 0 && percent <= 100)).toBe(true)
     expect(seen.at(-1)).toBe(100)
+  })
+
+  describe('the access token', () => {
+    it('is attached as a bearer header when one is present', async () => {
+      setAccessToken('a-token')
+      let seenAuth: string | null = null
+      server.use(
+        http.post(ANALYSES_ENDPOINT, ({ request }) => {
+          seenAuth = request.headers.get('authorization')
+          return HttpResponse.json(analysisOf(hunchbackReport()), { status: 201 })
+        }),
+      )
+
+      await analysePosture(pngFile())
+
+      expect(seenAuth).toBe('Bearer a-token')
+    })
+
+    it('is omitted when there is no access token', async () => {
+      let seenAuth: string | null | undefined
+      server.use(
+        http.post(ANALYSES_ENDPOINT, ({ request }) => {
+          seenAuth = request.headers.get('authorization')
+          return HttpResponse.json(analysisOf(hunchbackReport()), { status: 201 })
+        }),
+      )
+
+      await analysePosture(pngFile())
+
+      expect(seenAuth).toBeNull()
+    })
+  })
+})
+
+describe('the single-flight refresh guard', () => {
+  it('coalesces N concurrent 401s into exactly one refresh request', async () => {
+    // The race this ticket exists for: three components loading at once each hold the same
+    // expired token, each get a 401, and — without the guard — each would call `/refresh`
+    // independently. With rotation-on-use, the second and third would then present a token the
+    // first refresh already retired, and the server would read that as theft and revoke the
+    // whole family. See refreshAccessToken's docstring in client.ts.
+    setAccessToken('expired-token')
+    let refreshCalls = 0
+    let analysesCalls = 0
+
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/refresh`, () => {
+        refreshCalls += 1
+        return HttpResponse.json({
+          access_token: 'fresh-token',
+          token_type: 'bearer',
+          expires_in: 900,
+        })
+      }),
+      http.post(ANALYSES_ENDPOINT, ({ request }) => {
+        analysesCalls += 1
+        if (request.headers.get('authorization') === 'Bearer expired-token') {
+          return HttpResponse.json(
+            { type: 't', title: 'Unauthorized', status: 401, detail: 'expired' },
+            { status: 401 },
+          )
+        }
+        return HttpResponse.json(analysisOf(hunchbackReport()), { status: 201 })
+      }),
+    )
+
+    const results = await Promise.all([
+      analysePosture(pngFile()),
+      analysePosture(pngFile()),
+      analysePosture(pngFile()),
+    ])
+
+    expect(refreshCalls).toBe(1)
+    // Three first attempts (401) plus three retries (201) — one refresh, six analyses calls.
+    expect(analysesCalls).toBe(6)
+    expect(results).toHaveLength(3)
+    expect(getAccessToken()).toBe('fresh-token')
+  })
+
+  it('rejects once, without retrying again, when the refresh itself fails', async () => {
+    setAccessToken('expired-token')
+    let refreshCalls = 0
+    let analysesCalls = 0
+
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/refresh`, () => {
+        refreshCalls += 1
+        return HttpResponse.json(
+          { type: 't', title: 'Unauthorized', status: 401, detail: 'no session' },
+          { status: 401 },
+        )
+      }),
+      http.post(ANALYSES_ENDPOINT, () => {
+        analysesCalls += 1
+        return HttpResponse.json(
+          { type: 't', title: 'Unauthorized', status: 401, detail: 'expired' },
+          { status: 401 },
+        )
+      }),
+    )
+
+    // A failed refresh logs out cleanly rather than looping: `allowRetry` guarantees at most one
+    // retry attempt, so a server that keeps answering 401 cannot recurse forever.
+    await expect(analysePosture(pngFile())).rejects.toMatchObject({ status: 401 })
+
+    expect(refreshCalls).toBe(1)
+    expect(analysesCalls).toBe(1)
+    // The clean-logout half of the guarantee: the token store no longer holds a token a caller
+    // could keep retrying with, which is what lets ApiAuthProvider notice and sign the user out.
+    expect(getAccessToken()).toBeNull()
+  })
+})
+
+describe('logout', () => {
+  it('never rejects, even when the network call fails — it is best-effort by contract', async () => {
+    setAccessToken('some-token')
+    server.use(http.post(`${AUTH_ENDPOINT}/logout`, () => HttpResponse.error()))
+
+    // App.tsx's signOut fires this without a .catch. A rejection here — even one a `finally`
+    // clears the token before — would be an unhandled promise rejection in the browser.
+    await expect(logout()).resolves.toBeUndefined()
+    expect(getAccessToken()).toBeNull()
+  })
+
+  it('never rejects on a non-2xx response either', async () => {
+    setAccessToken('some-token')
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/logout`, () =>
+        HttpResponse.json(
+          { type: 't', title: 'Internal Server Error', status: 500, detail: 'db down' },
+          { status: 500 },
+        ),
+      ),
+    )
+
+    await expect(logout()).resolves.toBeUndefined()
+    expect(getAccessToken()).toBeNull()
   })
 })

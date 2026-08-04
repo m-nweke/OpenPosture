@@ -1,17 +1,22 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { renderWithProviders } from './test/renderWithProviders'
+import { mockSignedIn } from './test/authFixtures'
+import { installFakeAuthApi } from './test/fakeAuthApi'
 
 function signedIn() {
-  window.sessionStorage.setItem(
-    'openposture.session',
-    JSON.stringify({ id: 'u1', email: 'ada@example.com', displayName: 'Ada' }),
-  )
+  mockSignedIn({ id: 'u1', email: 'ada@example.com', displayName: 'Ada' })
 }
 
 describe('App', () => {
+  // Only "signs the user out" below actually calls the endpoint, but installing it for every
+  // test is simpler than remembering which one needs it.
+  beforeEach(() => {
+    installFakeAuthApi()
+  })
+
   it('renders the nav on the home route', async () => {
     renderWithProviders(<App />)
 

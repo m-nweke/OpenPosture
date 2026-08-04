@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import Registration from './Registration'
 import { renderWithProviders } from '../../test/renderWithProviders'
+import { installFakeAuthApi } from '../../test/fakeAuthApi'
+
+beforeEach(() => {
+  installFakeAuthApi()
+})
 
 function renderRegistration() {
   return renderWithProviders(

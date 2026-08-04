@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { AuthProvider, useAuth } from '.'
+import { installFakeAuthApi } from '../test/fakeAuthApi'
 
 /**
  * OP-55: no token may ever reach `localStorage` or `sessionStorage`.
@@ -98,6 +99,10 @@ describe('no credential reaches web storage', () => {
 })
 
 describe('the auth flows store no token at runtime', () => {
+  beforeEach(() => {
+    installFakeAuthApi()
+  })
+
   afterEach(() => {
     // The spy patches a global prototype, so leaving it in place would follow the suite into
     // every later file — the kind of leak that surfaces as an unrelated test failing only when
@@ -162,9 +167,7 @@ describe('the auth flows store no token at runtime', () => {
     }
   })
 
-  it('stores no password, even though the in-memory provider holds one in memory', async () => {
-    // The provider keeps a password in a Map to compare against — acceptable for a placeholder
-    // with no backend. Writing one to disk would not be, and this is what separates the two.
+  it('stores no password', async () => {
     const writes = watchStorage()
     const { result } = await renderAuth()
 

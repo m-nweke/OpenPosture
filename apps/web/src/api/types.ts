@@ -32,6 +32,12 @@ export type PostureReport = Schemas['PostureReportModel']
 
 export type AnalysisResponse = Schemas['AnalysisResponse']
 
+/** The body of `POST /auth/register` and `POST /auth/login`. */
+export type CredentialsRequest = Schemas['CredentialsRequest']
+
+/** What every successful auth route returns. The refresh token is never in here — see the type. */
+export type TokenResponse = Schemas['TokenResponse']
+
 /**
  * An RFC 9457 problem document.
  *

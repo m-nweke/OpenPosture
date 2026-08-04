@@ -66,20 +66,25 @@ They are separate configs, not two projects in one, because they need different 
 does not forward `/api` at all — a stack spec run there would exercise a frontend talking to
 nothing. Both directories are excluded from Vitest in `vite.config.ts`.
 
-## Authentication is a placeholder
+## Authentication talks to the API
 
 `src/auth` defines the contract the UI is written against — `AuthContextValue` in `types.ts` —
-and ships one implementation of it, `InMemoryAuthProvider`.
+and ships `ApiAuthProvider`, which talks to the self-hosted API's register/login/refresh/logout
+routes (OP-55).
 
-That implementation is real but has no backend: it genuinely creates accounts, genuinely rejects
-a wrong password, and genuinely restores your session across a reload, all inside the tab.
-Accounts live in a `Map` and passwords are compared in plaintext, so **none of it is secure and
-none of it should survive Epic E**. What survives is the interface.
+OP-13 shipped a placeholder first: `InMemoryAuthProvider`, real but backend-less — accounts in a
+`Map`, passwords compared in plaintext — so the app could be built and tested before the API
+existed. OP-57 deleted it and added `ApiAuthProvider` in its place, changing one line of
+`src/auth/index.ts` plus one of `main.tsx`. No component imports anything auth-specific, so no
+component needed to change. If one had, the boundary was drawn in the wrong place.
 
-Epic E (OP-57) deletes `InMemoryAuthProvider.tsx`, adds an API-backed provider satisfying the
-same interface, and changes one line of `src/auth/index.ts` plus one of `main.tsx`. No component
-imports anything auth-specific, so no component should need to change. If one does, the boundary
-was drawn in the wrong place.
+The access token lives in memory only (`src/auth/tokenStore.ts`), never in `localStorage` or
+`sessionStorage` — see `noTokenStorage.test.tsx`. The refresh token never reaches the client at
+all: it is an `HttpOnly` cookie, rotated on every use, with the whole family revoked if an
+already-rotated token is presented again. That rotation is why `api/client.ts`'s 401 handling
+coalesces concurrent refreshes into one request rather than firing one per failed request —
+several components hitting 401 at once would otherwise race each other into a stolen-token replay
+and get the user logged out for loading a page.
 
 Before OP-13 there was no boundary at all: `firebase/auth` was imported directly by five
 components, the web config for a live Firebase project was committed in `src/firebase.ts`, and

@@ -1,10 +1,10 @@
 /**
  * The auth contract the UI is written against.
  *
- * Nothing here mentions how authentication actually happens. That is the point: OP-13 ships an
- * in-memory implementation so the app builds and can be tested, and Epic E (OP-30) replaces it
- * with one that talks to the self-hosted API. If this file has to change when that happens, the
- * boundary was drawn in the wrong place.
+ * Nothing here mentions how authentication actually happens. That is the point: OP-13 shipped an
+ * in-memory implementation so the app could build and be tested before a backend existed, and
+ * OP-57 replaced it with `ApiAuthProvider`, which talks to the self-hosted API. This file did not
+ * change when that happened, which is what the boundary is for.
  *
  * The previous version had no boundary at all — `firebase/auth` was imported directly by App,
  * ProtectedRoute, Login, Registration and Dashboard, so the vendor reached into five components
