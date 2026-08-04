@@ -63,8 +63,10 @@ from posture_core.thresholds import DEFAULT_THRESHOLDS as _DEFAULT_THRESHOLDS
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from slowapi import Limiter
     from starlette.responses import JSONResponse
 
+    from openposture_api.config import Settings
     from openposture_api.db.models import Analysis
     from posture_core import PoseFrame, PostureReport
 
@@ -85,11 +87,15 @@ client is not typed to handle (the same argument as the 502 below).
 """
 
 
-def build_analyses_router() -> APIRouter:
+def build_analyses_router(limiter: Limiter, settings: Settings) -> APIRouter:
     """The analyses routes.
 
     A builder rather than a module-level router for the same reason `create_app` is a factory:
-    two apps in one test session must not share mutable route state.
+    two apps in one test session must not share mutable route state. `limiter` and `settings`
+    arrive as arguments for the same reason `auth.build_auth_router` takes them: the upload
+    route's rate limit (OP-59, `Settings.analyses_rate_limit`) has to be a concrete string at
+    `@limiter.limit(...)` decoration time, before any request — and so before `settings` could
+    be read off `request.app.state` the way the route body reads it for everything else.
     """
     router = APIRouter(prefix=API_PREFIX, tags=["analyses"])
 
@@ -113,8 +119,13 @@ def build_analyses_router() -> APIRouter:
             # an unlisted status is a response the client is not typed to handle.
             status.HTTP_502_BAD_GATEWAY: {"description": "Inference or storage failed downstream."},
             status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "Inference is unavailable."},
+            status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Too many uploads."},
         },
     )
+    # A resource control, not a credential one (OP-59, `Settings.analyses_rate_limit`): pose
+    # inference is the most expensive thing this service does, so this caps how much of the
+    # worker pool one client can occupy rather than guarding against guessing anything.
+    @limiter.limit(settings.analyses_rate_limit)
     async def create_analysis(
         request: Request,
         user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
