@@ -1,11 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { getAccessToken, setAccessToken, subscribeToAccessToken } from './tokenStore'
 
-afterEach(() => {
-  // Module-level state outlives any one test, so the next file to import this module would
-  // otherwise start from whatever the previous test left behind.
-  setAccessToken(null)
-})
+// setupTests.ts resets the token store after every test — module-level state outlives any one
+// test, so without that this file's own tests would start from whatever the previous one left.
 
 describe('tokenStore', () => {
   it('starts with no access token', () => {

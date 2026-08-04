@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { ANALYSES_ENDPOINT, AUTH_ENDPOINT, ApiError, analysePosture } from './client'
 import { getAccessToken, setAccessToken } from '../auth/tokenStore'
@@ -142,10 +142,6 @@ describe('analysePosture', () => {
   })
 
   describe('the access token', () => {
-    afterEach(() => {
-      setAccessToken(null)
-    })
-
     it('is attached as a bearer header when one is present', async () => {
       setAccessToken('a-token')
       let seenAuth: string | null = null
@@ -178,10 +174,6 @@ describe('analysePosture', () => {
 })
 
 describe('the single-flight refresh guard', () => {
-  afterEach(() => {
-    setAccessToken(null)
-  })
-
   it('coalesces N concurrent 401s into exactly one refresh request', async () => {
     // The race this ticket exists for: three components loading at once each hold the same
     // expired token, each get a 401, and — without the guard — each would call `/refresh`

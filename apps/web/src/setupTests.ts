@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import { server } from './test/mswServer'
+import { setAccessToken } from './auth/tokenStore'
 
 // MSW intercepts at the network layer, so components run their real axios/fetch calls and only
 // the response is faked. That is the point: mocking the HTTP client instead would leave the
@@ -18,6 +19,10 @@ afterEach(() => {
   // Drops per-test overrides so a handler added by one test cannot leak into the next.
   server.resetHandlers()
   window.sessionStorage.clear()
+  // The access token is module-level state, not React state — see tokenStore.ts — so nothing
+  // above resets it. Without this, a test that signs in leaves its token sitting there for
+  // whichever test in the same file runs next.
+  setAccessToken(null)
 })
 
 afterAll(() => {
