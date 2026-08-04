@@ -49,7 +49,12 @@ export function ApiAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     void refreshAccessToken().then((token) => {
-      if (cancelled || token === null) {
+      // Checked first and alone: if the component has already unmounted, nothing below —
+      // including `setChecking(false)` — may run. Folding this into the `token === null` branch
+      // below would still call `setChecking` on an unmounted component whenever unmount and "no
+      // session" land in the same tick.
+      if (cancelled) return
+      if (token === null) {
         setChecking(false)
         return
       }
