@@ -11,6 +11,7 @@ system, not of any one function.
 from __future__ import annotations
 
 import io
+import time
 import uuid
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
@@ -27,7 +28,7 @@ from openposture_api.config import Settings
 from openposture_api.db import Base, get_session
 from openposture_api.main import create_app
 from openposture_api.pose import get_pose_backend
-from openposture_api.rate_limit import resolve_client_ip
+from openposture_api.rate_limit import _retry_after_seconds, resolve_client_ip
 from openposture_api.storage import LocalDiskStorage, get_storage
 from pose_backends.fake import FakePoseBackend
 
@@ -127,6 +128,24 @@ class TestClientIpResolution:
         )
 
         assert resolve_client_ip(request) == "only-one-entry"
+
+
+class TestRetryAfterRounding:
+    """`Retry-After` must never advertise a shorter wait than the window actually has left —
+    flooring a fractional reset (e.g. 10.9s -> 10) would let a client retry before the window
+    resets and land right back on a 429."""
+
+    def test_a_fractional_reset_rounds_up_not_down(self) -> None:
+        stats = MagicMock()
+        stats.reset_time = time.time() + 10.1
+        limiter = MagicMock()
+        limiter.limiter.get_window_stats.return_value = stats
+
+        request = MagicMock()
+        request.app.state.limiter = limiter
+        request.state.view_rate_limit = (MagicMock(), MagicMock())
+
+        assert _retry_after_seconds(request) == 11
 
 
 @pytest.fixture

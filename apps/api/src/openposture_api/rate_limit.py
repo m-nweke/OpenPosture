@@ -18,6 +18,7 @@ envelope as every other error (OP-50) — never `slowapi`'s own default JSON sha
 
 from __future__ import annotations
 
+import math
 import time
 from typing import TYPE_CHECKING
 
@@ -78,6 +79,10 @@ def _retry_after_seconds(request: Request) -> int:
     itself would use to build the `Retry-After` header — computed directly rather than through
     `Limiter._inject_headers`, which no-ops unless `headers_enabled` is set and would otherwise
     require every limited route to accept a `response` parameter it has no other use for.
+
+    Rounds up, not down: flooring `10.9` to `10` would tell a client it's safe to retry a full
+    second before the window actually resets, and it would land right back on a 429. Ceiling is
+    the only rounding direction that never advertises a wait shorter than the real one.
     """
     limiter: Limiter = request.app.state.limiter
     current = getattr(request.state, "view_rate_limit", None)
@@ -85,7 +90,7 @@ def _retry_after_seconds(request: Request) -> int:
         return 1
     item, identifiers = current
     stats = limiter.limiter.get_window_stats(item, *identifiers)
-    return max(1, int(stats.reset_time - time.time()))
+    return max(1, math.ceil(stats.reset_time - time.time()))
 
 
 async def _handle_rate_limit_exceeded(request: Request, exc: Exception) -> JSONResponse:
