@@ -1008,6 +1008,9 @@
             },
             "description": "Validation Error"
           },
+          "429": {
+            "description": "Too many uploads."
+          },
           "502": {
             "description": "Inference or storage failed downstream."
           },
@@ -1163,6 +1166,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many attempts."
           }
         },
         "summary": "Sign in",
