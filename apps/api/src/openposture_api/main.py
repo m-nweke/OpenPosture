@@ -37,6 +37,7 @@ from openposture_api.pose import (
     handle_pose_backend_unavailable,
     load_pose_backend,
 )
+from openposture_api.rate_limit import build_limiter, register_rate_limit_handlers
 from openposture_api.storage import create_storage
 
 if TYPE_CHECKING:
@@ -155,6 +156,10 @@ def create_app(
     # Present before startup so that a route reaching for it during a failed lifespan finds a
     # state object describing "not loaded" rather than an AttributeError.
     app.state.pose_backend_state = PoseBackendState()
+    # Built here, one per app, for the same reason `app.state.settings` is: two apps in one test
+    # session must not share limiter state. `resolve_client_ip` reads `app.state.settings`, which
+    # is why this is assigned after it rather than before.
+    app.state.limiter = build_limiter()
 
     # Registered before the routes it wraps. Starlette runs middleware outermost-first, so this
     # binds the request ID before any handler — including the error handlers — can log.
@@ -163,6 +168,7 @@ def create_app(
     register_error_handlers(app)
     app.add_exception_handler(PoseBackendUnavailableError, handle_pose_backend_unavailable)
     register_analysis_error_handlers(app)
+    register_rate_limit_handlers(app)
 
     # The probe reads `app.state` when it runs, not when it is registered, so binding it here —
     # before lifespan has produced a state — reports the real thing at request time.
@@ -175,8 +181,8 @@ def create_app(
     app.include_router(
         build_health_router(version=__version__, probes=probes),
     )
-    app.include_router(build_auth_router())
-    app.include_router(build_analyses_router())
+    app.include_router(build_auth_router(app.state.limiter, resolved))
+    app.include_router(build_analyses_router(app.state.limiter, resolved))
 
     _LOGGER.info(
         "app_created",
