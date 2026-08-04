@@ -28,6 +28,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyses/metrics/trunk-inclination": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trunk inclination trend across all analyses
+         * @description Returns every trunk_inclination_deg measurement for the authenticated user, newest first, from a single indexed query — the history sparkline's data source. A `rules_version` change partway through the series marks a retuned threshold, not a change in the user's posture; a `null` value is a gap the engine could not measure, never a zero.
+         */
+        get: operations["get_trunk_inclination_trend_api_v1_analyses_metrics_trunk_inclination_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analyses/{analysis_id}": {
         parameters: {
             query?: never;
@@ -245,6 +265,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Image Url
+             * @description Built from `object_key` via the storage layer's own URL construction, on every response — never a URL read back out of the database (D3).
+             */
+            image_url: string;
             /** Object Key */
             object_key: string;
             /** Overall Score */
@@ -608,6 +633,40 @@ export interface components {
              */
             token_type: "bearer";
         };
+        /**
+         * TrendPoint
+         * @description One analysis's trunk-inclination measurement, for the history sparkline.
+         */
+        TrendPoint: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Rules Version
+             * @description The ruleset in force when this point was measured. A change partway through the series marks a retuned threshold, not a change in the user's posture.
+             */
+            rules_version: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "insufficient_keypoints" | "low_confidence";
+            /**
+             * Value
+             * @description `null` whenever `status` is not `ok` — a gap in the line, never a 0.
+             */
+            value: number | null;
+        };
+        /**
+         * TrendSeries
+         * @description The full trunk-inclination trend for one user, newest first — one indexed query.
+         */
+        TrendSeries: {
+            /** Points */
+            points: components["schemas"]["TrendPoint"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -746,6 +805,33 @@ export interface operations {
             };
             /** @description Inference is unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_trunk_inclination_trend_api_v1_analyses_metrics_trunk_inclination_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendSeries"];
+                };
+            };
+            /** @description Missing or invalid access token. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

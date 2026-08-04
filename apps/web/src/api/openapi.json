@@ -117,6 +117,11 @@
             "title": "Id",
             "type": "string"
           },
+          "image_url": {
+            "description": "Built from `object_key` via the storage layer's own URL construction, on every response \u2014 never a URL read back out of the database (D3).",
+            "title": "Image Url",
+            "type": "string"
+          },
           "object_key": {
             "title": "Object Key",
             "type": "string"
@@ -141,6 +146,7 @@
           "id",
           "created_at",
           "object_key",
+          "image_url",
           "pose_detected",
           "overall_score"
         ],
@@ -833,6 +839,69 @@
         "title": "TokenResponse",
         "type": "object"
       },
+      "TrendPoint": {
+        "additionalProperties": false,
+        "description": "One analysis's trunk-inclination measurement, for the history sparkline.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "rules_version": {
+            "description": "The ruleset in force when this point was measured. A change partway through the series marks a retuned threshold, not a change in the user's posture.",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "insufficient_keypoints",
+              "low_confidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` whenever `status` is not `ok` \u2014 a gap in the line, never a 0.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "created_at",
+          "value",
+          "status",
+          "rules_version"
+        ],
+        "title": "TrendPoint",
+        "type": "object"
+      },
+      "TrendSeries": {
+        "additionalProperties": false,
+        "description": "The full trunk-inclination trend for one user, newest first \u2014 one indexed query.",
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "title": "TrendSeries",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1024,6 +1093,36 @@
           }
         ],
         "summary": "Analyse posture in a photograph",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
+    "/api/v1/analyses/metrics/trunk-inclination": {
+      "get": {
+        "description": "Returns every trunk_inclination_deg measurement for the authenticated user, newest first, from a single indexed query \u2014 the history sparkline's data source. A `rules_version` change partway through the series marks a retuned threshold, not a change in the user's posture; a `null` value is a gap the engine could not measure, never a zero.",
+        "operationId": "get_trunk_inclination_trend_api_v1_analyses_metrics_trunk_inclination_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendSeries"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid access token."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trunk inclination trend across all analyses",
         "tags": [
           "analyses"
         ]
