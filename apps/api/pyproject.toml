@@ -46,6 +46,7 @@ dependencies = [
     # library; registration validates the shape of an address at the boundary rather than
     # discovering it is unroutable at send time — which this project has no path to do anyway.
     "pydantic[email]>=2.0",
+    "slowapi>=0.1.10",
 ]
 
 [project.optional-dependencies]
