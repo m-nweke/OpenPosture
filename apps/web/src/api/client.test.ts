@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { ANALYSES_ENDPOINT, AUTH_ENDPOINT, ApiError, analysePosture } from './client'
+import { ANALYSES_ENDPOINT, AUTH_ENDPOINT, ApiError, analysePosture, logout } from './client'
 import { getAccessToken, setAccessToken } from '../auth/tokenStore'
 import { server } from '../test/mswServer'
 import { analysisOf, hunchbackReport } from '../test/reports'
@@ -248,6 +248,33 @@ describe('the single-flight refresh guard', () => {
     expect(analysesCalls).toBe(1)
     // The clean-logout half of the guarantee: the token store no longer holds a token a caller
     // could keep retrying with, which is what lets ApiAuthProvider notice and sign the user out.
+    expect(getAccessToken()).toBeNull()
+  })
+})
+
+describe('logout', () => {
+  it('never rejects, even when the network call fails — it is best-effort by contract', async () => {
+    setAccessToken('some-token')
+    server.use(http.post(`${AUTH_ENDPOINT}/logout`, () => HttpResponse.error()))
+
+    // App.tsx's signOut fires this without a .catch. A rejection here — even one a `finally`
+    // clears the token before — would be an unhandled promise rejection in the browser.
+    await expect(logout()).resolves.toBeUndefined()
+    expect(getAccessToken()).toBeNull()
+  })
+
+  it('never rejects on a non-2xx response either', async () => {
+    setAccessToken('some-token')
+    server.use(
+      http.post(`${AUTH_ENDPOINT}/logout`, () =>
+        HttpResponse.json(
+          { type: 't', title: 'Internal Server Error', status: 500, detail: 'db down' },
+          { status: 500 },
+        ),
+      ),
+    )
+
+    await expect(logout()).resolves.toBeUndefined()
     expect(getAccessToken()).toBeNull()
   })
 })

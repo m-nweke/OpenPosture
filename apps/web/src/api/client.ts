@@ -267,10 +267,18 @@ export async function login(email: string, password: string): Promise<TokenRespo
   return tokens
 }
 
-/** Best-effort: the client forgets the session whether or not the network call lands. */
+/**
+ * Best-effort: the client forgets the session whether or not the network call lands, and this
+ * function itself never rejects — a `finally` alone still lets the original error propagate past
+ * it. Callers fire this without a `.catch` (`App.tsx`'s `signOut`), so a rejection here would be
+ * an unhandled promise rejection despite the token already being cleared.
+ */
 export async function logout(): Promise<void> {
   try {
     await postJson<void>('/logout')
+  } catch {
+    // Nothing to do: the caller only cares that the session ends locally, which `finally` below
+    // guarantees regardless of how this request went.
   } finally {
     setAccessToken(null)
   }
