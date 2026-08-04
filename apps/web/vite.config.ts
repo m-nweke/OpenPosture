@@ -25,6 +25,14 @@ export default defineConfig({
         target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
         changeOrigin: true,
       },
+      // `StorageBackend.url_for` (D3) builds thumbnail URLs under this prefix by default —
+      // see `LocalDiskStorage`'s `base_url`. E10 is the first thing that renders one, and
+      // without this entry the browser requests `/media/...` from the Vite dev server itself,
+      // which has nothing there.
+      '/media': {
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
   resolve: {
