@@ -396,3 +396,174 @@ async def test_delete_returns_none_for_another_users_analysis(session: AsyncSess
     assert result is None
     # The row is still there for its owner.
     assert await repo.get(owner, analysis.id) is not None
+
+
+# ---------------------------------------------------------------------------
+# E10: metric trend, for the history sparkline
+# ---------------------------------------------------------------------------
+
+_TRUNK = "trunk_inclination_deg"
+
+
+async def _create_with_trunk_metric(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    object_key: str,
+    rules_version: str = "1.0.0",
+    value: float | None,
+    status: str = "ok",
+) -> Analysis:
+    """An analysis with a single `trunk_inclination_deg` metric row, gap or not.
+
+    `status` and `value` are both caller-supplied rather than one derived from the other,
+    because `Metric`'s own check constraint (`a_value_exists_exactly_when_the_status_is_ok`) is
+    exactly the invariant these tests exist to exercise — passing a mismatched pair should fail
+    at the database, not be silently corrected here.
+    """
+    repo = AnalysisRepository(session)
+    return await repo.create(
+        user_id=user_id,
+        object_key=object_key,
+        pose_detected=status == "ok",
+        image_width=640,
+        image_height=480,
+        overall_score=72.0 if status == "ok" else None,
+        assessed=1 if status == "ok" else 0,
+        total=1,
+        inference_ms=18.3,
+        pose_backend="fake",
+        rules_version=rules_version,
+        schema_version="1.0",
+        metrics=[
+            MetricRecord(
+                code=_TRUNK,
+                value=value,
+                unit="deg",
+                status=status,
+                detail="",
+                confidence=0.9 if status == "ok" else None,
+            )
+        ],
+    )
+
+
+async def test_list_metric_trend_returns_empty_for_user_with_no_analyses(
+    session: AsyncSession,
+) -> None:
+    user_id = await _make_user_id(session)
+    repo = AnalysisRepository(session)
+    points = await repo.list_metric_trend(user_id, code=_TRUNK)
+    assert points == []
+
+
+async def test_list_metric_trend_returns_only_the_requested_users_points(
+    session: AsyncSession,
+) -> None:
+    user_a = await _make_user_id(session)
+    user_b = await _make_user_id(session)
+
+    await _create_with_trunk_metric(session, user_id=user_a, object_key="a1.jpg", value=10.0)
+    await _create_with_trunk_metric(session, user_id=user_b, object_key="b1.jpg", value=20.0)
+
+    repo = AnalysisRepository(session)
+    points = await repo.list_metric_trend(user_a, code=_TRUNK)
+
+    assert len(points) == 1
+    assert points[0].value == pytest.approx(10.0)
+
+
+async def test_list_metric_trend_only_returns_the_requested_code(session: AsyncSession) -> None:
+    """A metric row for a different code is not mistaken for a gap in this one."""
+    user_id = await _make_user_id(session)
+    repo = AnalysisRepository(session)
+    await repo.create(
+        user_id=user_id,
+        object_key="other.jpg",
+        pose_detected=True,
+        image_width=640,
+        image_height=480,
+        overall_score=72.0,
+        assessed=1,
+        total=1,
+        inference_ms=18.3,
+        pose_backend="fake",
+        rules_version="1.0.0",
+        schema_version="1.0",
+        metrics=[
+            MetricRecord(
+                code="neck_flexion_deg",
+                value=5.0,
+                unit="deg",
+                status="ok",
+                detail="",
+                confidence=0.9,
+            )
+        ],
+    )
+
+    points = await repo.list_metric_trend(user_id, code=_TRUNK)
+    assert points == []
+
+
+async def test_list_metric_trend_is_newest_first(session: AsyncSession) -> None:
+    user_id = await _make_user_id(session)
+
+    first = await _create_with_trunk_metric(session, user_id=user_id, object_key="1.jpg", value=5.0)
+    second = await _create_with_trunk_metric(
+        session, user_id=user_id, object_key="2.jpg", value=8.0
+    )
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    first.created_at = base
+    second.created_at = base + timedelta(seconds=1)
+    await session.flush()
+
+    repo = AnalysisRepository(session)
+    points = await repo.list_metric_trend(user_id, code=_TRUNK)
+
+    assert [p.value for p in points] == [8.0, 5.0]
+
+
+async def test_list_metric_trend_preserves_gaps_as_null_not_zero(session: AsyncSession) -> None:
+    """A metric the engine could not measure comes back `None`, never `0`.
+
+    Plotting a gap as `0` would invent an upright posture the user never had — the original
+    engine's silent-`None`-to-"Straight back" defect, reincarnated in chart form.
+    """
+    user_id = await _make_user_id(session)
+    await _create_with_trunk_metric(
+        session,
+        user_id=user_id,
+        object_key="gap.jpg",
+        value=None,
+        status="insufficient_keypoints",
+    )
+
+    repo = AnalysisRepository(session)
+    points = await repo.list_metric_trend(user_id, code=_TRUNK)
+
+    assert len(points) == 1
+    assert points[0].value is None
+    assert points[0].status == "insufficient_keypoints"
+
+
+async def test_list_metric_trend_carries_rules_version_per_point(session: AsyncSession) -> None:
+    """Each point keeps the ruleset in force when it was measured, so a caller can mark a
+    version boundary rather than plot a retune as a step in the user's posture."""
+    user_id = await _make_user_id(session)
+
+    old = await _create_with_trunk_metric(
+        session, user_id=user_id, object_key="old.jpg", value=12.0, rules_version="1.0.0"
+    )
+    new = await _create_with_trunk_metric(
+        session, user_id=user_id, object_key="new.jpg", value=14.0, rules_version="2.0.0"
+    )
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    old.created_at = base
+    new.created_at = base + timedelta(seconds=1)
+    await session.flush()
+
+    repo = AnalysisRepository(session)
+    points = await repo.list_metric_trend(user_id, code=_TRUNK)
+
+    assert [p.rules_version for p in points] == ["2.0.0", "1.0.0"]
