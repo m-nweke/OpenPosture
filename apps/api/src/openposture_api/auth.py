@@ -49,6 +49,7 @@ from openposture_api.security import (
 )
 
 if TYPE_CHECKING:
+    from slowapi import Limiter
     from starlette.responses import JSONResponse
 
     from openposture_api.config import Settings
@@ -141,11 +142,15 @@ def _unauthenticated() -> HTTPException:
     )
 
 
-def build_auth_router() -> APIRouter:
+def build_auth_router(limiter: Limiter, settings: Settings) -> APIRouter:
     """The authentication routes.
 
     A builder rather than a module-level router, for the same reason `create_app` is a factory:
-    two apps in one test session must not share mutable route state.
+    two apps in one test session must not share mutable route state. `limiter` and `settings`
+    arrive as arguments for the same reason: `/login`'s rate limit (OP-59) is read from
+    `settings.login_rate_limit` once, at build time, rather than the route reaching into
+    `request.app.state` the way the other routes read settings — `@limiter.limit(...)` needs a
+    concrete string (or a callable) at decoration time, before any request exists.
     """
     router = APIRouter(prefix=AUTH_PREFIX, tags=["auth"])
 
@@ -203,8 +208,15 @@ def build_auth_router() -> APIRouter:
         "/login",
         response_model=TokenResponse,
         summary="Sign in",
-        responses={status.HTTP_401_UNAUTHORIZED: {"description": "Credentials rejected."}},
+        responses={
+            status.HTTP_401_UNAUTHORIZED: {"description": "Credentials rejected."},
+            status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Too many attempts."},
+        },
     )
+    # A credential-stuffing control, not a resource one (OP-59, `Settings.login_rate_limit`).
+    # Applied below `@router.post` so it wraps the plain function before FastAPI ever sees it —
+    # the order the two decorators are usually shown in slowapi's own documentation.
+    @limiter.limit(settings.login_rate_limit)
     async def login(
         credentials: CredentialsRequest,
         request: Request,

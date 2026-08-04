@@ -195,3 +195,41 @@ class TestEnvironmentReading:
             assert get_settings() is get_settings()
         finally:
             get_settings.cache_clear()
+
+
+class TestRateLimiting:
+    """OP-59: the two limits and the proxy-trust knob are all tunable, not hardcoded."""
+
+    def test_the_documented_defaults_are_what_ships(self) -> None:
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert settings.login_rate_limit == "5/minute"
+        assert settings.analyses_rate_limit == "10/minute"
+        assert settings.trusted_proxy_hops == 0
+
+    def test_both_limits_are_overridable_without_a_deploy(self) -> None:
+        settings = Settings(  # type: ignore[call-arg]
+            login_rate_limit="3/second",
+            analyses_rate_limit="1/hour",
+            trusted_proxy_hops=2,
+            _env_file=None,
+        )
+
+        assert settings.login_rate_limit == "3/second"
+        assert settings.analyses_rate_limit == "1/hour"
+        assert settings.trusted_proxy_hops == 2
+
+    @pytest.mark.parametrize("field", ["login_rate_limit", "analyses_rate_limit"])
+    def test_a_malformed_limit_names_the_field_at_startup(self, field: str) -> None:
+        """The same principle as the log-level and header checks above: a typo here must stop
+        the process, not silently leave the route unlimited on the first request that reads it."""
+        with pytest.raises(ValidationError) as caught:
+            Settings(**{field: "five per minuet"}, _env_file=None)  # type: ignore[arg-type, call-arg]
+
+        assert field in str(caught.value)
+
+    def test_a_negative_proxy_hop_count_is_rejected(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            Settings(trusted_proxy_hops=-1, _env_file=None)  # type: ignore[call-arg]
+
+        assert "trusted_proxy_hops" in str(caught.value)

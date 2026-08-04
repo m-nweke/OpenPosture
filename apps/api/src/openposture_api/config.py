@@ -22,6 +22,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
 
+from limits import parse as parse_rate_limit
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -262,6 +263,62 @@ class Settings(BaseSettings):
             "`Secure` would make the cookie unusable over a plain-http localhost."
         ),
     )
+
+    login_rate_limit: str = Field(
+        default="5/minute",
+        description=(
+            "Per-IP limit on `POST /api/v1/auth/login`, in `limits` syntax (OP-59). This is a "
+            "credential-stuffing control, not a resource one: Argon2id makes every guess "
+            "expensive for the server too, so an unlimited login endpoint is a DoS amplifier as "
+            "much as an account-security hole. Five per minute is generous for a human and "
+            "useless for a botnet. Per-IP only — a distributed attacker, or genuine users behind "
+            "one NAT'd IP, are known gaps; per-account limiting is future work, not implemented "
+            "here."
+        ),
+    )
+
+    analyses_rate_limit: str = Field(
+        default="10/minute",
+        description=(
+            "Per-IP limit on `POST /api/v1/analyses`, in `limits` syntax (OP-59). This is a "
+            "resource control, not a credential one: pose inference is the most expensive thing "
+            "this service does, and without a cap one client saturates the worker pool and every "
+            "other upload queues behind it. Ten per minute is well above what a person "
+            "photographing themselves needs and well below what lets one client starve the "
+            "others. Per-IP only; a global inference concurrency cap is future work, not "
+            "implemented here."
+        ),
+    )
+
+    trusted_proxy_hops: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "How many reverse-proxy hops' worth of `X-Forwarded-For` entries to trust when "
+            "resolving the client IP for rate limiting. `0` (the default) ignores the header "
+            "entirely and uses the direct TCP peer — correct today, since nothing sits in front "
+            "of this service in Compose (the Vite dev proxy does not set the header) and no "
+            "production overlay exists yet. Set to the number of trusted proxies between the "
+            "internet and this process once one is introduced (usually `1`); trusting the wrong "
+            "count either lets a client spoof its own address or collapses every client behind "
+            "the proxy onto one IP."
+        ),
+    )
+
+    @field_validator("login_rate_limit", "analyses_rate_limit")
+    @classmethod
+    def _validate_rate_limit_syntax(cls, value: str) -> str:
+        """Reject a malformed limit at startup, in the field that named it.
+
+        `limits.parse` is what `slowapi.Limiter` calls internally at request time — validating
+        here means a typo like `"5/minuet"` stops the process immediately instead of surfacing as
+        every request to the route silently going unlimited.
+        """
+        try:
+            parse_rate_limit(value)
+        except ValueError as exc:
+            raise ValueError(f"not a valid rate limit expression: {value!r} ({exc})") from exc
+        return value
 
     @field_validator("request_id_header")
     @classmethod
