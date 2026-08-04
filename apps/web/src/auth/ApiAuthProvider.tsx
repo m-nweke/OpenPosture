@@ -27,8 +27,8 @@ import { ApiError, login, logout, refreshAccessToken, register } from '../api/cl
  * cookie knows *who* signed in but not what to call them. `profileCache.ts` papers over that with
  * a same-id cache of the last email/display name this tab saw at sign-in — a real value the
  * moment someone signs in or up, an id-only fallback the moment a *different* tab's cookie is
- * restored here. See the ticket note in the PR description; a `/users/me` route removes the need
- * for this cache entirely.
+ * restored here. A `/users/me` route would remove the need for this cache entirely — worth a
+ * follow-up ticket rather than solving here.
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
