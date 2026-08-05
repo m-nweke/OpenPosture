@@ -22,12 +22,13 @@ define expected_sha
 $$(grep -E "^[0-9a-f]{64}  $(MODEL_FILE)$$" $(CHECKSUMS) | cut -d' ' -f1)
 endef
 
-.PHONY: help fetch-model verify-model clean-model
+.PHONY: help fetch-model verify-model clean-model validate-data
 
 help:
 	@echo "fetch-model    download and verify the pose model (MODEL_VARIANT=lite|full|heavy)"
 	@echo "verify-model   re-verify the model already on disk"
 	@echo "clean-model    delete downloaded weights"
+	@echo "validate-data  check evaluation/ against evaluation/quality-gates.yml (OP-38)"
 	@echo ""
 	@echo "Everything else runs through uv, the same way CI invokes it:"
 	@echo "  uv run ruff check . && uv run ruff format --check ."
@@ -93,3 +94,8 @@ verify-model:
 
 clean-model:
 	rm -f $(MODEL_DIR)/*.task $(MODEL_DIR)/*.task.download
+
+## The evaluation dataset is a versioned artifact with its own quality gates (OP-38), not a folder
+## of images someone curated once. This is the same script scientific-validation.yml runs.
+validate-data:
+	uv run python scripts/validate_data.py

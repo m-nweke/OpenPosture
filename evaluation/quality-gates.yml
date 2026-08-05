@@ -1,0 +1,51 @@
+# Thresholds the evaluation dataset itself must satisfy, checked by `make validate-data`
+# (scripts/validate_data.py). This is a separate contract from packages/posture-spec/rules.json:
+# that file constrains what the rules ENGINE measures; this one constrains what the DATA is
+# allowed to look like before the engine ever sees it.
+
+manifest:
+  required_columns:
+    - id
+    - filename
+    - sha256
+    - width
+    - height
+    - posture_label
+    - view
+    - subject_group
+    - split
+    - provenance
+    - licence
+    - consent
+  # No row may leave these blank — this is the OP-38 acceptance criterion verbatim.
+  no_blank_fields: [provenance, licence, consent]
+  allow_duplicate_ids: false
+  allow_duplicate_hashes: false
+
+images:
+  min_width: 200
+  min_height: 200
+  max_long_edge: 1280
+  allowed_formats: [JPEG]
+
+privacy:
+  # GPS EXIF (tag group 0x8825 / GPSInfo) is rejected outright. Other EXIF (orientation, device
+  # model, capture date) is allowed — desk_lean_exif.jpeg keeps its orientation tag on purpose,
+  # as a regression fixture for OP-42's EXIF-orientation handling.
+  reject_gps_exif: true
+
+labels:
+  allowed_posture_labels: [hunchback, straight, reclined, kneeling, upright, leaning_forward]
+  allowed_views: [lateral, lateral_left, lateral_right]
+
+redistribution:
+  # A row's licence may never claim public/redistributable status while its consent field is
+  # "undocumented-inherited" — the exact failure mode OP-11 purged 43MB of images over.
+  public_licence_values: [public-domain, cc-by, cc0, licensed-for-redistribution]
+  consent_values_blocking_public_licence: [undocumented-inherited]
+
+class_distribution:
+  # Compared against the finding_codes recorded in evaluation/baseline.json. A class whose share
+  # of the fixture set moves by more than this fraction as fixtures are added/removed fails
+  # loudly, rather than drifting silently.
+  max_share_drift: 0.25
