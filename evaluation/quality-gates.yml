@@ -45,7 +45,7 @@ redistribution:
   consent_values_blocking_public_licence: [undocumented-inherited]
 
 class_distribution:
-  # Compared against the finding_codes recorded in evaluation/baseline.json. A class whose share
-  # of the fixture set moves by more than this fraction as fixtures are added/removed fails
+  # Compared against the posture_label shares recorded in evaluation/baseline.json. A class whose
+  # share of the fixture set moves by more than this fraction as fixtures are added/removed fails
   # loudly, rather than drifting silently.
   max_share_drift: 0.25

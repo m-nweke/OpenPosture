@@ -39,6 +39,7 @@ on:
       - "evaluation/**"
       - "fixtures/**"
       - "scripts/validate_data.py"
+      - "scripts/tests/test_validate_data.py"
       - ".github/workflows/scientific-validation.yml"
   push:
     branches: [main]

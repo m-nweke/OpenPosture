@@ -74,7 +74,7 @@ def _check_manifest_shape(rows: list[dict[str, str]], rules: dict[str, Any]) -> 
     seen_hashes: dict[str, int] = {}
     for i, row in enumerate(rows):
         for field in rules["no_blank_fields"]:
-            if not row.get(field, "").strip():
+            if not (row.get(field) or "").strip():
                 errors.append(f"row {i} ({row.get('id', '?')}): '{field}' is blank")
 
         if not rules["allow_duplicate_ids"] and row["id"] in seen_ids:
@@ -144,12 +144,19 @@ def _check_images(
                 f"{image_rules['max_long_edge']}px"
             )
 
-        declared_width, declared_height = int(row["width"]), int(row["height"])
-        if (declared_width, declared_height) != (width, height):
+        try:
+            declared_width, declared_height = int(row["width"]), int(row["height"])
+        except ValueError:
             errors.append(
-                f"{row['id']}: manifest says {declared_width}x{declared_height}, "
-                f"file is actually {width}x{height}"
+                f"{row['id']}: manifest width/height ('{row['width']}', '{row['height']}') "
+                "is not a valid integer"
             )
+        else:
+            if (declared_width, declared_height) != (width, height):
+                errors.append(
+                    f"{row['id']}: manifest says {declared_width}x{declared_height}, "
+                    f"file is actually {width}x{height}"
+                )
 
     return errors
 
@@ -182,23 +189,29 @@ def _check_redistribution(rows: list[dict[str, str]], rules: dict[str, Any]) -> 
 def _check_split_leakage(rows: list[dict[str, str]]) -> list[str]:
     """No id or hash may appear under more than one `split` value.
 
+    Checked independently: the same physical image reused under a different id, and the same id
+    reused for a different physical image, are both leakage and neither implies the other.
+
     There is only one split today (`fixture`), so this always passes — it exists for when a real
     train/eval split is introduced and someone needs the same fixture in both by mistake to be
     caught immediately rather than discovered as an inflated eval score.
     """
     errors: list[str] = []
-    splits_by_hash: dict[str, set[str]] = {}
-    for row in rows:
-        splits_by_hash.setdefault(row["sha256"], set()).add(row["split"])
-    for digest, splits in splits_by_hash.items():
-        if len(splits) > 1:
-            errors.append(
-                f"image with hash {digest} appears in more than one split: {sorted(splits)}"
-            )
+    for field, label in (("sha256", "hash"), ("id", "id")):
+        splits_by_key: dict[str, set[str]] = {}
+        for row in rows:
+            splits_by_key.setdefault(row[field], set()).add(row["split"])
+        for key, splits in splits_by_key.items():
+            if len(splits) > 1:
+                errors.append(
+                    f"image with {label} {key} appears in more than one split: {sorted(splits)}"
+                )
     return errors
 
 
 def _label_share(labels: list[str]) -> dict[str, float]:
+    if not labels:
+        return {}
     counts: dict[str, int] = {}
     for label in labels:
         counts[label] = counts.get(label, 0) + 1
@@ -212,8 +225,13 @@ def _check_class_distribution(
     """Compare posture_label share across the WHOLE set on each side, not just the fixtures the
     two sides have in common — an added or removed fixture should be able to move the needle,
     since that is the entire point of tracking distribution over time."""
-    baseline_share = _label_share([f["posture_label"] for f in baseline["fixtures"].values()])
-    current_share = _label_share([row["posture_label"] for row in rows])
+    baseline_labels = [f["posture_label"] for f in baseline["fixtures"].values()]
+    current_labels = [row["posture_label"] for row in rows]
+    if not baseline_labels or not current_labels:
+        return ["class distribution check needs a non-empty baseline and a non-empty manifest"]
+
+    baseline_share = _label_share(baseline_labels)
+    current_share = _label_share(current_labels)
     max_drift = rules["max_share_drift"]
 
     errors: list[str] = []
