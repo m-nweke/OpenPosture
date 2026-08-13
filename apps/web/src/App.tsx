@@ -3,6 +3,7 @@ import { useAuth } from './auth'
 import ProtectedRoute from './components/ProtectedRoute'
 import HomeView from './views/HomeView'
 import Dashboard from './views/Dashboard'
+import History from './views/History'
 import Login from './views/auth/Login'
 import Registration from './views/auth/Registration'
 import logo from './assets/openPose.png'
@@ -57,6 +58,9 @@ export default function App() {
             <NavLink className={navLinkClass} to="/dashboard">
               Dashboard
             </NavLink>
+            <NavLink className={navLinkClass} to="/history">
+              History
+            </NavLink>
             {isLoggedIn ? (
               <button
                 className={cx('button', 'buttonSecondary', styles.navButton)}
@@ -89,6 +93,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <ProtectedRoute>
+                <History />
               </ProtectedRoute>
             }
           />

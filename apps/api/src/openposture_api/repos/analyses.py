@@ -32,7 +32,23 @@ from openposture_api.db.models import Analysis, Finding, Keypoint, Metric
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["AnalysisRepository", "FindingRecord", "KeypointRecord", "MetricRecord"]
+__all__ = [
+    "AnalysisRepository",
+    "FindingRecord",
+    "KeypointRecord",
+    "MetricRecord",
+    "MetricTrendPoint",
+]
+
+
+@dataclasses.dataclass(frozen=True)
+class MetricTrendPoint:
+    """One point of a metric's trend across a user's analyses, newest first."""
+
+    created_at: datetime
+    rules_version: str
+    value: float | None
+    status: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -225,6 +241,41 @@ class AnalysisRepository:
             )
 
         return list((await self._session.execute(stmt)).scalars().all())
+
+    async def list_metric_trend(
+        self,
+        user_id: uuid.UUID,
+        *,
+        code: str,
+    ) -> list[MetricTrendPoint]:
+        """Every value of one metric across a user's analyses, newest first, in one query.
+
+        This is the query named in `Metric.__table_args__`: it drives off
+        `ix_analyses_user_id_created_at_id` and looks each metric up on the
+        `(analysis_id, code)` prefix of `uq_metrics_analysis_id_code`. A plain indexed `SELECT`
+        rather than an application-side loop deserialising documents is the entire payoff E2
+        argued for and E10 spends.
+
+        `value` and `status` come through unfiltered, gaps included — a row with
+        `status != 'ok'` has `value IS NULL` by the database's own check constraint, so a gap
+        here is already a gap, never a 0 this method would have to know to avoid inventing.
+        """
+        stmt = (
+            select(Analysis.created_at, Analysis.rules_version, Metric.value, Metric.status)
+            .join(Metric, Metric.analysis_id == Analysis.id)
+            .where(Analysis.user_id == user_id, Metric.code == code)
+            .order_by(Analysis.created_at.desc())
+        )
+        rows = (await self._session.execute(stmt)).all()
+        return [
+            MetricTrendPoint(
+                created_at=row.created_at,
+                rules_version=row.rules_version,
+                value=row.value,
+                status=row.status,
+            )
+            for row in rows
+        ]
 
     async def delete(
         self,

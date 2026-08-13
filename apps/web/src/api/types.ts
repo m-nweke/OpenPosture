@@ -32,6 +32,18 @@ export type PostureReport = Schemas['PostureReportModel']
 
 export type AnalysisResponse = Schemas['AnalysisResponse']
 
+/** One row in the history list. */
+export type AnalysisListItem = Schemas['AnalysisListItem']
+
+/** One page of `GET /analyses`. */
+export type AnalysisPage = Schemas['AnalysisPage']
+
+/** One point on the trunk-inclination trend line. `value` is `null` on a gap, never `0`. */
+export type TrendPoint = Schemas['TrendPoint']
+
+/** The full trend returned by `GET /analyses/metrics/trunk-inclination`. */
+export type TrendSeries = Schemas['TrendSeries']
+
 /** The body of `POST /auth/register` and `POST /auth/login`. */
 export type CredentialsRequest = Schemas['CredentialsRequest']
 

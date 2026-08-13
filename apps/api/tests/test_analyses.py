@@ -10,6 +10,8 @@ from __future__ import annotations
 import io
 import uuid
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,6 +23,7 @@ from pydantic import ValidationError
 from openposture_api.auth import get_current_user_id
 from openposture_api.config import Settings
 from openposture_api.db import get_session
+from openposture_api.db.models import Analysis
 from openposture_api.images import MAX_IMAGE_BYTES
 from openposture_api.main import create_app
 from openposture_api.pose import get_pose_backend
@@ -560,3 +563,98 @@ class TestReadAndDeleteEndpoints:
 
         assert response.status_code == 204
         assert not storage.exists(stored.key), "the object outlived the row that named it"
+
+
+class TestListThumbnails:
+    """E10: the history list's `image_url`, built from storage, never read out of a row."""
+
+    _USER_ID = uuid.uuid4()
+
+    def test_list_items_carry_a_storage_built_image_url(
+        self, settings: Settings, storage: LocalDiskStorage
+    ) -> None:
+        stored = storage.put(b"not-really-a-jpeg", content_type="image/jpeg")
+        row = Analysis(
+            id=uuid.uuid4(),
+            created_at=datetime.now(UTC),
+            object_key=stored.key,
+            pose_detected=True,
+            overall_score=72.0,
+        )
+
+        async def _session_holding_one_row() -> Any:
+            result = MagicMock()
+            result.scalars.return_value.all.return_value = [row]
+            mock = MagicMock()
+            mock.execute = AsyncMock(return_value=result)
+            yield mock
+
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _session_holding_one_row
+        app.dependency_overrides[get_storage] = lambda: storage
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/analyses")
+
+        assert response.status_code == 200
+        item = response.json()["items"][0]
+        # Same construction the storage layer would do for any other caller, not a value copied
+        # out of the row — there is no `image_url` column for it to have come from.
+        assert item["image_url"] == storage.url_for(stored.key)
+        assert item["object_key"] == stored.key
+
+
+class TestTrunkInclinationTrendEndpoint:
+    """E10: GET /analyses/metrics/trunk-inclination — the history sparkline's data source."""
+
+    _USER_ID = uuid.uuid4()
+
+    def test_requires_authentication(self, settings: Settings) -> None:
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/analyses/metrics/trunk-inclination")
+        assert response.status_code == 401
+
+    def test_returns_an_empty_series_for_a_new_user(self, settings: Settings) -> None:
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _fake_session
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/analyses/metrics/trunk-inclination")
+        assert response.status_code == 200
+        assert response.json() == {"points": []}
+
+    def test_a_gap_is_null_not_zero(self, settings: Settings) -> None:
+        """A row with no measured value must not become a plotted `0`.
+
+        The original engine's silent-`None`-to-"Straight back" defect, in chart form — this is
+        the response-schema half of the guarantee the repo test covers at the query level.
+        """
+
+        async def _session_with_one_gap() -> Any:
+            # `.created_at` etc., not tuple indices — the repository reads these the same way
+            # SQLAlchemy's own `Row` objects support attribute access for labelled columns.
+            row = SimpleNamespace(
+                created_at=datetime.now(UTC),
+                rules_version="1.0.0",
+                value=None,
+                status="insufficient_keypoints",
+            )
+            result = MagicMock()
+            result.all.return_value = [row]
+            mock = MagicMock()
+            mock.execute = AsyncMock(return_value=result)
+            yield mock
+
+        app = create_app(settings, load_backend=False)
+        app.dependency_overrides[get_session] = _session_with_one_gap
+        app.dependency_overrides[get_current_user_id] = lambda: self._USER_ID
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/v1/analyses/metrics/trunk-inclination")
+
+        assert response.status_code == 200
+        point = response.json()["points"][0]
+        assert point["value"] is None
+        assert point["status"] == "insufficient_keypoints"

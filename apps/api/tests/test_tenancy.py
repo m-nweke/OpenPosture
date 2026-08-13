@@ -351,7 +351,8 @@ class TestRouteTable:
             route for route in _iter_api_routes(app) if route.path.startswith(ANALYSES)
         ]
 
-        assert len(analyses_routes) == 4
+        # 5 as of E10's trend endpoint: create, list, get, delete, trunk-inclination trend.
+        assert len(analyses_routes) == 5
         assert all(_depends_on_current_user(route) for route in analyses_routes)
 
 

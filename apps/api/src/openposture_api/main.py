@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import FastAPI
+from starlette.staticfiles import StaticFiles
 
 from openposture_api import __version__
 from openposture_api.analyses import build_analyses_router, register_analysis_error_handlers
@@ -38,7 +39,7 @@ from openposture_api.pose import (
     load_pose_backend,
 )
 from openposture_api.rate_limit import build_limiter, register_rate_limit_handlers
-from openposture_api.storage import create_storage
+from openposture_api.storage import LOCAL_BACKEND, create_storage
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -183,6 +184,23 @@ def create_app(
     )
     app.include_router(build_auth_router(app.state.limiter, resolved))
     app.include_router(build_analyses_router(app.state.limiter, resolved))
+
+    if resolved.storage_backend == LOCAL_BACKEND:
+        # `LocalDiskStorage.url_for` builds URLs under `media_base_url` (D3) on the promise that
+        # something serves them; until E10 nothing dereferenced one, so nothing had to yet. The
+        # `s3` backend needs no mount here — its `url_for` returns a presigned URL straight to
+        # the object store.
+        #
+        # `check_dir=False`: at this point in `create_app`, `lifespan` has not run, so
+        # `LocalDiskStorage.__init__` has not yet created `storage_root`. It exists by the time a
+        # request can arrive — lifespan startup completes before the ASGI server accepts
+        # connections — so the check would only ever fail on a directory the app is about to
+        # create itself.
+        app.mount(
+            resolved.media_base_url,
+            StaticFiles(directory=resolved.storage_root, check_dir=False),
+            name="media",
+        )
 
     _LOGGER.info(
         "app_created",

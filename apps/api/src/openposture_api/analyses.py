@@ -53,11 +53,14 @@ from openposture_api.schemas import (
     PostureReportModel,
     StoredFinding,
     StoredMetric,
+    TrendPoint,
+    TrendSeries,
 )
 from openposture_api.storage import StorageBackend, StorageError, get_storage
 from pose_backends.base import PoseBackend
 from pose_backends.errors import PoseBackendError
 from posture_core import build_report
+from posture_core.metrics.trunk import NAME as _TRUNK_INCLINATION_CODE
 from posture_core.report import SCHEMA_VERSION as _SCHEMA_VERSION
 from posture_core.thresholds import DEFAULT_THRESHOLDS as _DEFAULT_THRESHOLDS
 
@@ -273,6 +276,7 @@ def build_analyses_router(limiter: Limiter, settings: Settings) -> APIRouter:
     )
     async def list_analyses(
         user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+        storage: Annotated[StorageBackend, Depends(get_storage)],
         session: Annotated[AsyncSession, Depends(get_session)],
         limit: int = Query(default=20, ge=1, le=100, description="Page size."),
         cursor: str | None = Query(default=None, description="Opaque cursor from `next_cursor`."),
@@ -296,8 +300,40 @@ def build_analyses_router(limiter: Limiter, settings: Settings) -> APIRouter:
         next_cursor = _encode_cursor(rows[-1].created_at, rows[-1].id) if has_more else None
 
         return AnalysisPage(
-            items=[_to_list_item(a) for a in rows],
+            items=[_to_list_item(a, storage) for a in rows],
             next_cursor=next_cursor,
+        )
+
+    @router.get(
+        "/analyses/metrics/trunk-inclination",
+        status_code=status.HTTP_200_OK,
+        response_model=TrendSeries,
+        summary="Trunk inclination trend across all analyses",
+        description=(
+            "Returns every trunk_inclination_deg measurement for the authenticated user, newest "
+            "first, from a single indexed query — the history sparkline's data source. A "
+            "`rules_version` change partway through the series marks a retuned threshold, not a "
+            "change in the user's posture; a `null` value is a gap the engine could not measure, "
+            "never a zero."
+        ),
+        responses={**_UNAUTHORIZED},
+    )
+    async def get_trunk_inclination_trend(
+        user_id: Annotated[uuid.UUID, Depends(get_current_user_id)],
+        session: Annotated[AsyncSession, Depends(get_session)],
+    ) -> TrendSeries:
+        repo = AnalysisRepository(session)
+        points = await repo.list_metric_trend(user_id, code=_TRUNK_INCLINATION_CODE)
+        return TrendSeries(
+            points=[
+                TrendPoint(
+                    created_at=p.created_at,
+                    value=p.value,
+                    status=p.status,  # type: ignore[arg-type]
+                    rules_version=p.rules_version,
+                )
+                for p in points
+            ]
         )
 
     @router.get(
@@ -405,11 +441,14 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         ) from exc
 
 
-def _to_list_item(analysis: Analysis) -> AnalysisListItem:
+def _to_list_item(analysis: Analysis, storage: StorageBackend) -> AnalysisListItem:
     return AnalysisListItem(
         id=analysis.id,
         created_at=analysis.created_at,
         object_key=analysis.object_key,
+        # Built here, on every response, from the key alone — never a URL read back out of the
+        # row. See the storage module docstring (D3).
+        image_url=storage.url_for(analysis.object_key),
         pose_detected=analysis.pose_detected,
         overall_score=analysis.overall_score,
     )

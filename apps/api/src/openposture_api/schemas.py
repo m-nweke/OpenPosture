@@ -236,6 +236,12 @@ class AnalysisListItem(ContractModel):
     id: uuid.UUID
     created_at: datetime
     object_key: str
+    image_url: str = Field(
+        description=(
+            "Built from `object_key` via the storage layer's own URL construction, on every "
+            "response — never a URL read back out of the database (D3)."
+        )
+    )
     pose_detected: bool
     overall_score: float | None
 
@@ -250,6 +256,28 @@ class AnalysisPage(ContractModel):
             "`null` when this is the last page."
         )
     )
+
+
+class TrendPoint(ContractModel):
+    """One analysis's trunk-inclination measurement, for the history sparkline."""
+
+    created_at: datetime
+    value: float | None = Field(
+        description="`null` whenever `status` is not `ok` — a gap in the line, never a 0."
+    )
+    status: MetricStatus
+    rules_version: str = Field(
+        description=(
+            "The ruleset in force when this point was measured. A change partway through the "
+            "series marks a retuned threshold, not a change in the user's posture."
+        )
+    )
+
+
+class TrendSeries(ContractModel):
+    """The full trunk-inclination trend for one user, newest first — one indexed query."""
+
+    points: list[TrendPoint]
 
 
 class StoredMetric(ContractModel):

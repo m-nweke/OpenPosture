@@ -12,7 +12,14 @@
  * this ticket deletes, just better dressed. XHR's `upload.onprogress` reports real bytes.
  */
 
-import type { AnalysisResponse, CredentialsRequest, Problem, TokenResponse } from './types'
+import type {
+  AnalysisPage,
+  AnalysisResponse,
+  CredentialsRequest,
+  Problem,
+  TokenResponse,
+  TrendSeries,
+} from './types'
 import { getAccessToken, setAccessToken } from '../auth/tokenStore'
 
 export const ANALYSES_ENDPOINT = '/api/v1/analyses'
@@ -323,4 +330,62 @@ async function performRefresh(): Promise<string | null> {
     setAccessToken(null)
     return null
   }
+}
+
+/**
+ * `GET` against the analyses API: `Authorization: Bearer`, same as `analysePosture`, not the
+ * `credentials: 'include'` cookie `postJson` uses — the analyses routes authenticate off the
+ * access token, not the refresh cookie.
+ *
+ * Same single-retry-on-401 shape as `attemptAnalysis`: a second 401 after a successful refresh
+ * falls straight through to the ordinary error branch instead of refreshing again, so a server
+ * that keeps answering 401 cannot recurse forever.
+ */
+async function getJson<T>(
+  path: string,
+  options: { signal?: AbortSignal } = {},
+  allowRetry = true,
+): Promise<T> {
+  const init: RequestInit = {}
+  if (options.signal) init.signal = options.signal
+  const token = getAccessToken()
+  if (token !== null) {
+    init.headers = { Authorization: `Bearer ${token}` }
+  }
+
+  const response = await fetch(path, init)
+
+  if (response.status === 401 && allowRetry) {
+    const refreshed = await refreshAccessToken()
+    if (refreshed === null) {
+      throw new ApiError('Your session has expired. Please sign in again.', { status: 401 })
+    }
+    return getJson<T>(path, options, /* allowRetry */ false)
+  }
+
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => null)) as Problem | null
+    throw new ApiError(problem?.detail ?? `The server responded with ${response.status}.`, {
+      status: response.status,
+      type: problem?.type,
+      requestId: problem?.request_id,
+    })
+  }
+
+  return (await response.json()) as T
+}
+
+/** One page of the authenticated user's analysis history, newest first. */
+export function listAnalyses(
+  options: { cursor?: string; signal?: AbortSignal } = {},
+): Promise<AnalysisPage> {
+  const query = options.cursor ? `?cursor=${encodeURIComponent(options.cursor)}` : ''
+  const getOptions = options.signal ? { signal: options.signal } : {}
+  return getJson<AnalysisPage>(`${ANALYSES_ENDPOINT}${query}`, getOptions)
+}
+
+/** The trunk-inclination trend behind the history sparkline, newest first. */
+export function getTrunkInclinationTrend(signal?: AbortSignal): Promise<TrendSeries> {
+  const getOptions = signal ? { signal } : {}
+  return getJson<TrendSeries>(`${ANALYSES_ENDPOINT}/metrics/trunk-inclination`, getOptions)
 }
