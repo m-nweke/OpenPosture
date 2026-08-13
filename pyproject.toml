@@ -39,10 +39,16 @@ dev = [
     # be proof of anything.
     "hypothesis>=6.161.8",
     "mypy>=1.14",
+    # scripts/validate_data.py (OP-38) reads EXIF and image dimensions directly, without the
+    # mediapipe extra — both were already present transitively (via a test-only dependency), which
+    # is not something a data-quality gate should rely on staying true.
+    "pillow>=11.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "pytest-cov>=6.0",
+    "pyyaml>=6.0",
     "ruff>=0.9",
+    "types-pyyaml>=6.0",
 ]
 
 # ---------------------------------------------------------------------------
@@ -140,7 +146,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["packages", "apps"]
+testpaths = ["packages", "apps", "scripts"]
 norecursedirs = ["docs/archive", "*.egg", ".*", "node_modules", "build", "dist"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers --strict-config"

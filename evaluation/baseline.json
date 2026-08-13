@@ -1,0 +1,91 @@
+{
+  "_comment": "Current measured performance of the posture-spec rules engine (real MediaPipeBackend) against the 8-fixture set in evaluation/manifest.csv. Regenerate with: for f in fixtures/images/*.jp*; do uv run python -m pose_backends.cli --report --json \"$f\"; done. Consumed by make validate-data for the class-distribution check and by the OP-60 threshold recalibration as the pre-change reference point.",
+  "captured_at": "2026-08-05T02:44:15.652487+00:00",
+  "captured_at_commit": "f6280d09a157667eb33dfadbed1f74843ff4ad74",
+  "rules_version": "1.0.0",
+  "backend": "mediapipe",
+  "fixtures": {
+    "fx-01": {
+      "filename": "hunchback_right.jpg",
+      "overall_score": 62.5,
+      "coverage": 0.857,
+      "finding_codes": [
+        "trunk_slouch",
+        "forward_head",
+        "feet_unsupported"
+      ],
+      "posture_label": "hunchback"
+    },
+    "fx-02": {
+      "filename": "hunchback_left.jpg",
+      "overall_score": 85.0,
+      "coverage": 0.857,
+      "finding_codes": [
+        "trunk_slouch"
+      ],
+      "posture_label": "hunchback"
+    },
+    "fx-03": {
+      "filename": "straight_armsfolded.jpg",
+      "overall_score": 92.5,
+      "coverage": 0.714,
+      "finding_codes": [
+        "feet_unsupported"
+      ],
+      "posture_label": "straight"
+    },
+    "fx-04": {
+      "filename": "reclined_right.jpg",
+      "overall_score": 85.0,
+      "coverage": 0.857,
+      "finding_codes": [
+        "trunk_recline",
+        "feet_unsupported"
+      ],
+      "posture_label": "reclined"
+    },
+    "fx-05": {
+      "filename": "kneeling_right.jpg",
+      "overall_score": 92.5,
+      "coverage": 0.857,
+      "finding_codes": [
+        "feet_unsupported"
+      ],
+      "posture_label": "kneeling"
+    },
+    "fx-06": {
+      "filename": "desk_lean_exif.jpeg",
+      "overall_score": 92.5,
+      "coverage": 0.857,
+      "finding_codes": [
+        "trunk_recline"
+      ],
+      "posture_label": "leaning_forward"
+    },
+    "fx-07": {
+      "filename": "desk_hunch.jpeg",
+      "overall_score": 70.0,
+      "coverage": 0.857,
+      "finding_codes": [
+        "forward_head",
+        "trunk_slouch"
+      ],
+      "posture_label": "hunchback"
+    },
+    "fx-08": {
+      "filename": "bench_feet_dangling.jpg",
+      "overall_score": 92.5,
+      "coverage": 0.857,
+      "finding_codes": [
+        "feet_unsupported"
+      ],
+      "posture_label": "upright"
+    }
+  },
+  "known_gaps": [
+    {
+      "fixture": "fx-05",
+      "issue": "kneeling_right.jpg produces no kneeling-related finding at all \u2014 knee_flexion_deg measured at 80.3deg, inside the seated band (70-120deg) rather than triggering knee_kneeling_max_deg (<=60deg). Tracked as OP-60 (diagnose threshold vs. near/far-leg side selection before retuning)."
+    }
+  ]
+}

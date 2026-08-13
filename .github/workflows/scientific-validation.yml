@@ -20,6 +20,10 @@
 # 3. Threshold/spec drift (OP-36). `rules.json` and `Thresholds` describe the same numbers twice;
 #    this is what stops them diverging.
 # 4. Boundary behaviour at every threshold.
+# 5. The evaluation dataset itself, against evaluation/quality-gates.yml (OP-38) — duplicate or
+#    orphaned images, missing provenance/licence/consent, GPS EXIF leakage, class-distribution
+#    drift against evaluation/baseline.json. A threshold re-tuned against bad data is not a fact
+#    about posture, so this runs before anyone trusts a recalibration (OP-60).
 #
 # From Epic G this workflow also runs the golden corpus through the TypeScript mirror and fails if
 # the two engines disagree on any fixture. That is the whole reason the corpus is language-neutral
@@ -32,6 +36,10 @@ on:
     paths:
       - "packages/posture-core/**"
       - "packages/posture-spec/**"
+      - "evaluation/**"
+      - "fixtures/**"
+      - "scripts/validate_data.py"
+      - "scripts/tests/test_validate_data.py"
       - ".github/workflows/scientific-validation.yml"
   push:
     branches: [main]
@@ -106,10 +114,25 @@ jobs:
       - name: rules.json matches the engine
         run: uv run pytest packages/posture-spec -v
 
+  data:
+    name: evaluation dataset quality gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-project
+        with:
+          python: ${{ env.PYTHON_VERSION }}
+
+      - name: manifest, images and baseline satisfy quality-gates.yml
+        run: make validate-data
+
+      - name: validator's own test suite (proves it fails, not just passes)
+        run: uv run pytest scripts/tests/test_validate_data.py -v
+
   scientific-ok:
     name: scientific-ok
     if: always()
-    needs: [properties, golden, spec]
+    needs: [properties, golden, spec, data]
     runs-on: ubuntu-latest
     steps:
       - name: Report
@@ -117,6 +140,7 @@ jobs:
           echo "properties: ${{ needs.properties.result }}"
           echo "golden:     ${{ needs.golden.result }}"
           echo "spec:       ${{ needs.spec.result }}"
+          echo "data:       ${{ needs.data.result }}"
 
       - name: Fail if any job did not succeed
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
