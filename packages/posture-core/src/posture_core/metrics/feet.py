@@ -15,14 +15,17 @@ ground is.
 
 ## The margin is thin, and recalibration could not close it
 
-Measured across the eight fixtures with the real backend, the dangling-feet photograph scores
-0.063 m — but two fixtures with no feet-support label at all, ``kneeling_right.jpg`` and
-``reclined_right.jpg``, score higher (0.069 m and 0.064 m). The evaluation manifest carries a
-``posture_label`` per image, not a feet-support label, so there is no ground truth to tell whether
-those two are also genuinely unsupported or whether 0.05 m is too tight. Confirmed at its current
-value rather than retuned, because the evidence argues against guessing rather than for a specific
-number. See :attr:`~posture_core.thresholds.Thresholds.heel_contact_tolerance_m`. Still the least
-settled metric in the package.
+This module previously claimed the eight-fixture signal "points the right way" — the labelled
+dangling-feet case scoring above every other fixture. **That no longer holds.** Measured across
+all eight with the real backend, the dangling-feet photograph scores 0.063 m, but two fixtures
+with no feet-support label at all, ``kneeling_right.jpg`` and ``reclined_right.jpg``, score higher
+(0.069 m and 0.064 m). The evaluation manifest carries a ``posture_label`` per image, not a
+feet-support label, so there is no ground truth to tell whether those two are also genuinely
+unsupported or whether 0.05 m is too tight — the earlier claim about direction was not something
+this manifest could actually support. Confirmed at its current value rather than retuned, because
+the evidence argues against guessing rather than for a specific number. See
+:attr:`~posture_core.thresholds.Thresholds.heel_contact_tolerance_m`. Still the least settled
+metric in the package.
 """
 
 from __future__ import annotations

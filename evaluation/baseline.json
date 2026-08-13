@@ -85,7 +85,7 @@
   "known_gaps": [
     {
       "fixture": "fx-05",
-      "issue": "kneeling_right.jpg produces no kneeling-related finding at all \u2014 knee_flexion_deg measured at 80.3deg, inside the seated band (70-120deg) rather than triggering knee_kneeling_max_deg (<=60deg). Diagnosis: side-selection artifact, not a threshold miscalibration \u2014 the kneeling (right) leg is occluded, so require_either_side measures the visible left leg instead, which is not in a kneeling posture. No threshold value corrects for a leg that was never measured. knee_kneeling_max_deg confirmed at its current value."
+      "issue": "kneeling_right.jpg produces no kneeling-related finding at all \u2014 knee_flexion_deg measured at 80.3deg, inside the seated band (70-120deg) rather than triggering knee_kneeling_max_deg (<=60deg). Diagnosis: the right leg's landmarks are below the confidence floor (knee visibility 0.31, ankle 0.26) so require_either_side measures the left leg instead. The manifest doesn't record which leg is doing the kneeling, and computing the angle from the right leg's own untrusted coordinates gives ~104deg \u2014 more extended than the measured left leg, not less \u2014 so this is not simply 'the engine picked the wrong, straighter leg'. No available leg measurement here supports a kneeling verdict; retuning against this fixture would fit one photograph and nothing else. knee_kneeling_max_deg confirmed at its current value; resolving this needs a less-occluded kneeling fixture or a per-leg ground-truth label."
     },
     {
       "fixture": "all",

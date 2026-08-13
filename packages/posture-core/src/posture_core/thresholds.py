@@ -131,10 +131,11 @@ class Thresholds:
     0.70 is confirmed at its current value rather than re-derived, because there is nothing to
     re-derive it against yet. Closing that gap needs one of: frontal or three-quarter fixtures
     added to the evaluation set (the same gap `lateral_view_max_ratio`/`frontal_view_min_ratio`
-    has below), or a decision — a code change, not a value change, so out of scope for a
-    recalibration pass — on whether a one-armed proxy (mirroring the `require_either_side` pattern
-    `knee_flexion_deg` and `elbow_flexion_deg` use) is an acceptable substitute for "both arms
-    visibly folded".
+    has below — note `evaluation/quality-gates.yml`'s `allowed_views` would need a new value added
+    too, since it currently accepts only `lateral`/`lateral_left`/`lateral_right`), or a decision —
+    a code change, not a value change, so out of scope for a recalibration pass — on whether a
+    one-armed proxy (mirroring the `require_either_side` pattern `knee_flexion_deg` and
+    `elbow_flexion_deg` use) is an acceptable substitute for "both arms visibly folded".
     """
 
     elbow_flexed_deg: float = 120.0
@@ -148,15 +149,22 @@ class Thresholds:
     knee_kneeling_max_deg: float = 60.0
     """Below this the subject is kneeling rather than sitting.
 
-    **Diagnosis:** `kneeling_right.jpg` measures 80.3°, inside the seated band rather than
-    below this threshold, and moving the threshold would not fix that. The report for that fixture
-    reads "your **left** knee is at a comfortable seated angle" — `knee_flexion_deg` uses
-    `require_either_side`, which picked the visible left leg because the right knee (the one
-    actually kneeling, per the filename and the manifest's "lower legs partly occluded by chair"
-    note) is below the confidence floor in this composition. The kneeling leg was never measured; no
-    value of `knee_kneeling_max_deg` makes an unmeasured leg produce a kneeling verdict. This is a
-    side-selection artifact, not a miscalibration, so the threshold is confirmed at its current
-    value rather than retuned against a fixture that cannot exercise it.
+    **Diagnosis:** `kneeling_right.jpg` measures 80.3°, inside the seated band rather than below
+    this threshold, and moving the threshold would not fix that. The report reads "your **left**
+    knee is at a comfortable seated angle" — `knee_flexion_deg` uses `require_either_side`, which
+    picked the left leg because the right knee and ankle are below the confidence floor
+    (visibility 0.31 and 0.26) in this composition; the manifest notes the legs are "partly
+    occluded by the chair" but does not say which leg is doing the occluding or which one is
+    kneeling.
+
+    Computing the angle from the right leg's own (untrusted) coordinates anyway gives ~104° — more
+    extended than the measured left leg, not less, so this fixture does not cleanly show "the
+    engine measured the wrong, straighter leg instead of the right, more-bent one". What it does
+    show: neither leg the engine can see resolves to a kneeling angle, and the one it distrusts
+    doesn't obviously look more kneeling either. Retuning the threshold against a fixture where no
+    available leg measurement supports a kneeling verdict would fit this one photograph and
+    nothing else, so it is confirmed at its current value. Resolving this properly needs either a
+    less-occluded kneeling fixture or a per-leg ground-truth label this manifest doesn't have.
     """
 
     # -- heel contact (OP-30) ------------------------------------------------------------------
@@ -214,7 +222,8 @@ class Thresholds:
     **Still unvalidated.** The evaluation set has no frontal or three-quarter fixture, so
     there is nothing to measure this boundary against — the same gap `arms_crossed_ratio` has, and
     for the same underlying reason. Confirmed at its current, reasoned value pending fixtures that
-    can actually exercise it.
+    can actually exercise it; adding one also needs a schema change, since
+    `evaluation/quality-gates.yml`'s `allowed_views` doesn't accept a frontal value yet.
     """
 
     # -- scoring (OP-32) -----------------------------------------------------------------------
