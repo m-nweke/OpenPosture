@@ -31,6 +31,15 @@ comes from. The numbers are recorded on ``Thresholds.arms_crossed_ratio``.
 verdict. Comparing it against a threshold is the rules layer's job (OP-32). Keeping measurement
 and judgement apart is what lets a threshold be retuned without touching a measurement, and what
 lets the report show a user how close to the line they were.
+
+## This metric abstains on the entire lateral evaluation set
+
+It requires both wrists and both elbows above the confidence floor. Every fixture in
+``evaluation/manifest.csv`` is a lateral view, which puts the far arm behind the torso and below
+confidence by construction — so ``arms_crossed`` currently returns no value at all on any of them,
+including the one curated specifically as the folded-arms positive case. See
+:attr:`~posture_core.thresholds.Thresholds.arms_crossed_ratio` for the historical measurement this
+threshold rests on and why it could not be re-validated.
 """
 
 from __future__ import annotations

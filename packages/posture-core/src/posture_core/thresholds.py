@@ -105,11 +105,11 @@ class Thresholds:
     same folded arms at twice the camera distance produced half the pixel separation and a
     different verdict. Dividing by a length measured on the same body cancels the scale.
 
-    **The value was measured, not assumed.** `docs/V2-PLAN.md` proposed 0.15 against a different
-    formula — `|forearm - upper_arm| / torso` — which compares two segments of the *same* arm and
-    evaluates to ~0.06 for typical adult proportions in any posture whatsoever; it would have
-    reported folded arms for everybody. Running the real backend over the eight fixtures gives a
-    clean separation on the wrist-to-opposite-elbow measure:
+    **The value was measured, not assumed** — at the time it was chosen. `docs/V2-PLAN.md` proposed
+    0.15 against a different formula — `|forearm - upper_arm| / torso` — which compares two segments
+    of the *same* arm and evaluates to ~0.06 for typical adult proportions in any posture
+    whatsoever; it would have reported folded arms for everybody. Running the real backend over the
+    eight fixtures at the time gave a clean separation on the wrist-to-opposite-elbow measure:
 
         straight_armsfolded.jpg   0.53   <- the one fixture with folded arms
         bench_feet_dangling.jpg   0.91
@@ -120,8 +120,21 @@ class Thresholds:
         kneeling_right.jpg        1.07
         desk_hunch.jpeg           1.20
 
-    0.70 sits in the gap with room on both sides. Eight photographs is a small sample and this
-    should be revisited against the evaluation set in Epic H.
+    **Recalibration against the evaluation set could not re-derive this value, because the metric no
+    longer produces one.** `arms_crossed` requires both wrists and both elbows above
+    the confidence floor. Re-run today, it abstains (`status: low_confidence`) on all eight fixtures
+    in `evaluation/manifest.csv`, including the folded-arms one that produced the 0.53 above — every
+    fixture is a lateral view, and a lateral view puts the far arm behind the torso, below
+    confidence, by construction. The number above is historical evidence for a formula that no
+    longer runs on this evaluation set, not current evidence for this threshold.
+
+    0.70 is confirmed at its current value rather than re-derived, because there is nothing to
+    re-derive it against yet. Closing that gap needs one of: frontal or three-quarter fixtures
+    added to the evaluation set (the same gap `lateral_view_max_ratio`/`frontal_view_min_ratio`
+    has below), or a decision — a code change, not a value change, so out of scope for a
+    recalibration pass — on whether a one-armed proxy (mirroring the `require_either_side` pattern
+    `knee_flexion_deg` and `elbow_flexion_deg` use) is an acceptable substitute for "both arms
+    visibly folded".
     """
 
     elbow_flexed_deg: float = 120.0
@@ -133,7 +146,18 @@ class Thresholds:
     """A hip-knee-ankle angle in this band is ordinary seated posture."""
 
     knee_kneeling_max_deg: float = 60.0
-    """Below this the subject is kneeling rather than sitting."""
+    """Below this the subject is kneeling rather than sitting.
+
+    **Diagnosis:** `kneeling_right.jpg` measures 80.3°, inside the seated band rather than
+    below this threshold, and moving the threshold would not fix that. The report for that fixture
+    reads "your **left** knee is at a comfortable seated angle" — `knee_flexion_deg` uses
+    `require_either_side`, which picked the visible left leg because the right knee (the one
+    actually kneeling, per the filename and the manifest's "lower legs partly occluded by chair"
+    note) is below the confidence floor in this composition. The kneeling leg was never measured; no
+    value of `knee_kneeling_max_deg` makes an unmeasured leg produce a kneeling verdict. This is a
+    side-selection artifact, not a miscalibration, so the threshold is confirmed at its current
+    value rather than retuned against a fixture that cannot exercise it.
+    """
 
     # -- heel contact (OP-30) ------------------------------------------------------------------
     heel_contact_tolerance_m: float = 0.05
@@ -148,6 +172,26 @@ class Thresholds:
     In metres, from world landmarks — which is why this metric is possible at all. The 18-point
     COCO schema the legacy engine used had no foot landmarks, so its feet check was a tautology
     that returned "on the floor" for a fixture whose subject's feet visibly dangle.
+
+    **Measurement.** Real backend, all eight fixtures:
+
+        desk_lean_exif.jpeg        0.0065
+        hunchback_left.jpg         0.0306
+        desk_hunch.jpeg            0.0487
+        straight_armsfolded.jpg    0.0501
+        hunchback_right.jpg        0.0514
+        reclined_right.jpg         0.0644
+        bench_feet_dangling.jpg    0.0629   <- the one fixture labelled as a dangling-feet case
+        kneeling_right.jpg         0.0694
+
+    Confirmed at its current value, not re-derived, because the evidence argues against tuning
+    rather than for a specific number: `reclined_right.jpg` and `kneeling_right.jpg` exceed the
+    labelled positive case despite carrying no feet-support label of their own, which means either
+    they are also genuinely unsupported (plausible — reclining and kneeling both commonly lift a
+    heel) or 0.05 m is too tight, and the manifest cannot currently distinguish the two: it has a
+    `posture_label` per image, not a feet-support label. A real recalibration needs that label added
+    to `evaluation/manifest.csv` before this tolerance can be honestly retuned rather than guessed
+    at. Treat this as the least settled threshold in the package until then.
     """
 
     # -- view confidence (OP-31) ---------------------------------------------------------------
@@ -158,10 +202,20 @@ class Thresholds:
     subject's real proportions. The original app *told* users to photograph themselves from the
     side and then assessed whatever arrived — so a 30° slump shot head-on, which projects to
     almost no apparent lean, was reported as good posture with full confidence.
+
+    **Measurement.** All eight `evaluation/manifest.csv` fixtures are lateral, and the real
+    backend measures 0.071-0.194 across them — comfortably under 0.35 with room to spare. This end
+    of the scale is now genuinely validated, not just reasoned; confirmed at its current value.
     """
 
     frontal_view_min_ratio: float = 0.55
-    """At or above this the view is frontal and sagittal metrics must abstain."""
+    """At or above this the view is frontal and sagittal metrics must abstain.
+
+    **Still unvalidated.** The evaluation set has no frontal or three-quarter fixture, so
+    there is nothing to measure this boundary against — the same gap `arms_crossed_ratio` has, and
+    for the same underlying reason. Confirmed at its current, reasoned value pending fixtures that
+    can actually exercise it.
+    """
 
     # -- scoring (OP-32) -----------------------------------------------------------------------
     score_penalty_per_finding: float = 15.0
