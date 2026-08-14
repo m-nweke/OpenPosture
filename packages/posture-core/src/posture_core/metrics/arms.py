@@ -21,9 +21,10 @@ with their arms anywhere at all. It would have reported crossed arms universally
 
 What actually distinguishes folded arms is that **each wrist sits near the opposite elbow**. That
 is what this measures, still normalised by torso length so the fix to the original defect is kept.
-Run against the eight fixtures with the real backend, the folded-arms photograph scores 0.53 and
-every other one falls between 0.91 and 1.20 — a clean separation, and where the default threshold
-comes from. The numbers are recorded on ``Thresholds.arms_crossed_ratio``.
+Run against the eight fixtures with the real backend *at the time this threshold was chosen*, the
+folded-arms photograph scored 0.53 and every other one fell between 0.91 and 1.20 — a clean
+separation, and where the default threshold comes from. That run does not reproduce today; see
+below. The numbers are recorded on ``Thresholds.arms_crossed_ratio``.
 
 ## What the metric reports, and what decides
 
