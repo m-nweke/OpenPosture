@@ -85,7 +85,19 @@
   "known_gaps": [
     {
       "fixture": "fx-05",
-      "issue": "kneeling_right.jpg produces no kneeling-related finding at all \u2014 knee_flexion_deg measured at 80.3deg, inside the seated band (70-120deg) rather than triggering knee_kneeling_max_deg (<=60deg). Tracked as OP-60 (diagnose threshold vs. near/far-leg side selection before retuning)."
+      "issue": "kneeling_right.jpg produces no kneeling-related finding at all \u2014 knee_flexion_deg measured at 80.3deg, inside the seated band (70-120deg) rather than triggering knee_kneeling_max_deg (<=60deg). Diagnosis: the right leg's landmarks are below the confidence floor (knee visibility 0.31, ankle 0.26) so require_either_side measures the left leg instead. The manifest doesn't record which leg is doing the kneeling, and computing the angle from the right leg's own untrusted coordinates gives ~104deg \u2014 more extended than the measured left leg, not less \u2014 so this is not simply 'the engine picked the wrong, straighter leg'. No available leg measurement here supports a kneeling verdict; retuning against this fixture would fit one photograph and nothing else. knee_kneeling_max_deg confirmed at its current value; resolving this needs a less-occluded kneeling fixture or a per-leg ground-truth label."
+    },
+    {
+      "fixture": "all",
+      "issue": "arms_crossed abstains (low_confidence) on all 8 fixtures against the real backend, including the folded-arms positive case (straight_armsfolded.jpg) \u2014 it requires both wrists/elbows and every fixture here is lateral, so the far arm is always occluded. arms_crossed_ratio cannot currently be evaluated against this set at all; confirmed at its current value pending frontal/three-quarter fixtures or a one-armed-proxy design decision."
+    },
+    {
+      "fixture": "all",
+      "issue": "heel_contact_m measured 0.0065-0.0694m across the 8 fixtures. Two fixtures with no feet-support label (kneeling_right.jpg 0.069m, reclined_right.jpg 0.064m) exceed the one labelled dangling-feet case (bench_feet_dangling.jpg 0.063m). The manifest has no per-image feet-support ground truth, so heel_contact_tolerance_m (0.05m) is confirmed at its current value rather than retuned \u2014 the evidence argues against guessing, not for a specific new number. Needs a feet-support label added to evaluation/manifest.csv before a real recalibration is possible."
+    },
+    {
+      "fixture": "all",
+      "issue": "view_confidence measured 0.071-0.194 across the 8 (all-lateral) fixtures, comfortably under lateral_view_max_ratio (0.35) \u2014 that boundary is now genuinely validated. frontal_view_min_ratio (0.55) remains unvalidated: the evaluation set has no frontal or three-quarter fixture. Both confirmed at their current values."
     }
   ]
 }

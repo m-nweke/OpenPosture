@@ -34,6 +34,13 @@ def knee_flexion_deg(resolver: KeypointResolver, thresholds: Thresholds) -> Metr
     the torso and is reported below the visibility threshold — correctly. Requiring both made every
     one of the eight fixtures abstain. See
     :func:`~posture_core.metrics._support.require_either_side`.
+
+    **Diagnosis, ``kneeling_right.jpg``.** This fixture reports "your left knee is at a
+    comfortable seated angle (80°)" rather than a kneeling verdict, because the right leg's
+    landmarks are below the confidence floor and the manifest doesn't record which leg is doing
+    the kneeling. See :attr:`~posture_core.thresholds.Thresholds.knee_kneeling_max_deg` for the
+    full diagnosis, including why the right leg's own (untrusted) numbers don't resolve the
+    question either.
     """
     resolved = require_either_side(resolver, SIDES)
     if not isinstance(resolved, tuple):

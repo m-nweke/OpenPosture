@@ -21,9 +21,10 @@ with their arms anywhere at all. It would have reported crossed arms universally
 
 What actually distinguishes folded arms is that **each wrist sits near the opposite elbow**. That
 is what this measures, still normalised by torso length so the fix to the original defect is kept.
-Run against the eight fixtures with the real backend, the folded-arms photograph scores 0.53 and
-every other one falls between 0.91 and 1.20 — a clean separation, and where the default threshold
-comes from. The numbers are recorded on ``Thresholds.arms_crossed_ratio``.
+Run against the eight fixtures with the real backend *at the time this threshold was chosen*, the
+folded-arms photograph scored 0.53 and every other one fell between 0.91 and 1.20 — a clean
+separation, and where the default threshold comes from. That run does not reproduce today; see
+below. The numbers are recorded on ``Thresholds.arms_crossed_ratio``.
 
 ## What the metric reports, and what decides
 
@@ -31,6 +32,15 @@ comes from. The numbers are recorded on ``Thresholds.arms_crossed_ratio``.
 verdict. Comparing it against a threshold is the rules layer's job (OP-32). Keeping measurement
 and judgement apart is what lets a threshold be retuned without touching a measurement, and what
 lets the report show a user how close to the line they were.
+
+## This metric abstains on the entire lateral evaluation set
+
+It requires both wrists and both elbows above the confidence floor. Every fixture in
+``evaluation/manifest.csv`` is a lateral view, which puts the far arm behind the torso and below
+confidence by construction — so ``arms_crossed`` currently returns no value at all on any of them,
+including the one curated specifically as the folded-arms positive case. See
+:attr:`~posture_core.thresholds.Thresholds.arms_crossed_ratio` for the historical measurement this
+threshold rests on and why it could not be re-validated.
 """
 
 from __future__ import annotations
