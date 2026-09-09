@@ -274,18 +274,10 @@ class Analysis(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     image_width: Mapped[int] = mapped_column(Integer(), nullable=False)
     image_height: Mapped[int] = mapped_column(Integer(), nullable=False)
 
-    overall_score: Mapped[float | None] = mapped_column(
-        Float(),
-        # Null when nothing could be measured, and specifically not 0. Both 0 and 100 would be
-        # confident claims about a photograph the engine could not assess — the original engine's
-        # central defect, in column form.
-        nullable=True,
-    )
-
     assessed: Mapped[int] = mapped_column(
         Integer(),
         nullable=False,
-        comment="How many metrics produced a value. Coverage, stored beside the score.",
+        comment="How many metrics produced a value.",
     )
     total: Mapped[int] = mapped_column(Integer(), nullable=False)
 
@@ -320,10 +312,6 @@ class Analysis(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("assessed >= 0 AND assessed <= total", name="assessed_fits_in_total"),
         CheckConstraint("image_width > 0 AND image_height > 0", name="image_has_area"),
-        CheckConstraint(
-            "overall_score IS NULL OR (overall_score >= 0 AND overall_score <= 100)",
-            name="score_is_a_percentage",
-        ),
         # **The index E6 pages on.** Cursor pagination orders by `(created_at DESC, id DESC)`
         # within one user — `id` as the tie-break, because two analyses uploaded in the same
         # millisecond would otherwise have an unstable order and a cursor over an unstable order

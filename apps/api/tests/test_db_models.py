@@ -91,7 +91,6 @@ async def _make_analysis(session: AsyncSession, **overrides: object) -> Analysis
         "assessed": 7,
         "total": 7,
         "inference_ms": 12.5,
-        "overall_score": 70.0,
         "pose_backend": "fake",
         "rules_version": "1.0.0",
         "schema_version": "1.0",
@@ -247,20 +246,6 @@ async def test_a_metric_is_stored_once_per_analysis(session: AsyncSession) -> No
         )
     with pytest.raises(IntegrityError):
         await session.flush()
-
-
-async def test_a_score_outside_the_scale_is_rejected(session: AsyncSession) -> None:
-    with pytest.raises(IntegrityError):
-        await _make_analysis(session, overall_score=101.0)
-
-
-async def test_an_unassessable_photograph_scores_null_rather_than_zero(
-    session: AsyncSession,
-) -> None:
-    """Null, not 0. Zero would be a confident claim about a photograph nothing could be read
-    from — the original engine's central defect, in column form."""
-    analysis = await _make_analysis(session, overall_score=None, assessed=0, pose_detected=False)
-    assert analysis.overall_score is None
 
 
 async def test_deleting_an_analysis_takes_its_children(session: AsyncSession) -> None:

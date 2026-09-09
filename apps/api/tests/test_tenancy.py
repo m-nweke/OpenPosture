@@ -154,7 +154,6 @@ async def _store_analysis(
             pose_detected=True,
             image_width=640,
             image_height=480,
-            overall_score=70.0,
             assessed=7,
             total=7,
             inference_ms=12.5,

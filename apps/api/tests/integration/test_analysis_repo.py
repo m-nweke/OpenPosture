@@ -110,7 +110,6 @@ async def _create_minimal(
         pose_detected=True,
         image_width=640,
         image_height=480,
-        overall_score=72.0,
         assessed=5,
         total=6,
         inference_ms=18.3,
@@ -134,7 +133,6 @@ async def test_create_returns_a_persisted_analysis(session: AsyncSession) -> Non
         pose_detected=True,
         image_width=1280,
         image_height=720,
-        overall_score=65.0,
         assessed=7,
         total=8,
         inference_ms=22.1,
@@ -145,7 +143,6 @@ async def test_create_returns_a_persisted_analysis(session: AsyncSession) -> Non
 
     assert analysis.id is not None
     assert analysis.user_id == user_id
-    assert analysis.overall_score == pytest.approx(65.0)
 
 
 async def test_create_persists_children(session: AsyncSession) -> None:
@@ -157,7 +154,6 @@ async def test_create_persists_children(session: AsyncSession) -> None:
         pose_detected=True,
         image_width=640,
         image_height=480,
-        overall_score=80.0,
         assessed=7,
         total=7,
         inference_ms=14.0,
@@ -428,7 +424,6 @@ async def _create_with_trunk_metric(
         pose_detected=status == "ok",
         image_width=640,
         image_height=480,
-        overall_score=72.0 if status == "ok" else None,
         assessed=1 if status == "ok" else 0,
         total=1,
         inference_ms=18.3,
@@ -483,7 +478,6 @@ async def test_list_metric_trend_only_returns_the_requested_code(session: AsyncS
         pose_detected=True,
         image_width=640,
         image_height=480,
-        overall_score=72.0,
         assessed=1,
         total=1,
         inference_ms=18.3,
