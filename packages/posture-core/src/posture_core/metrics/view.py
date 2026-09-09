@@ -24,6 +24,14 @@ accurately along the camera axis than across it, so a head-on measurement of for
 the model's weakest dimension. So this metric produces a **confidence factor** the report applies
 to sagittal findings, rather than a veto that discards them. A lower-confidence finding is more
 useful to a user than a missing one, and more honest than a confident one.
+
+## The lateral boundary is now measured, the frontal one still isn't
+
+All eight ``evaluation/manifest.csv`` fixtures are lateral, and the real backend measures
+0.071-0.194 across them — comfortably under ``lateral_view_max_ratio`` (0.35). That end of the scale
+is validated. ``frontal_view_min_ratio`` (0.55) has no fixture anywhere near it and remains a
+reasoned value pending frontal or three-quarter photographs in the evaluation set. See
+:attr:`~posture_core.thresholds.Thresholds.lateral_view_max_ratio`.
 """
 
 from __future__ import annotations
