@@ -128,7 +128,9 @@ export default function History() {
                     />
                     <div className={styles.itemBody}>
                       <p className={styles.itemDate}>{formatDate(item.created_at)}</p>
-                      <p className={styles.itemScore}>{describeScore(item)}</p>
+                      {!item.pose_detected && (
+                        <p className={styles.itemScore}>No person detected</p>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -149,12 +151,6 @@ export default function History() {
       )}
     </div>
   )
-}
-
-function describeScore(item: AnalysisListItem): string {
-  if (!item.pose_detected) return 'No person detected'
-  if (item.overall_score === null) return 'Not enough was visible to score'
-  return `${Math.round(item.overall_score)} / 100`
 }
 
 function formatDate(isoTimestamp: string): string {

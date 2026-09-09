@@ -73,17 +73,6 @@ describe('Dashboard', () => {
       expect(screen.queryByRole('heading', { name: 'Your results' })).not.toBeInTheDocument()
       expect(screen.queryByText(/we have some recommendations/i)).not.toBeInTheDocument()
     })
-
-    it('renders values that came from the response, not from the bundle', async () => {
-      signedInAs('Ada')
-      // A score no constant in this repo contains. If it appears on screen it came over the wire.
-      respondWith(analysisOf(hunchbackReport({ overall_score: 43 })))
-      renderWithProviders(<Dashboard />)
-
-      await upload()
-
-      expect(await screen.findByText('43')).toBeInTheDocument()
-    })
   })
 
   describe('uploading', () => {
@@ -120,7 +109,7 @@ describe('Dashboard', () => {
   })
 
   describe('a successful analysis', () => {
-    it('renders the score, the findings and the measurements', async () => {
+    it('renders the findings and the measurements', async () => {
       signedInAs('Ada')
       respondWith(analysisOf(hunchbackReport()))
       renderWithProviders(<Dashboard />)
@@ -128,7 +117,6 @@ describe('Dashboard', () => {
       await upload()
 
       expect(await screen.findByRole('heading', { name: 'Your results' })).toBeInTheDocument()
-      expect(screen.getByText('70')).toBeInTheDocument()
       expect(screen.getByText(/Your torso is leaning 32°/)).toBeInTheDocument()
       expect(screen.getByText('32°')).toBeInTheDocument()
       expect(screen.getByText(/Assessed 4 of 4 measurements/)).toBeInTheDocument()
@@ -146,7 +134,7 @@ describe('Dashboard', () => {
 
     it('says so plainly when nothing was wrong', async () => {
       signedInAs('Ada')
-      respondWith(analysisOf(hunchbackReport({ findings: [], overall_score: 100 })))
+      respondWith(analysisOf(hunchbackReport({ findings: [] })))
       renderWithProviders(<Dashboard />)
 
       await upload()
@@ -170,19 +158,6 @@ describe('Dashboard', () => {
       ).toBeInTheDocument()
       expect(screen.getByText(/left knee and left ankle were out of frame/)).toBeInTheDocument()
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    })
-
-    it('refuses to invent a score when nothing could be measured', async () => {
-      signedInAs('Ada')
-      respondWith(analysisOf(allGapsReport()))
-      renderWithProviders(<Dashboard />)
-
-      await upload()
-
-      expect(await screen.findByText(/Not enough was visible to score/)).toBeInTheDocument()
-      // Neither 0 nor 100 — both are confident claims about a photo the engine could not assess.
-      expect(screen.queryByText('0')).not.toBeInTheDocument()
-      expect(screen.queryByText('100')).not.toBeInTheDocument()
     })
 
     it('tells the user what would fix it', async () => {

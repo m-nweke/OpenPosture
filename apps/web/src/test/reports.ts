@@ -26,7 +26,6 @@ export function hunchbackReport(overrides: Partial<PostureReport> = {}): Posture
     backend: 'fake',
     inference_ms: 0,
     image: { width: 640, height: 480 },
-    overall_score: 70,
     findings: [
       {
         code: 'trunk_slouch',
@@ -62,10 +61,9 @@ export function hunchbackReport(overrides: Partial<PostureReport> = {}): Posture
   }
 }
 
-/** Nothing could be measured: every metric a gap, no score. */
+/** Nothing could be measured: every metric a gap. */
 export function allGapsReport(): PostureReport {
   return hunchbackReport({
-    overall_score: null,
     findings: [],
     metrics: {
       trunk_inclination_deg: unavailable('deg', 'left hip and left shoulder were unclear'),
