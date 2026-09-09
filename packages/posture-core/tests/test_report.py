@@ -143,14 +143,11 @@ def test_coverage_reports_how_much_of_the_body_was_assessed() -> None:
     assert 0.0 <= partial.quality.coverage <= 1.0
 
 
-def test_the_score_is_none_when_nothing_could_be_measured() -> None:
-    """Not 0, not 100. Both are confident claims about a photograph the engine could not read —
-    the same defect as "Straight back position" wearing different clothes."""
+def test_a_frame_the_engine_cannot_read_produces_no_findings() -> None:
     empty = build_report(
         frame(omit=tuple(K)),
         DEFAULT_THRESHOLDS,
     )
-    assert empty.overall_score is None
     # A tuple, not a list: `__post_init__` copies the findings into one so a frozen report is
     # frozen all the way down rather than only at its attribute bindings.
     assert empty.findings == ()
@@ -161,33 +158,6 @@ def test_a_frame_the_engine_cannot_read_says_so_rather_than_reporting_good_postu
     result = build_report(frame(omit=tuple(K)), DEFAULT_THRESHOLDS)
     assert result.quality.assessed == 0
     assert all(gap.status is not MetricStatus.OK for gap in result.quality.gaps)
-
-
-# ---------------------------------------------------------------------------------------------
-# Score
-# ---------------------------------------------------------------------------------------------
-
-
-def test_worse_posture_scores_lower() -> None:
-    good = report(**UPRIGHT).overall_score
-    bad = report(**SLOUCHED).overall_score
-    assert good is not None and bad is not None
-    assert bad < good
-
-
-def test_an_informational_finding_does_not_cost_points() -> None:
-    """Kneeling and folded arms are context, not faults, and scoring them would tell users to
-    change things that are not problems."""
-    upright = report(**UPRIGHT).overall_score
-    kneeling = report(trunk_deg=3.0, neck_deg=3.0, thigh_deg=15.0, shank_deg=165.0)
-    assert "kneeling" in [finding.code for finding in kneeling.findings]
-    assert kneeling.overall_score == upright
-
-
-def test_the_score_stays_inside_its_stated_range() -> None:
-    terrible = report(trunk_deg=60.0, neck_deg=60.0, thigh_deg=120.0, shank_deg=5.0)
-    assert terrible.overall_score is not None
-    assert 0.0 <= terrible.overall_score <= 100.0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -245,7 +215,7 @@ def test_every_metric_appears_in_the_report_whether_or_not_it_succeeded() -> Non
 
 def test_a_report_is_immutable() -> None:
     with pytest.raises(dataclasses.FrozenInstanceError):
-        report(**SLOUCHED).overall_score = 100.0  # type: ignore[misc]
+        report(**SLOUCHED).backend = "other"  # type: ignore[misc]
 
 
 def test_a_finding_cannot_carry_an_impossible_confidence() -> None:
@@ -346,7 +316,7 @@ def test_a_reports_metrics_and_findings_cannot_be_edited_after_the_fact() -> Non
     """The same guard the quality section already had, applied to the two containers that matter
     most.
 
-    `frozen=True` stopped `report.overall_score = 100.0` and nothing else: `build_report` handed
+    `frozen=True` stopped `report.backend = "other"` and nothing else: `build_report` handed
     over a live dict and a live list, so deleting an inconvenient finding or rewriting a metric's
     value was an ordinary mutation. The module docstring promises one frame yields one
     byte-identical document forever, and that promise was only good until someone took it up.
@@ -360,22 +330,3 @@ def test_a_reports_metrics_and_findings_cannot_be_edited_after_the_fact() -> Non
         result.findings.append(None)  # type: ignore[attr-defined]
     with pytest.raises(AttributeError):
         result.findings.clear()  # type: ignore[attr-defined]
-
-
-def test_the_score_is_rounded_like_every_other_float_in_the_document() -> None:
-    """Invisible at the default 15.0 penalty, which divides cleanly — which is exactly the risk.
-
-    This fixture produces two major findings, so the score is `100 - 2p`. At `p = 32.2` that is
-    `35.599999999999994`. Fifty-six of the first four hundred tenths do something similar here, so
-    the default being clean is luck, not design. An unrounded score would scatter that noise
-    through the golden corpus on the first threshold retune, and through the cross-language
-    comparison in OP-36, where it would read as two engines disagreeing rather than as an artefact
-    of binary floating point.
-    """
-    tuned = with_thresholds(score_penalty_per_finding=32.2)
-    raw = build_report(frame(**SLOUCHED), tuned).overall_score
-    assert raw is not None
-    assert raw != round(raw, 4), "premise: this penalty must produce a non-representable score"
-
-    serialised = build_report(frame(**SLOUCHED), tuned).to_dict()["overall_score"]
-    assert serialised == round(raw, 4)

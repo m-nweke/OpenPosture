@@ -304,7 +304,6 @@ def test_a_report_can_always_be_built_however_unconfident_the_landmarks(
     )
     for finding in report.findings:
         assert 0.0 <= finding.confidence <= 1.0
-    assert report.overall_score is None or 0.0 <= report.overall_score <= 100.0
 
 
 @SETTINGS

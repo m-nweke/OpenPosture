@@ -15,6 +15,5 @@
   "knee_kneeling_max_deg": 60.0,
   "heel_contact_tolerance_m": 0.05,
   "lateral_view_max_ratio": 0.35,
-  "frontal_view_min_ratio": 0.55,
-  "score_penalty_per_finding": 15.0
+  "frontal_view_min_ratio": 0.55
 }

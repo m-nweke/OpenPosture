@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from posture_core.metrics import arms, feet, head, knees, trunk, view
 from posture_core.resolver import KeypointResolver
-from posture_core.rules import Severity, evaluate
+from posture_core.rules import evaluate
 from posture_core.status import KeypointStatus, MetricStatus
 from posture_core.thresholds import DEFAULT_THRESHOLDS
 
@@ -56,8 +56,6 @@ METRICS: Final = (
     knees.knee_flexion_deg,
     feet.heel_contact_m,
 )
-
-_SEVERITY_WEIGHT: Final = {Severity.MAJOR: 1.0, Severity.MINOR: 0.5, Severity.INFO: 0.0}
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -97,18 +95,6 @@ class PostureReport:
     metrics: Mapping[str, Metric]
     findings: Sequence[Finding]
     quality: Quality
-    overall_score: float | None
-    """``0`` to ``100``, or ``None`` when nothing could be measured.
-
-    ``None`` rather than ``0`` or ``100``. A score of 0 would read as terrible posture and 100 as
-    perfect, and both are confident claims about a photograph the engine could not assess. This is
-    the same defect as "Straight back position" wearing different clothes, so it gets the same
-    treatment: say nothing rather than say something false.
-
-    The scoring itself is deliberately crude — 100 less a fixed penalty per finding, weighted by
-    severity — and should be read as a summary rather than a measurement. The findings are the
-    output that means something.
-    """
 
     def __post_init__(self) -> None:
         # Same reason as `Quality.__post_init__`: `frozen=True` freezes the attribute bindings, not
@@ -132,13 +118,6 @@ class PostureReport:
             "backend": self.backend,
             "inference_ms": round(self.inference_ms, 3),
             "image": {"width": self.image_width, "height": self.image_height},
-            # Rounded like every other float here. The default 15.0 penalty happens to divide
-            # cleanly, so this reads as unnecessary today — but 100 - (8.3 * 3.5) is
-            # 70.94999999999999, and most non-integer penalties do something similar. Leaving it
-            # raw means the first threshold retune scatters noise through the golden corpus and
-            # the cross-language comparison in OP-36, where the diff would look like a real
-            # disagreement between two engines rather than a float artefact.
-            "overall_score": _round(self.overall_score),
             "findings": [
                 {
                     "code": finding.code,
@@ -229,15 +208,4 @@ def build_report(frame: PoseFrame, thresholds: Thresholds = DEFAULT_THRESHOLDS) 
             gaps=gaps,
             keypoints=resolver.statuses,
         ),
-        overall_score=_score(findings, assessed, thresholds),
     )
-
-
-def _score(findings: Sequence[Finding], assessed: int, thresholds: Thresholds) -> float | None:
-    if assessed == 0:
-        return None
-    penalty = sum(
-        thresholds.score_penalty_per_finding * _SEVERITY_WEIGHT[finding.severity]
-        for finding in findings
-    )
-    return max(0.0, min(100.0, 100.0 - penalty))
