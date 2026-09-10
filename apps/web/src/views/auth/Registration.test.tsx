@@ -40,7 +40,7 @@ describe('Registration', () => {
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
   })
 
-  it('rejects a password under eight characters, inline', async () => {
+  it('rejects a password under twelve characters, inline', async () => {
     const user = userEvent.setup()
     renderRegistration()
 
@@ -48,7 +48,7 @@ describe('Registration', () => {
 
     // The Firebase version raised these through `alert()`, a modal carrying raw vendor text that
     // the user had to dismiss. Inline and in our own words now.
-    expect(await screen.findByRole('alert')).toHaveTextContent('at least 8 characters')
+    expect(await screen.findByRole('alert')).toHaveTextContent('at least 12 characters')
     expect(screen.queryByRole('heading', { name: 'Dashboard' })).not.toBeInTheDocument()
   })
 

@@ -164,9 +164,8 @@ describe('signUp', () => {
   })
 
   it("maps the server's real password-length rejection to weak-password, not unknown", async () => {
-    // The form's own check only enforces 8 characters; the server's is 12 (schemas.py's
-    // `MIN_PASSWORD_LENGTH`). A password in that gap clears the client check above and comes
-    // back 422 from the real API — this is that response, not the client-side short-circuit.
+    // Both the form and the server require 12 characters (`schemas.py`'s `MIN_PASSWORD_LENGTH`).
+    // This test uses a mocked 422 to verify the error mapping, matching the real API response.
     server.use(
       http.post(`${AUTH_ENDPOINT}/register`, () =>
         HttpResponse.json(

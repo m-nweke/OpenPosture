@@ -146,10 +146,8 @@ export function ApiAuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 409)
         throw new AuthError('email-already-registered')
-      // The server's real minimum is 12 characters (`schemas.py`'s `MIN_PASSWORD_LENGTH`); this
-      // form's own check above only enforces 8. A password of 8–11 characters clears the client
-      // check, reaches the server, and comes back 422 — which belongs in the same bucket as a
-      // password this form rejected itself, not lumped in with "unknown".
+      // The server requires 12 characters (`schemas.py`'s `MIN_PASSWORD_LENGTH`), same as the
+      // form. A 422 here means the password was too short — same bucket as a client rejection.
       if (err instanceof ApiError && err.status === 422) throw new AuthError('weak-password')
       throw new AuthError('unknown')
     }
