@@ -9,7 +9,14 @@ import Registration from './views/auth/Registration'
 import logo from './assets/openPose.png'
 import styles from './App.module.css'
 import { cx } from './ui/cx'
-import { HistoryIcon, HomeIcon, RegisterIcon, SignInIcon, SignOutIcon, UploadIcon } from './ui/icons'
+import {
+  HistoryIcon,
+  HomeIcon,
+  RegisterIcon,
+  SignInIcon,
+  SignOutIcon,
+  UploadIcon,
+} from './ui/icons'
 
 export default function App() {
   const navigate = useNavigate()
@@ -40,7 +47,14 @@ export default function App() {
 
       <nav className={cx(styles.rail)} aria-label="Main">
         <NavLink to="/" className={cx(styles.brand)} aria-label="OpenPosture home">
-          <img alt="" aria-hidden="true" className={cx(styles.logo)} src={logo} width={24} height={24} />
+          <img
+            alt=""
+            aria-hidden="true"
+            className={cx(styles.logo)}
+            src={logo}
+            width={24}
+            height={24}
+          />
         </NavLink>
 
         {/* Icon-only by design — the rail stays a constant width regardless of route. The label
@@ -62,7 +76,11 @@ export default function App() {
         <div className={cx(styles.railSpacer)} />
 
         {isLoggedIn ? (
-          <button className={cx(styles.railLink, styles.railAction)} onClick={handleSignOut} title="Sign out">
+          <button
+            className={cx(styles.railLink, styles.railAction)}
+            onClick={handleSignOut}
+            title="Sign out"
+          >
             <SignOutIcon className={cx(styles.railIcon)} />
             <span className="sr-only">Sign out</span>
           </button>
@@ -107,7 +125,9 @@ export default function App() {
         </main>
 
         <footer className={cx(styles.footer)}>
-          <p>OpenPosture measures angles and reports what it measured. It is not a medical device.</p>
+          <p>
+            OpenPosture measures angles and reports what it measured. It is not a medical device.
+          </p>
         </footer>
       </div>
     </div>
