@@ -16,9 +16,11 @@
  * than being presented as fact.
  */
 
+import { useEffect, useRef, useState } from 'react'
 import type { AnalysisResponse, PostureReport } from '../api/types'
 import SkeletonOverlay from './SkeletonOverlay'
 import styles from './PostureResult.module.css'
+import { cx } from '../ui/cx'
 
 /**
  * The engine's own code for "this photo is not lateral".
@@ -40,6 +42,21 @@ interface Props {
 
 export default function PostureResult({ report, imageUrl, landmarks }: Props) {
   const measured = Object.entries(report.metrics).filter(([, metric]) => metric.status === 'ok')
+  const metricsRef = useRef<HTMLDListElement>(null)
+  // Drives both the trailing fade (hidden once there's nothing left to scroll to) and whether
+  // the strip takes a tab stop at all — a focusable element with nowhere to scroll is just a
+  // confusing extra stop for keyboard users.
+  const [metricsOverflow, setMetricsOverflow] = useState(false)
+
+  useEffect(() => {
+    const el = metricsRef.current
+    if (!el) return
+    const checkOverflow = () => setMetricsOverflow(el.scrollWidth > el.clientWidth)
+    checkOverflow()
+    const observer = new ResizeObserver(checkOverflow)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [measured.length])
   const viewCaveat = report.findings.find((finding) => finding.code === FRONTAL_VIEW_CODE)
   // Rendered as a caveat above the results rather than as one finding among many, and therefore
   // removed from the list below — the same sentence twice reads as a bug.
@@ -109,7 +126,12 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
           <h3 className={styles.sectionHeading} id="measurements-heading">
             Measurements
           </h3>
-          <dl className={styles.metrics}>
+          <dl
+            ref={metricsRef}
+            className={cx(styles.metrics, metricsOverflow && styles.metricsOverflowing)}
+            tabIndex={metricsOverflow ? 0 : undefined}
+            aria-label={metricsOverflow ? 'Measurements, scroll for more' : undefined}
+          >
             {measured.map(([name, metric]) => (
               <div key={name} className={styles.metricRow}>
                 <dt>{humanise(name)}</dt>

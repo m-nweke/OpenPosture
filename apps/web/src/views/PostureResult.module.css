@@ -1,8 +1,8 @@
 /* One analysis, presented as a continuous-scroll session report.
  *
  * Layout only; what is shown and why lives in the component. The one presentational decision
- * worth stating: severity is carried by a left border, a coloured label *and* the word itself —
- * never by colour alone, which is invisible to roughly one man in twelve.
+ * worth stating: severity is carried by a coloured timeline node, a coloured label *and* the
+ * word itself — never by colour alone, which is invisible to roughly one man in twelve.
  */
 
 .results {
@@ -170,8 +170,10 @@
 }
 
 /* Absolutely positioned, so it's excluded from the flex layout above and stays pinned to the
-   container's edge rather than scrolling away with the cards underneath it. */
-.metrics::after {
+   container's edge rather than scrolling away with the cards underneath it. Only rendered when
+   `metricsOverflowing` is set — a strip that already shows every card has nothing to hint at,
+   and the fade would otherwise paint over the last card's edge. */
+.metricsOverflowing::after {
   content: '';
   position: absolute;
   top: 0;
@@ -180,6 +182,11 @@
   width: 2.5rem;
   background: linear-gradient(to right, transparent, var(--color-bg));
   pointer-events: none;
+}
+
+.metricsOverflowing:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .metricRow {

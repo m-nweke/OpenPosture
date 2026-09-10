@@ -32,8 +32,8 @@ export default function App() {
   }
 
   // `NavLink` rather than `Link`: it sets `aria-current="page"` on the active route, which is
-  // both the accessible signal and what the underline below hangs off. Doing it with a manual
-  // `useLocation` comparison is the same work, done less reliably.
+  // both the accessible signal and what the active rail background hangs off. Doing it with a
+  // manual `useLocation` comparison is the same work, done less reliably.
   const railLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? cx(styles.railLink, styles.railLinkActive) : cx(styles.railLink)
 
@@ -46,7 +46,7 @@ export default function App() {
       </a>
 
       <nav className={cx(styles.rail)} aria-label="Main">
-        <NavLink to="/" className={cx(styles.brand)} aria-label="OpenPosture home">
+        <NavLink to="/" end className={cx(styles.brand)} aria-label="OpenPosture home">
           <img
             alt=""
             aria-hidden="true"
@@ -60,7 +60,7 @@ export default function App() {
         {/* Icon-only by design — the rail stays a constant width regardless of route. The label
             text is not decorative, so it stays in the DOM for a screen reader and appears
             on hover/focus as a tooltip rather than being dropped. */}
-        <NavLink className={railLinkClass} to="/" title="Home">
+        <NavLink className={railLinkClass} to="/" end title="Home">
           <HomeIcon className={cx(styles.railIcon)} />
           <span className="sr-only">Home</span>
         </NavLink>
