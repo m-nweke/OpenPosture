@@ -124,6 +124,7 @@ export default function Dashboard() {
 
   return (
     <div className={styles.container}>
+      <p className={styles.kicker}>Log a sit</p>
       <h1>Hello, {name}</h1>
 
       <div className={styles.card}>

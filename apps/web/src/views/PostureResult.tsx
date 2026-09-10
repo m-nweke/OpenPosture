@@ -16,9 +16,11 @@
  * than being presented as fact.
  */
 
+import { useEffect, useRef, useState } from 'react'
 import type { AnalysisResponse, PostureReport } from '../api/types'
 import SkeletonOverlay from './SkeletonOverlay'
 import styles from './PostureResult.module.css'
+import { cx } from '../ui/cx'
 
 /**
  * The engine's own code for "this photo is not lateral".
@@ -40,6 +42,21 @@ interface Props {
 
 export default function PostureResult({ report, imageUrl, landmarks }: Props) {
   const measured = Object.entries(report.metrics).filter(([, metric]) => metric.status === 'ok')
+  const metricsRef = useRef<HTMLDListElement>(null)
+  // Drives both the trailing fade (hidden once there's nothing left to scroll to) and whether
+  // the strip takes a tab stop at all — a focusable element with nowhere to scroll is just a
+  // confusing extra stop for keyboard users.
+  const [metricsOverflow, setMetricsOverflow] = useState(false)
+
+  useEffect(() => {
+    const el = metricsRef.current
+    if (!el) return
+    const checkOverflow = () => setMetricsOverflow(el.scrollWidth > el.clientWidth)
+    checkOverflow()
+    const observer = new ResizeObserver(checkOverflow)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [measured.length])
   const viewCaveat = report.findings.find((finding) => finding.code === FRONTAL_VIEW_CODE)
   // Rendered as a caveat above the results rather than as one finding among many, and therefore
   // removed from the list below — the same sentence twice reads as a bug.
@@ -47,6 +64,7 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
 
   return (
     <section className={styles.results} aria-labelledby="results-heading">
+      <p className={styles.kicker}>Session report</p>
       <h2 id="results-heading">Your results</h2>
 
       {viewCaveat && (
@@ -67,18 +85,25 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
         </p>
       </div>
 
-      {imageUrl &&
-        (landmarks.length > 0 ? (
-          <SkeletonOverlay imageUrl={imageUrl} landmarks={landmarks} />
-        ) : (
-          // No landmarks means nothing to draw. Showing a bare canvas would suggest the overlay
-          // failed rather than that there was nothing to overlay.
-          <img src={imageUrl} alt="The photo you uploaded" className={styles.uploadedImage} />
-        ))}
+      {/* The diagram is the report's visual hero: full-width, on its own panel, above the
+          findings it explains — not a small inline photo competing with text for attention. */}
+      {imageUrl && (
+        <div className={styles.diagramHero}>
+          {landmarks.length > 0 ? (
+            <SkeletonOverlay imageUrl={imageUrl} landmarks={landmarks} />
+          ) : (
+            // No landmarks means nothing to draw. Showing a bare canvas would suggest the overlay
+            // failed rather than that there was nothing to overlay.
+            <img src={imageUrl} alt="The photo you uploaded" className={styles.uploadedImage} />
+          )}
+        </div>
+      )}
 
       {findings.length > 0 ? (
         <section aria-labelledby="findings-heading">
-          <h3 id="findings-heading">What we noticed</h3>
+          <h3 className={styles.sectionHeading} id="findings-heading">
+            What we noticed
+          </h3>
           <ul className={styles.findings}>
             {findings.map((finding) => (
               <li key={finding.code} className={styles[finding.severity] ?? ''}>
@@ -98,8 +123,15 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
 
       {measured.length > 0 && (
         <section aria-labelledby="measurements-heading">
-          <h3 id="measurements-heading">Measurements</h3>
-          <dl className={styles.metrics}>
+          <h3 className={styles.sectionHeading} id="measurements-heading">
+            Measurements
+          </h3>
+          <dl
+            ref={metricsRef}
+            className={cx(styles.metrics, metricsOverflow && styles.metricsOverflowing)}
+            tabIndex={metricsOverflow ? 0 : undefined}
+            aria-label={metricsOverflow ? 'Measurements, scroll for more' : undefined}
+          >
             {measured.map(([name, metric]) => (
               <div key={name} className={styles.metricRow}>
                 <dt>{humanise(name)}</dt>
@@ -117,7 +149,9 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
 
       {report.quality.gaps.length > 0 && (
         <section aria-labelledby="gaps-heading">
-          <h3 id="gaps-heading">What we could not assess</h3>
+          <h3 className={styles.sectionHeading} id="gaps-heading">
+            What we could not assess
+          </h3>
           <ul className={styles.gaps}>
             {report.quality.gaps.map((gap) => (
               <li key={gap.metric}>

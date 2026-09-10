@@ -1,71 +1,75 @@
 /* Design tokens and a small reset.
  *
- * This was the palette from `vuejs/theme`, inherited with the Vite scaffold. Every value below is
- * now chosen for this application, and every component reads these variables rather than
- * hardcoding a colour — so a change here is a change everywhere, and no component can quietly
- * invent its own grey.
+ * The palette is "Rail Report": off-white / moss / clay, validated across four rounds of
+ * prototyping against this same screen set (see the design-audit artifact this redesign
+ * implements). Every component reads these variables rather than hardcoding a colour — so a
+ * change here is a change everywhere, and no component can quietly invent its own grey.
  *
  * Light and dark are both first-class. The palette is redefined under `prefers-color-scheme:
  * dark` rather than approximated with opacity, because a dark theme built by fading a light one
  * goes muddy exactly where contrast matters most.
  */
 
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 :root {
-  /* --- Palette ------------------------------------------------------------
-   * Orange is the brand, carried over from the original and from the logo it sits beside.
+  /* --- Palette --------------------------------------------------------------------------
+   * Moss and clay carry meaning beyond decoration: clay is the accent/interactive colour,
+   * moss-deep is the rail and diagram-hero ground. Both are darkened from their raw hue for
+   * text-level contrast against the off-white surfaces.
    *
-   * The skeleton overlay deliberately does *not* use it: the overlay draws in teal and amber,
-   * which are its own semantics (measured vs uncertain) and which stay legible on skin and
-   * clothing where orange would not. Chrome and data being different colours is the point —
-   * nothing on the photograph should look like part of the interface.
-   *
-   * Not the CSS keyword `orange` (#ffa500), which the old build used for text and which fails
-   * contrast against white at any normal size. These are darkened for legibility.
+   * The skeleton overlay deliberately does *not* use either: it draws in teal and amber, its
+   * own semantics (measured vs uncertain) that stay legible on skin and clothing where these
+   * would not. Chrome and data being different colours is the point — nothing on the
+   * photograph should look like part of the interface.
    */
-  --orange-50: #fff7ed;
-  --orange-500: #f97316;
-  --orange-600: #ea580c;
-  --orange-700: #c2410c;
+  --op-bg: #f4f1e7;
+  --op-surface: #fffdf7;
+  --op-surface-sunken: #ece7d6;
+  --op-ink: #221f17;
+  --op-sub: #6f6a58;
+  --op-line: #e1dcc7;
+  --op-line-strong: #d3cbaf;
 
-  --slate-50: #f8fafc;
-  --slate-100: #f1f5f9;
-  --slate-200: #e2e8f0;
-  --slate-300: #cbd5e1;
-  --slate-400: #94a3b8;
-  --slate-500: #64748b;
-  --slate-800: #1e293b;
-  --slate-900: #0f172a;
-  --slate-950: #020617;
+  --op-moss: #4f6b4f;
+  --op-moss-deep: #2c3f2a;
+  --op-clay: #aa522c;
+  --op-clay-deep: #8a3f1c;
 
-  /* Severity colours carry meaning, so they are picked for contrast on both surfaces rather
-   * than for vividness. */
-  --red-500: #dc2626;
-  --amber-600: #d97706;
-  --green-600: #16a34a;
+  --op-flag: #a13f2c;
+  --op-caution: #8a6520;
+  --op-info: #57624a;
+  --op-ok: #3d6a4d;
 
   /* --- Semantic surfaces -------------------------------------------------- */
-  --color-bg: var(--slate-50);
-  --color-surface: #ffffff;
-  --color-surface-sunken: var(--slate-100);
+  --color-bg: var(--op-bg);
+  --color-surface: var(--op-surface);
+  --color-surface-sunken: var(--op-surface-sunken);
 
-  --color-border: var(--slate-200);
-  --color-border-strong: var(--slate-300);
+  --color-border: var(--op-line);
+  --color-border-strong: var(--op-line-strong);
 
-  --color-text: var(--slate-800);
-  --color-text-muted: var(--slate-500);
-  --color-heading: var(--slate-900);
+  --color-text: var(--op-ink);
+  --color-text-muted: var(--op-sub);
+  --color-heading: var(--op-ink);
 
-  --color-accent: var(--orange-600);
-  --color-accent-hover: var(--orange-700);
-  --color-accent-soft: var(--orange-50);
-  --color-on-accent: #ffffff;
+  --color-accent: var(--op-clay);
+  --color-accent-hover: var(--op-clay-deep);
+  --color-accent-soft: color-mix(in srgb, var(--op-clay) 12%, var(--op-surface));
+  --color-on-accent: #fff8ec;
 
-  --color-danger: var(--red-500);
-  --color-danger-soft: #fef2f2;
-  --color-warning: var(--amber-600);
-  --color-warning-soft: #fffbeb;
-  --color-success: var(--green-600);
-  --color-success-soft: #f0fdf4;
+  --color-danger: var(--op-flag);
+  --color-danger-soft: color-mix(in srgb, var(--op-flag) 12%, var(--op-surface));
+  --color-warning: var(--op-caution);
+  --color-warning-soft: color-mix(in srgb, var(--op-caution) 16%, var(--op-surface));
+  --color-success: var(--op-ok);
+  --color-success-soft: color-mix(in srgb, var(--op-ok) 14%, var(--op-surface));
+
+  /* The rail and diagram hero share this ground — both are the "this is structure, not
+     content" surface in the Rail Report layout. */
+  --color-rail-bg: var(--op-moss-deep);
+  --color-rail-icon: rgb(255 255 255 / 65%);
+  --color-rail-icon-active: #ffffff;
 
   /* --- Scale --------------------------------------------------------------
    * One spacing scale. Choosing from a scale rather than typing a number is what keeps
@@ -86,48 +90,50 @@
   --radius-full: 999px;
 
   /* Layered rather than one blur: a tight shadow reads as an edge, a wide one as height. */
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / 6%);
-  --shadow-md: 0 1px 3px rgb(15 23 42 / 8%), 0 8px 24px -8px rgb(15 23 42 / 10%);
-  --shadow-lg: 0 2px 4px rgb(15 23 42 / 6%), 0 16px 40px -12px rgb(15 23 42 / 16%);
+  --shadow-sm: 0 1px 2px rgb(34 31 23 / 6%);
+  --shadow-md: 0 1px 3px rgb(34 31 23 / 8%), 0 8px 24px -8px rgb(34 31 23 / 12%);
+  --shadow-lg: 0 2px 4px rgb(34 31 23 / 8%), 0 16px 40px -12px rgb(34 31 23 / 18%);
 
+  /* Barlow Condensed for headings and section labels (the report's editorial voice), Barlow
+     for body text, JetBrains Mono for measurements and dates (tabular figures matter more
+     there than in prose). All three fall back cleanly to system fonts if the network font
+     fails to load. */
   --font-sans:
-    Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --font-display: 'Barlow Condensed', var(--font-sans);
+  --font-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 320ms cubic-bezier(0.16, 1, 0.3, 1);
 
   --container: 68rem;
+  --rail-width: 4.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: var(--slate-950);
-    --color-surface: var(--slate-900);
-    --color-surface-sunken: #0b1220;
+    --op-bg: #17160f;
+    --op-surface: #211f16;
+    --op-surface-sunken: #191810;
+    --op-ink: #f0ece0;
+    --op-sub: #a49c86;
+    --op-line: #37331f;
+    --op-line-strong: #47411f;
 
-    --color-border: #1e293b;
-    --color-border-strong: #334155;
+    --op-moss: #7fa07c;
+    --op-moss-deep: #26361f;
+    --op-clay: #e08356;
+    --op-clay-deep: #f0a074;
 
-    --color-text: var(--slate-200);
-    --color-text-muted: var(--slate-400);
-    --color-heading: #f8fafc;
+    --op-flag: #e0654a;
+    --op-caution: #e0a83e;
+    --op-info: #a4a68a;
+    --op-ok: #7fbf95;
 
-    /* Lighter in dark mode: --orange-600 on a near-black surface is muddy, and an accent that
-     * has to be squinted at is not an accent. */
-    --color-accent: #fb923c;
-    --color-accent-hover: #fdba74;
-    --color-accent-soft: rgb(249 115 22 / 14%);
-    --color-on-accent: var(--slate-950);
-
-    /* The soft fills are near-white tints in light mode; in dark they have to be tints of the
-     * hue itself or they wash out to grey. */
-    --color-danger: #f87171;
-    --color-danger-soft: rgb(248 113 113 / 12%);
-    --color-warning: #fbbf24;
-    --color-warning-soft: rgb(251 191 36 / 12%);
-    --color-success: #4ade80;
-    --color-success-soft: rgb(74 222 128 / 12%);
+    --color-accent-hover: var(--op-clay-deep);
+    --color-on-accent: #221100;
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
     --shadow-md: 0 1px 3px rgb(0 0 0 / 40%), 0 8px 24px -8px rgb(0 0 0 / 50%);
@@ -180,25 +186,26 @@ h2,
 h3,
 h4 {
   color: var(--color-heading);
-  line-height: 1.2;
+  font-family: var(--font-display);
+  line-height: 1.15;
   text-wrap: balance;
 }
 
 h1 {
   font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.75rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 h2 {
   font-size: 1.5rem;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 h3 {
   font-size: 1.125rem;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 p {

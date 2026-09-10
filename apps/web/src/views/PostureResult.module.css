@@ -1,16 +1,35 @@
-/* One analysis, presented.
+/* One analysis, presented as a continuous-scroll session report.
  *
  * Layout only; what is shown and why lives in the component. The one presentational decision
- * worth stating: severity is carried by a left border, a coloured label *and* the word itself —
- * never by colour alone, which is invisible to roughly one man in twelve.
+ * worth stating: severity is carried by a coloured timeline node, a coloured label *and* the
+ * word itself — never by colour alone, which is invisible to roughly one man in twelve.
  */
 
 .results {
   margin-top: var(--space-6);
 }
 
+.kicker {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  color: var(--color-accent);
+  margin: 0 0 var(--space-2);
+}
+
 .results > h2 {
   margin-bottom: var(--space-4);
+}
+
+.sectionHeading {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-heading);
 }
 
 /* The caveat sits above everything it qualifies, so it is read before the number it softens. */
@@ -35,67 +54,91 @@
   margin: 0;
   color: var(--color-text-muted);
   font-size: 0.9375rem;
+  font-family: var(--font-mono);
+}
+
+/* --- Diagram hero -----------------------------------------------------------
+ * The pose diagram treated as the report's centrepiece: its own dark panel, full width, well
+ * above the fold — the fix for an earlier round where it shrank to a small inline photo block
+ * competing with text for attention.
+ */
+.diagramHero {
+  margin: var(--space-5) 0 var(--space-6);
+  padding: var(--space-5);
+  background: var(--color-rail-bg);
+  border-radius: var(--radius-lg);
+  display: flex;
+  justify-content: center;
+}
+
+.diagramHero figure {
+  margin: 0;
+  max-width: 26rem;
+  width: 100%;
 }
 
 .uploadedImage {
   width: 100%;
+  max-width: 26rem;
   height: auto;
-  margin: var(--space-5) 0;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 .results h3 {
   margin: var(--space-6) 0 var(--space-3);
 }
 
-/* --- Findings ------------------------------------------------------------- */
+/* --- Findings, as a timeline --------------------------------------------- */
 
-.findings,
-.gaps {
+.findings {
   list-style: none;
-  padding: 0;
+  padding: 0 0 0 var(--space-4);
   margin: 0;
-  display: grid;
-  gap: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-left: 2px solid var(--color-border);
 }
 
 .findings li {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--color-border);
-  border-left-width: 3px;
-  border-left-color: var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  position: relative;
+  padding: 0 0 0 var(--space-1);
   font-size: 0.9375rem;
+  line-height: 1.55;
 }
 
-.major {
-  border-left-color: var(--color-danger) !important;
-  background: var(--color-danger-soft) !important;
-  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent) !important;
+/* The node on the timeline rail, coloured by severity — the same information the tag text
+   already carries, so this is reinforcement rather than the only signal. */
+.findings li::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--space-4) - 5px);
+  top: 0.4em;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--op-info);
 }
 
-.minor {
-  border-left-color: var(--color-warning) !important;
-  background: var(--color-warning-soft) !important;
-  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent) !important;
+.major::before {
+  background: var(--color-danger) !important;
+}
+
+.minor::before {
+  background: var(--color-warning) !important;
 }
 
 .severityTag {
-  padding: 0.15em 0.5em;
-  border-radius: var(--radius-full);
-  background: var(--color-surface);
-  border: 1px solid currentcolor;
+  display: inline-block;
+  margin-right: var(--space-2);
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
   font-size: 0.6875rem;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  white-space: nowrap;
+  color: var(--color-text-muted);
 }
 
 .major .severityTag {
@@ -115,66 +158,89 @@
   font-size: 0.9375rem;
 }
 
-/* --- Measurements --------------------------------------------------------- */
+/* --- Measurements, as a horizontal strip ---------------------------------- */
 
 .metrics {
-  display: grid;
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
   margin: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--color-surface);
+  padding-bottom: var(--space-2);
+  overflow-x: auto;
+}
+
+/* Absolutely positioned, so it's excluded from the flex layout above and stays pinned to the
+   container's edge rather than scrolling away with the cards underneath it. Only rendered when
+   `metricsOverflowing` is set — a strip that already shows every card has nothing to hint at,
+   and the fade would otherwise paint over the last card's edge. */
+.metricsOverflowing::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: var(--space-2);
+  width: 2.5rem;
+  background: linear-gradient(to right, transparent, var(--color-bg));
+  pointer-events: none;
+}
+
+.metricsOverflowing:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .metricRow {
-  display: grid;
-  grid-template-columns: minmax(9rem, 14rem) 1fr;
-  align-items: baseline;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.metricRow:last-child {
-  border-bottom: none;
+  flex: 0 0 9.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 .metricRow dt {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   font-weight: 600;
-  color: var(--color-heading);
-  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
 }
 
-/* A real box, laid out with its own flex row.
- *
- * This was `display: contents`, which is a documented accessibility footgun: several
- * browser and screen-reader combinations drop such an element from the accessibility tree
- * entirely, so the `<dd>` would stop being announced as the definition of its `<dt>` and the
- * list would read as loose text. The visual result is identical either way; the semantics are
- * not. */
 .metricRow dd {
   margin: 0;
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
 /* Tabular figures so the column of numbers lines up on the decimal rather than wandering. */
 .metricValue {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-weight: 650;
+  font-weight: 600;
+  font-size: 1.125rem;
   color: var(--color-accent);
   white-space: nowrap;
 }
 
 .metricDetail {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--color-text-muted);
 }
 
 /* --- Gaps ----------------------------------------------------------------- */
+
+.gaps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
 
 .gaps li {
   padding: var(--space-3) var(--space-5);
@@ -192,7 +258,6 @@
 
 @media (max-width: 40rem) {
   .metricRow {
-    grid-template-columns: 1fr;
-    row-gap: var(--space-1);
+    flex: 0 0 8rem;
   }
 }
