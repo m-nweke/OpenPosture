@@ -9,7 +9,7 @@
 **Upload a photograph of yourself sitting. Get back angles measured from your own body, and an
 honest account of what could not be measured.**
 
-![The dashboard showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it, a score of 70, two findings about trunk lean and forward head, six measurements, and one metric the engine could not assess](docs/images/dashboard-result.jpg)
+![The results screen showing a real analysis: a photo of someone hunched at a desk with the detected skeleton drawn over it as the report's visual hero, two findings about trunk lean and forward head, and the start of a measurements strip](docs/images/dashboard-result.jpg)
 
 Everything in that screenshot is computed. The skeleton comes from MediaPipe Pose Landmarker and
 the angles from a pure rules engine, measured in world space so your distance from the camera
