@@ -25,10 +25,14 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Unprefixed name: `op.drop_constraint` runs it through the same naming convention as the
-    # model (`db/base.py`), resolving it to `ck_analyses_score_is_a_percentage` on its own.
-    op.drop_constraint("score_is_a_percentage", "analyses", type_="check")
-    op.drop_column("analyses", "overall_score")
+    # Use raw SQL with IF EXISTS. The initial migration (f7a2c9d81b3e) delegates to
+    # `Base.metadata.create_all` against the *current* model, which already omits
+    # `overall_score` on this branch — so on a fresh database neither the column nor its
+    # check constraint is ever created, and a bare drop would fail.
+    op.execute(
+        "ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_score_is_a_percentage"
+    )
+    op.execute("ALTER TABLE analyses DROP COLUMN IF EXISTS overall_score")
 
 
 def downgrade() -> None:
