@@ -237,8 +237,6 @@ export interface components {
             metrics: components["schemas"]["StoredMetric"][];
             /** Object Key */
             object_key: string;
-            /** Overall Score */
-            overall_score: number | null;
             /** Pose Backend */
             pose_backend: string;
             /** Pose Detected */
@@ -272,8 +270,6 @@ export interface components {
             image_url: string;
             /** Object Key */
             object_key: string;
-            /** Overall Score */
-            overall_score: number | null;
             /** Pose Detected */
             pose_detected: boolean;
         };
@@ -502,11 +498,6 @@ export interface components {
             metrics: {
                 [key: string]: components["schemas"]["Metric"];
             };
-            /**
-             * Overall Score
-             * @description 0 to 100, or `null` when nothing could be measured. Null rather than 0 or 100: both would be confident claims about a photograph the engine could not assess.
-             */
-            overall_score: number | null;
             quality: components["schemas"]["Quality"];
             /** Rules Version */
             rules_version: string;

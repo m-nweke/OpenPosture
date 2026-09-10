@@ -147,12 +147,6 @@ class PostureReportModel(ContractModel):
             "use `AnalysisResponse.image`."
         )
     )
-    overall_score: float | None = Field(
-        description=(
-            "0 to 100, or `null` when nothing could be measured. Null rather than 0 or 100: both "
-            "would be confident claims about a photograph the engine could not assess."
-        )
-    )
     findings: list[Finding]
     metrics: dict[str, Metric]
     quality: Quality
@@ -243,7 +237,6 @@ class AnalysisListItem(ContractModel):
         )
     )
     pose_detected: bool
-    overall_score: float | None
 
 
 class AnalysisPage(ContractModel):
@@ -355,7 +348,6 @@ class AnalysisDetail(ContractModel):
     object_key: str
     pose_detected: bool
     image: ImageSize
-    overall_score: float | None
     assessed: int
     total: int
     inference_ms: float

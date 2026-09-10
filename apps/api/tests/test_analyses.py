@@ -441,7 +441,7 @@ class TestContractStrictness:
 
     def test_a_renamed_field_is_refused(self) -> None:
         payload = hunchback_report_dict()
-        payload["overall"] = payload.pop("overall_score")
+        payload["schemaVersion"] = payload.pop("schema_version")
 
         with pytest.raises(ValidationError):
             PostureReportModel.model_validate(payload, strict=True)
@@ -579,7 +579,6 @@ class TestListThumbnails:
             created_at=datetime.now(UTC),
             object_key=stored.key,
             pose_detected=True,
-            overall_score=72.0,
         )
 
         async def _session_holding_one_row() -> Any:

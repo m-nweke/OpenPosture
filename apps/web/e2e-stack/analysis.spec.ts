@@ -64,10 +64,6 @@ test.skip('a photograph produces a real, measured result on screen', async ({ pa
   // one, so the assertion would fail for the wrong reason.
   await expect(page.getByText('32°', { exact: true })).toBeVisible()
   await expect(page.getByText(/Your torso is leaning 32° forward/)).toBeVisible()
-
-  // The score is derived from the findings, so it is a second independent value off the same
-  // pipeline rather than a restatement of the first.
-  await expect(page.getByText('70', { exact: true })).toBeVisible()
 })
 
 test.skip('the skeleton overlay is drawn over the uploaded photo', async ({ page }) => {

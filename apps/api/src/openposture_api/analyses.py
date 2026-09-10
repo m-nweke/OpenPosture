@@ -174,7 +174,6 @@ def build_analyses_router(limiter: Limiter, settings: Settings) -> APIRouter:
                     pose_detected=False,
                     image_width=decoded.width,
                     image_height=decoded.height,
-                    overall_score=None,
                     assessed=0,
                     total=0,
                     inference_ms=measured_ms,
@@ -202,7 +201,6 @@ def build_analyses_router(limiter: Limiter, settings: Settings) -> APIRouter:
                 pose_detected=True,
                 image_width=decoded.width,
                 image_height=decoded.height,
-                overall_score=report.overall_score,
                 assessed=report.quality.assessed,
                 total=report.quality.total,
                 # `measured_ms` in both branches, never `report.inference_ms`. They are different
@@ -240,7 +238,6 @@ def build_analyses_router(limiter: Limiter, settings: Settings) -> APIRouter:
             assessed=report.quality.assessed,
             total=report.quality.total,
             findings=len(report.findings),
-            score=report.overall_score,
         )
 
         return AnalysisResponse(
@@ -450,7 +447,6 @@ def _to_list_item(analysis: Analysis, storage: StorageBackend) -> AnalysisListIt
         # row. See the storage module docstring (D3).
         image_url=storage.url_for(analysis.object_key),
         pose_detected=analysis.pose_detected,
-        overall_score=analysis.overall_score,
     )
 
 
@@ -461,7 +457,6 @@ def _to_detail(analysis: Analysis) -> AnalysisDetail:
         object_key=analysis.object_key,
         pose_detected=analysis.pose_detected,
         image=ImageSize(width=analysis.image_width, height=analysis.image_height),
-        overall_score=analysis.overall_score,
         assessed=analysis.assessed,
         total=analysis.total,
         inference_ms=analysis.inference_ms,

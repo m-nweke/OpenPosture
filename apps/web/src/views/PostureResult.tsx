@@ -62,17 +62,6 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
       )}
 
       <div className={styles.summary}>
-        {report.overall_score !== null ? (
-          <p className={styles.score}>
-            <span className={styles.scoreValue}>{Math.round(report.overall_score)}</span>
-            <span className={styles.scoreOutOf}>/ 100</span>
-          </p>
-        ) : (
-          // Not a zero and not a hundred. Both would be confident claims about a photograph the
-          // engine could not assess.
-          <p className={styles.score}>Not enough was visible to score this photo.</p>
-        )}
-
         <p className={styles.coverage}>
           Assessed {report.quality.assessed} of {report.quality.total} measurements.
         </p>

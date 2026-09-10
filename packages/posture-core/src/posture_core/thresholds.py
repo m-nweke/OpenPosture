@@ -226,14 +226,6 @@ class Thresholds:
     `evaluation/quality-gates.yml`'s `allowed_views` doesn't accept a frontal value yet.
     """
 
-    # -- scoring (OP-32) -----------------------------------------------------------------------
-    score_penalty_per_finding: float = 15.0
-    """Points deducted from 100 for each fault found.
-
-    Deliberately crude and deliberately documented as such: an overall score is a summary for the
-    user, not a measurement. The findings are the output that means something.
-    """
-
     def __post_init__(self) -> None:
         # Ordering constraints, checked because a mis-ordered pair does not raise anywhere else —
         # it just produces a band that no value can fall into, so a rule silently never fires.
@@ -280,8 +272,6 @@ class Thresholds:
                 "with a level or raised heel as unsupported, which is almost certainly a "
                 "configuration error rather than an intent"
             )
-        if self.score_penalty_per_finding < 0.0:
-            raise ValueError("score_penalty_per_finding must not be negative")
 
 
 DEFAULT_THRESHOLDS: Final = Thresholds()

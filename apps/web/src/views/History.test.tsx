@@ -22,7 +22,6 @@ function item(overrides: Partial<AnalysisListItem> = {}): AnalysisListItem {
     object_key: 'analyses/a1.jpg',
     image_url: '/media/analyses/a1.jpg',
     pose_detected: true,
-    overall_score: 72,
     ...overrides,
   }
 }
@@ -50,10 +49,10 @@ describe('History', () => {
     expect(await screen.findByText(/have not analysed any photos yet/)).toBeInTheDocument()
   })
 
-  it('renders a thumbnail and the score for each analysis', async () => {
+  it('renders a thumbnail for each analysis', async () => {
     signedInAs()
     respondWithPage({
-      items: [item({ id: 'a1', overall_score: 91, image_url: '/media/analyses/a1.jpg' })],
+      items: [item({ id: 'a1', image_url: '/media/analyses/a1.jpg' })],
       next_cursor: null,
     })
     respondWithTrend({ points: [] })
@@ -61,25 +60,12 @@ describe('History', () => {
 
     const thumbnail = await screen.findByRole('img', { name: /Photo analysed on/ })
     expect(thumbnail).toHaveAttribute('src', '/media/analyses/a1.jpg')
-    expect(screen.getByText('91 / 100')).toBeInTheDocument()
   })
 
-  it('describes an unscored analysis without inventing a number', async () => {
+  it('says plainly when no person was detected', async () => {
     signedInAs()
     respondWithPage({
-      items: [item({ overall_score: null, pose_detected: true })],
-      next_cursor: null,
-    })
-    respondWithTrend({ points: [] })
-    renderWithProviders(<History />)
-
-    expect(await screen.findByText(/Not enough was visible to score/)).toBeInTheDocument()
-  })
-
-  it('says plainly when no person was detected, rather than a blank or zero score', async () => {
-    signedInAs()
-    respondWithPage({
-      items: [item({ pose_detected: false, overall_score: null })],
+      items: [item({ pose_detected: false })],
       next_cursor: null,
     })
     respondWithTrend({ points: [] })

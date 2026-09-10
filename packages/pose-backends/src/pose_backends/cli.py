@@ -381,9 +381,7 @@ def _format_report(report: PostureReport) -> str:
     Findings first, then what could not be assessed. Both, always — a report that listed only its
     findings would be the inherited engine's output shape wearing better wording.
     """
-    score = "not scored" if report.overall_score is None else f"{report.overall_score:.0f}/100"
     lines = [
-        f"score          {score}",
         f"assessed       {report.quality.assessed} of {report.quality.total} metrics",
         "",
     ]

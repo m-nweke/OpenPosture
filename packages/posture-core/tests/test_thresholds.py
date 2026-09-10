@@ -111,11 +111,6 @@ def test_the_view_bands_must_leave_a_non_negative_ambiguous_gap() -> None:
         Thresholds(lateral_view_max_ratio=0.6, frontal_view_min_ratio=0.5)
 
 
-def test_a_negative_score_penalty_is_rejected() -> None:
-    with pytest.raises(ValueError, match="must not be negative"):
-        Thresholds(score_penalty_per_finding=-5.0)
-
-
 def test_every_field_has_a_default_so_a_caller_can_override_one_thing() -> None:
     """A required field here would make `Thresholds(trunk_slouch_deg=25)` impossible and push
     every test into restating the whole configuration."""

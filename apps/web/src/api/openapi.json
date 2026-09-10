@@ -51,17 +51,6 @@
             "title": "Object Key",
             "type": "string"
           },
-          "overall_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overall Score"
-          },
           "pose_backend": {
             "title": "Pose Backend",
             "type": "string"
@@ -89,7 +78,6 @@
           "object_key",
           "pose_detected",
           "image",
-          "overall_score",
           "assessed",
           "total",
           "inference_ms",
@@ -126,17 +114,6 @@
             "title": "Object Key",
             "type": "string"
           },
-          "overall_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overall Score"
-          },
           "pose_detected": {
             "title": "Pose Detected",
             "type": "boolean"
@@ -147,8 +124,7 @@
           "created_at",
           "object_key",
           "image_url",
-          "pose_detected",
-          "overall_score"
+          "pose_detected"
         ],
         "title": "AnalysisListItem",
         "type": "object"
@@ -559,18 +535,6 @@
             "title": "Metrics",
             "type": "object"
           },
-          "overall_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "0 to 100, or `null` when nothing could be measured. Null rather than 0 or 100: both would be confident claims about a photograph the engine could not assess.",
-            "title": "Overall Score"
-          },
           "quality": {
             "$ref": "#/components/schemas/Quality"
           },
@@ -589,7 +553,6 @@
           "backend",
           "inference_ms",
           "image",
-          "overall_score",
           "findings",
           "metrics",
           "quality"
