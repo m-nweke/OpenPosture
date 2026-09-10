@@ -7,7 +7,7 @@ const MESSAGES: Record<AuthErrorCode, string> = {
   'invalid-email': 'Please enter a valid email address',
   'invalid-credentials': 'Email or password incorrect',
   'email-already-registered': 'An account with that email already exists',
-  'weak-password': 'Password must be at least 8 characters',
+  'weak-password': 'Password must be at least 12 characters',
   unknown: 'Something went wrong. Please try again.',
 }
 
@@ -79,7 +79,7 @@ export default function Registration() {
               type={showPassword ? 'text' : 'password'}
               id="password"
               autoComplete="new-password"
-              placeholder="At least 8 characters"
+              placeholder="At least 12 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
