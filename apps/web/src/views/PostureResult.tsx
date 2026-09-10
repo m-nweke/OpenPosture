@@ -47,6 +47,7 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
 
   return (
     <section className={styles.results} aria-labelledby="results-heading">
+      <p className={styles.kicker}>Session report</p>
       <h2 id="results-heading">Your results</h2>
 
       {viewCaveat && (
@@ -67,18 +68,25 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
         </p>
       </div>
 
-      {imageUrl &&
-        (landmarks.length > 0 ? (
-          <SkeletonOverlay imageUrl={imageUrl} landmarks={landmarks} />
-        ) : (
-          // No landmarks means nothing to draw. Showing a bare canvas would suggest the overlay
-          // failed rather than that there was nothing to overlay.
-          <img src={imageUrl} alt="The photo you uploaded" className={styles.uploadedImage} />
-        ))}
+      {/* The diagram is the report's visual hero: full-width, on its own panel, above the
+          findings it explains — not a small inline photo competing with text for attention. */}
+      {imageUrl && (
+        <div className={styles.diagramHero}>
+          {landmarks.length > 0 ? (
+            <SkeletonOverlay imageUrl={imageUrl} landmarks={landmarks} />
+          ) : (
+            // No landmarks means nothing to draw. Showing a bare canvas would suggest the overlay
+            // failed rather than that there was nothing to overlay.
+            <img src={imageUrl} alt="The photo you uploaded" className={styles.uploadedImage} />
+          )}
+        </div>
+      )}
 
       {findings.length > 0 ? (
         <section aria-labelledby="findings-heading">
-          <h3 id="findings-heading">What we noticed</h3>
+          <h3 className={styles.sectionHeading} id="findings-heading">
+            What we noticed
+          </h3>
           <ul className={styles.findings}>
             {findings.map((finding) => (
               <li key={finding.code} className={styles[finding.severity] ?? ''}>
@@ -98,7 +106,9 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
 
       {measured.length > 0 && (
         <section aria-labelledby="measurements-heading">
-          <h3 id="measurements-heading">Measurements</h3>
+          <h3 className={styles.sectionHeading} id="measurements-heading">
+            Measurements
+          </h3>
           <dl className={styles.metrics}>
             {measured.map(([name, metric]) => (
               <div key={name} className={styles.metricRow}>
@@ -117,7 +127,9 @@ export default function PostureResult({ report, imageUrl, landmarks }: Props) {
 
       {report.quality.gaps.length > 0 && (
         <section aria-labelledby="gaps-heading">
-          <h3 id="gaps-heading">What we could not assess</h3>
+          <h3 className={styles.sectionHeading} id="gaps-heading">
+            What we could not assess
+          </h3>
           <ul className={styles.gaps}>
             {report.quality.gaps.map((gap) => (
               <li key={gap.metric}>

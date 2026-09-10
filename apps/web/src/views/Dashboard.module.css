@@ -4,16 +4,31 @@
   max-width: 52rem;
 }
 
+.kicker {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  color: var(--color-accent);
+  margin: 0 0 var(--space-2);
+}
+
 .container > h1 {
   margin-bottom: var(--space-5);
 }
 
 .card {
-  padding: var(--space-5);
+  padding: var(--space-6) var(--space-5);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1.5px dashed var(--color-border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition);
+}
+
+.card:has(.fileInput:hover) {
+  border-color: var(--color-accent);
 }
 
 .instructions {
@@ -54,6 +69,7 @@
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text);
+  font-family: var(--font-display);
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
@@ -87,6 +103,7 @@
 }
 
 .uploading label {
+  font-family: var(--font-display);
   font-size: 0.9375rem;
   font-weight: 600;
   white-space: nowrap;
@@ -110,20 +127,21 @@
 }
 
 .uploading progress::-webkit-progress-value {
-  background: var(--color-accent);
+  background: var(--op-moss);
   border-radius: var(--radius-full);
   transition: width var(--transition);
 }
 
 .uploading progress::-moz-progress-bar {
-  background: var(--color-accent);
+  background: var(--op-moss);
   border-radius: var(--radius-full);
 }
 
 .uploading span {
   min-width: 3ch;
   font-variant-numeric: tabular-nums;
-  font-size: 0.9375rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
   color: var(--color-text-muted);
 }
 

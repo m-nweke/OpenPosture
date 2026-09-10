@@ -1,4 +1,4 @@
-/* The app shell: header, nav, footer. */
+/* The app shell: a persistent icon rail plus a scrolling content column. */
 
 .skipLink {
   position: absolute;
@@ -22,97 +22,95 @@
   transform: translateY(0);
 }
 
-.header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  /* Frosted rather than opaque so content scrolling under it stays perceptible. Falls back to
-     the translucent background alone where it is unsupported. */
-  backdrop-filter: saturate(180%) blur(12px);
-  border-bottom: 1px solid var(--color-border);
+.shell {
+  min-height: 100vh;
+  display: flex;
 }
 
-.headerInner {
-  max-width: var(--container);
-  margin: 0 auto;
-  padding: var(--space-3) var(--space-5);
+.rail {
+  flex: 0 0 var(--rail-width);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-5);
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+  background: var(--color-rail-bg);
+  /* Sticky rather than fixed: it stays put through the content column's own scroll without
+     needing a matching content offset. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
 .brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: var(--space-3);
-  color: var(--color-heading);
-  text-decoration: none;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.brand:hover {
-  color: var(--color-accent);
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
 }
 
 .logo {
-  width: 36px;
-  height: 36px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
 }
 
-.brandName {
-  font-size: 1.0625rem;
-}
-
-.nav {
+.railLink {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
-
-.navLink {
-  position: relative;
-  padding: var(--space-2) var(--space-3);
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: none;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  text-decoration: none;
-  font-size: 0.9375rem;
-  font-weight: 550;
+  background: none;
+  color: var(--color-rail-icon);
+  cursor: pointer;
   transition:
     color var(--transition),
     background-color var(--transition);
 }
 
-.navLink:hover {
-  color: var(--color-heading);
-  background: var(--color-surface-sunken);
+.railLink:hover {
+  color: var(--color-rail-icon-active);
+  background: color-mix(in srgb, white 10%, transparent);
 }
 
-/* The active route is marked by colour *and* an underline. Colour alone fails for anyone who
-   cannot distinguish these two hues, and `aria-current` already carries it for screen readers. */
-.navLinkActive {
-  color: var(--color-accent);
+.railLinkActive {
+  color: var(--color-rail-icon-active);
+  background: color-mix(in srgb, white 14%, transparent);
 }
 
-.navLinkActive::after {
-  content: '';
-  position: absolute;
-  left: var(--space-3);
-  right: var(--space-3);
-  bottom: 2px;
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: var(--color-accent);
+.railIcon {
+  width: 20px;
+  height: 20px;
 }
 
-.navButton {
-  padding: var(--space-2) var(--space-4);
-  font-size: 0.9375rem;
-  text-decoration: none;
+.railSpacer {
+  flex: 1;
+}
+
+.railAction {
+  margin-bottom: var(--space-2);
+}
+
+.column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page {
+  width: 100%;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-8);
+  flex: 1;
 }
 
 .footer {
@@ -128,18 +126,28 @@
   color: var(--color-text-muted);
 }
 
+/* Below this width the rail becomes a top bar — a vertical strip this narrow would leave next
+   to no room for content on a phone. */
 @media (max-width: 34rem) {
-  .headerInner {
+  .shell {
     flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-3);
   }
 
-  .nav {
-    justify-content: center;
+  .rail {
+    flex-direction: row;
+    width: 100%;
+    height: auto;
+    position: sticky;
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-1);
   }
 
   .brand {
-    justify-content: center;
+    margin-bottom: 0;
+    margin-right: var(--space-2);
+  }
+
+  .railSpacer {
+    flex: 1;
   }
 }
